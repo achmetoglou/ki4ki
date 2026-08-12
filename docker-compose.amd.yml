@@ -1,0 +1,20 @@
+name: ki4ki
+# ============================================================================
+#  GPU-Overlay fuer AMD-Karten (ROCm). start.sh nimmt es automatisch dazu,
+#  wenn eine AMD-GPU erkannt wird (/dev/kfd vorhanden). NVIDIA nutzt stattdessen
+#  docker-compose.gpu.yml, ohne GPU laeuft alles auf CPU.
+#
+#  ⚠ Auf echter AMD-Hardware noch nicht erprobt - beim ersten AMD-Einsatz
+#    bitte pruefen (docker exec ki4ki-ollama ollama ps -> "100% GPU").
+#    Docling nutzt weiterhin die CPU (sein Bildmodell ist auf CUDA ausgelegt).
+# ============================================================================
+services:
+  ollama:
+    # ROCm-Variante des Ollama-Abbilds (statt der CUDA-Standardfassung)
+    image: ollama/ollama:rocm
+    devices:
+    - /dev/kfd
+    - /dev/dri
+    group_add:
+    - video
+    - render

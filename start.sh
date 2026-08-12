@@ -16,7 +16,21 @@ sagen() { echo -e "\n\033[1m$*\033[0m"; }
 
 # --- Voraussetzungen -------------------------------------------------------
 sagen "Voraussetzungen pruefen"
-command -v docker >/dev/null || { echo "Docker fehlt. Bitte zuerst Docker installieren."; exit 1; }
+if ! command -v docker >/dev/null 2>&1; then
+  echo "  Docker fehlt - installiere es (offizielles Skript get.docker.com) ..."
+  if command -v curl >/dev/null 2>&1; then
+    curl -fsSL https://get.docker.com | sh
+    sudo usermod -aG docker "$USER" 2>/dev/null || true
+    echo ""
+    echo "  ✓ Docker installiert. Jetzt EINMAL abmelden und neu anmelden"
+    echo "    (damit dieser Benutzer Docker bedienen darf), dann ./start.sh nochmal."
+    exit 0
+  else
+    echo "  Docker fehlt und kein 'curl' vorhanden - bitte Docker von Hand"
+    echo "  installieren (https://get.docker.com), dann ./start.sh erneut."
+    exit 1
+  fi
+fi
 docker compose version >/dev/null 2>&1 || { echo "Docker Compose (v2) fehlt."; exit 1; }
 echo "  Docker $(docker --version | cut -d' ' -f3 | tr -d ,) · Compose $(docker compose version --short)"
 # Docker da, aber Benutzer nicht in der docker-Gruppe? Dann sagt es das klar,
@@ -99,6 +113,12 @@ elif command -v nvidia-smi >/dev/null 2>&1 && nvidia-smi >/dev/null 2>&1; then
     echo "  ⚠ Kein apt-get - NVIDIA Container Toolkit bitte von Hand installieren,"
     echo "    dann ./start.sh erneut. Bis dahin laeuft alles auf CPU."
   fi
+elif [ -e /dev/kfd ] && [ -d /dev/dri ]; then
+  # AMD-GPU mit ROCm (die Kernel-Schnittstelle /dev/kfd ist da).
+  DATEIEN="$DATEIEN -f docker-compose.amd.yml"
+  echo "  AMD-Karte (ROCm) erkannt - wird genutzt."
+  echo "  (Auf AMD-Hardware noch ungetestet - bitte einmal pruefen:"
+  echo "   docker exec ki4ki-ollama ollama ps  -> sollte '100% GPU' zeigen)"
 else
   echo "  Keine nutzbare Karte gefunden - alles laeuft auf dem Prozessor."
   echo "  (Funktioniert, ist aber deutlich langsamer als mit NVIDIA-GPU.)"
