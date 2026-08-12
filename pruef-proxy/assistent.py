@@ -213,7 +213,9 @@ _BEZUG_AUF_ANTWORT = re.compile(
 # darf keinen weiteren Fachgegenstand tragen.
 _BESTAND_OBJEKT = re.compile(
     r"\b(dokument(?:e|en)?|unterlagen|dateien|quellen|literatur|"
-    r"arbeiten|normen|richtlinien|lerneinheiten|inhalte?)\b", re.I)
+    r"arbeiten|normen|richtlinien|lerneinheiten)\b", re.I)
+# "Inhalte" gehoert BEWUSST nicht hierher: Wer nach dem INHALT fragt
+# ("Stichwortliste der wesentlichen Inhalte"), stellt keine Bestandsfrage.
 _BESITZ = re.compile(
     r"\b(habt\s+ihr|hast\s+du|haben\s+wir|gibt\s+es|liegen\s+vor|"
     r"sind\s+(?:denn\s+)?(?:alles\s+)?(?:hier|drin|vorhanden|hinterlegt)|"
@@ -459,6 +461,19 @@ def _bestand_signal():
 
 
 def _ist_bestandsfrage(text):
+    # ⭐ Ein klarer ERZEUGE/EXTRAHIERE/FASSE-Auftrag OHNE genannte Dokument-Art
+    #   ist eine Inhalts-Aufgabe (mach etwas MIT Inhalt), keine Bestandsfrage.
+    #   Mit Art ("erstelle eine Liste aller Dissertationen") bleibt es Bestand -
+    #   das faengt die Art-Pruefung weiter unten ab.
+    try:
+        import bestand as _b
+        _hat_art = bool(_b.gefragte_art(text)[1])
+    except Exception:
+        _hat_art = False
+    if not _hat_art and re.search(
+            r"\b(erzeug\w*|erstell\w*|schreib\w*|formulier\w*|extrahier\w*|"
+            r"generier\w*|zusammenfass\w*|fass(?:e|t)?)\b", text, re.I):
+        return False
     # ⭐ Ausloeser + Art: "Welche Dissertationen haben wir im Bestand?"
     #   Ohne Ausloeser bleibt es eine Inhaltsfrage, auch wenn eine Art
     #   vorkommt - genau das ist die Bedingung.
