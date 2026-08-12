@@ -52,6 +52,19 @@ werden zehn und mehr).
 > Zeit: ~20–40 Min (der Großteil ist das einmalige Herunterladen der Modelle).
 > Alle Befehle werden im **Terminal auf dem Server** eingegeben.
 
+> ### ⚡ In einem Befehl (wenn der Server-Zugang zum Repo eingerichtet ist)
+> ```bash
+> git clone <REPO-URL> ki4ki && cd ki4ki && ./start.sh
+> ```
+> Das **lädt herunter und installiert** in einem Rutsch. Danach nur noch die
+> zwei Konto-/Schlüssel-Schritte unten (3.2–3.5). **Späteres Aktualisieren** ist
+> ebenfalls ein Befehl: `./aktualisiere.sh`.
+>
+> Der Zugang zum privaten Repo wird **einmal pro Rechner** eingerichtet (ein
+> read-only Deploy-Key, ~3 Min — siehe unten „Zugang zum Repo einrichten"). Wer
+> das nicht will, lädt das Paket als **ZIP** herunter, entpackt es und macht bei
+> 3.1 weiter — dann entfällt `git` ganz.
+
 ### 3.0 · Vorbereitung: auf den Server kommen, Docker prüfen, Dateien holen
 
 1. **Auf den Server verbinden** (falls du nicht direkt davor sitzt): von deinem PC
@@ -73,6 +86,25 @@ werden zehn und mehr).
    git clone <REPO-URL> ki4ki && cd ki4ki
    ```
    (Oder das ZIP herunterladen, entpacken, und mit `cd` in den Ordner wechseln.)
+
+#### Zugang zum Repo einrichten (nur bei `git clone` eines privaten Repos, einmal pro Rechner)
+
+Ist das Repo privat, muss sich der Rechner einmalig ausweisen. Am einfachsten mit
+einem **read-only Deploy-Key**:
+
+```bash
+ssh-keygen -t ed25519 -f ~/.ssh/ki4ki_repo -N "" -C "ki4ki-server"   # Schlüssel erzeugen
+cat ~/.ssh/ki4ki_repo.pub                                             # öffentlichen Teil anzeigen
+```
+Den angezeigten öffentlichen Schlüssel bei GitHub eintragen:
+**Repo → Settings → Deploy keys → Add deploy key** (Häkchen „Allow write access"
+**weglassen** = nur lesen). Danach git anweisen, diesen Schlüssel zu nutzen:
+```bash
+echo -e "Host github.com\n  IdentityFile ~/.ssh/ki4ki_repo\n  IdentitiesOnly yes" >> ~/.ssh/config
+```
+Ab jetzt funktioniert `git clone`/`git pull` ohne weitere Eingabe. **Wer keinen
+Schlüssel einrichten will:** ZIP von der Repo-Weboberfläche laden, entpacken,
+weiter bei 3.1.
 
 ### 3.1 · Anlage starten
 
@@ -339,9 +371,21 @@ dann `docker compose up -d`.
 
 ## 11 · Updates
 
-Alle Abbilder sind auf den **Fingerabdruck (`@sha256`) festgenagelt** — der Partner
-bekommt **exakt** die geprüfte Anlage, nicht die neueste. **Aktualisiert wird
-bewusst, ein Dienst nach dem anderen:**
+**Der einfache Weg — ein Befehl:**
+```bash
+./aktualisiere.sh
+```
+Holt die neueste Paketfassung (`git pull`), baut die selbstgebauten Dienste neu
+und startet alles aktualisiert. Daten, Modelle und `.secrets.env` bleiben
+unangetastet. (Wer das Paket als ZIP geholt hat: neue ZIP über den Ordner legen
+und `docker compose up -d --build` ausführen.)
+
+**Warum das sicher ist:** Alle fremden Abbilder sind auf den **Fingerabdruck
+(`@sha256`) festgenagelt** — ein `git pull` ändert daran nichts, der Partner
+bekommt **exakt** die geprüfte Anlage, nicht die jeweils neueste vom Anbieter.
+
+**Ein einzelnes fremdes Abbild bewusst anheben** (nur wenn nötig, ein Dienst nach
+dem anderen):
 
 1. **Vorher das betroffene Volume sichern** (§9) und den **alten `@sha256`-Wert
    notieren** (Rückweg).
