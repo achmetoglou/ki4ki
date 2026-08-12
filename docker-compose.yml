@@ -71,6 +71,9 @@ services:
     - "5678:5678"
     environment:
     - N8N_ENABLE_EXECUTE_COMMAND=true
+    # n8n 2.31 sperrt den executeCommand-Node sonst per Default (dann steht
+    # "Install this node to use it"). Leere Ausschlussliste = nichts sperren.
+    - NODES_EXCLUDE=[]
     - N8N_RESTRICT_FILE_ACCESS_TO=/files
     # ohne das blockt n8n den Login ueber http:// - betrifft JEDEN ohne HTTPS
     - N8N_SECURE_COOKIE=false
