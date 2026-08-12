@@ -1712,6 +1712,26 @@ def _modell_zeile(modell, sekunden=None, zeichen=None):
             "**%s**%s*" % (modell, zusatz))
 
 
+def _allgemein_zeile(modell, sekunden=None):
+    """KI4KI-ALLROUNDER: Fusszeile fuer Allgemeinwissen-Antworten in EINER
+    Zeile - WER geantwortet hat UND dass es NICHT belegt ist. Kein zweites
+    Marken-Symbol und kein '(inkl. Belegpruefung)', weil nichts geprueft
+    wurde. Abschaltbar wie die uebliche Zeile: KI4KI_MODELL_ANZEIGE=0."""
+    if not MODELL_ANZEIGE:
+        return ("\n\n---\n*\U0001F9E0 Allgemeinwissen \u2013 nicht aus "
+                "euren Dokumenten belegt.*")
+    z = ""
+    if sekunden is not None:
+        if sekunden >= 90:
+            z = " \u00b7 gesamt %d min %d s" % (
+                int(sekunden // 60), int(sekunden % 60))
+        else:
+            z = " \u00b7 gesamt %.0f s" % sekunden
+    return ("\n\n---\n*\U0001F9E0 **Allgemeinwissen** vom Sprachmodell "
+            "**%s** \u2013 nicht aus euren Dokumenten belegt%s*"
+            % (modell, z))
+
+
 def _katalog_zeile():
     """A: Katalog-Antworten sichtbar als 'ohne KI' kennzeichnen - damit klar
     ist, dass hier nichts formuliert, sondern nachgeschlagen wurde."""
@@ -3187,7 +3207,7 @@ class Griff(BaseHTTPRequestHandler):
         # KI4KI-ALLROUNDER: die geprueften Zusaetze (Belegblock, Bilanz)
         # passen nicht zu einer Allgemeinwissen-Antwort - klar markieren.
         if _allrounder:
-            geprueft = ALLGEMEIN_KOPF + roh + _modell_zeile(
+            geprueft = roh + _allgemein_zeile(
                 MODELL_NAME, time.time() - begonnen)
         print("[Chat] geprueft, sende %d Zeichen" % len(geprueft),
               file=sys.stderr, flush=True)
