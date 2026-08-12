@@ -19,6 +19,14 @@ sagen "Voraussetzungen pruefen"
 command -v docker >/dev/null || { echo "Docker fehlt. Bitte zuerst Docker installieren."; exit 1; }
 docker compose version >/dev/null 2>&1 || { echo "Docker Compose (v2) fehlt."; exit 1; }
 echo "  Docker $(docker --version | cut -d' ' -f3 | tr -d ,) · Compose $(docker compose version --short)"
+# Docker da, aber Benutzer nicht in der docker-Gruppe? Dann sagt es das klar,
+# statt spaeter mit "permission denied ... docker.sock" abzubrechen.
+if ! docker ps >/dev/null 2>&1; then
+  echo "  ⚠ Docker laeuft, aber dieser Benutzer darf es nicht bedienen."
+  echo "    Einmalig:  sudo usermod -aG docker $USER"
+  echo "    Danach ABMELDEN und neu anmelden, dann ./start.sh nochmal."
+  exit 1
+fi
 
 # --- Zugangsschluessel -----------------------------------------------------
 # Diese drei Werte unterschreiben die Anmeldung. Gehen sie verloren, sind alle
@@ -64,10 +72,36 @@ DATEIEN="-f docker-compose.yml"
 if docker run --rm --gpus all ubuntu:24.04 nvidia-smi >/dev/null 2>&1; then
   DATEIEN="$DATEIEN -f docker-compose.gpu.yml"
   echo "  NVIDIA-Karte gefunden - wird genutzt"
+elif command -v nvidia-smi >/dev/null 2>&1 && nvidia-smi >/dev/null 2>&1; then
+  # Karte + Treiber sind da, aber Docker kann sie nicht nutzen: die GPU-Bruecke
+  # (NVIDIA Container Toolkit) fehlt. Wird automatisch eingerichtet (braucht
+  # einmal das sudo-Passwort). Schlaegt das fehl, laeuft die Anlage auf CPU
+  # weiter - der Fehler bricht die Installation NICHT ab.
+  echo "  NVIDIA-Karte da, aber die Docker-GPU-Bruecke fehlt - richte sie ein ..."
+  if command -v apt-get >/dev/null 2>&1; then
+    set +e
+    curl -fsSL https://nvidia.github.io/libnvidia-container/gpgkey \
+      | sudo gpg --dearmor -o /usr/share/keyrings/nvidia-container-toolkit-keyring.gpg
+    curl -s -L https://nvidia.github.io/libnvidia-container/stable/deb/nvidia-container-toolkit.list \
+      | sed 's#deb https://#deb [signed-by=/usr/share/keyrings/nvidia-container-toolkit-keyring.gpg] https://#g' \
+      | sudo tee /etc/apt/sources.list.d/nvidia-container-toolkit.list >/dev/null
+    sudo apt-get update && sudo apt-get install -y nvidia-container-toolkit
+    sudo nvidia-ctk runtime configure --runtime=docker
+    sudo systemctl restart docker
+    set -e
+    if docker run --rm --gpus all ubuntu:24.04 nvidia-smi >/dev/null 2>&1; then
+      DATEIEN="$DATEIEN -f docker-compose.gpu.yml"
+      echo "  ✓ GPU-Bruecke eingerichtet - Karte wird jetzt genutzt"
+    else
+      echo "  ⚠ Bruecke eingerichtet, GPU aber weiter nicht nutzbar - laeuft auf CPU."
+    fi
+  else
+    echo "  ⚠ Kein apt-get - NVIDIA Container Toolkit bitte von Hand installieren,"
+    echo "    dann ./start.sh erneut. Bis dahin laeuft alles auf CPU."
+  fi
 else
   echo "  Keine nutzbare Karte gefunden - alles laeuft auf dem Prozessor."
-  echo "  Das funktioniert, ist aber deutlich langsamer. Wer eine NVIDIA-Karte"
-  echo "  hat, installiert das NVIDIA Container Toolkit und startet neu."
+  echo "  (Funktioniert, ist aber deutlich langsamer als mit NVIDIA-GPU.)"
 fi
 
 # --- Bauen und starten -----------------------------------------------------
@@ -86,6 +120,30 @@ done
 docker exec ki4ki-ollama ollama pull gemma4:12b
 docker exec ki4ki-ollama ollama pull bge-m3
 
+# --- Ablaufplaene automatisch einspielen -----------------------------------
+# Die 3 n8n-Workflows werden per CLI importiert - die IDs bleiben erhalten,
+# damit die Unter-Workflow-Verknuepfungen halten - und der Masse-Ingest wird
+# aktiviert. Schlaegt etwas fehl, laeuft die Installation weiter; die Workflows
+# lassen sich dann per n8n-Oberflaeche ("Import from File") nachziehen.
+sagen "Ablaufplaene einspielen"
+set +e
+for i in $(seq 1 40); do
+  docker exec ki4ki-n8n n8n --version >/dev/null 2>&1 && break
+  sleep 3
+done
+docker exec ki4ki-n8n sh -c 'rm -rf /tmp/wf && mkdir -p /tmp/wf'
+for wf in n8n-workflows/*.json; do docker cp "$wf" ki4ki-n8n:/tmp/wf/ >/dev/null 2>&1; done
+if docker exec ki4ki-n8n n8n import:workflow --separate --input=/tmp/wf >/dev/null 2>&1; then
+  echo "  Workflows importiert (Verknuepfungen bleiben erhalten)"
+  docker exec ki4ki-n8n n8n update:workflow --id=1DKWgDbdCiwa25E1 --active=true >/dev/null 2>&1 \
+    && echo "  Masse-Ingest aktiviert"
+  docker restart ki4ki-n8n >/dev/null 2>&1   # damit der Zeitplan-Ausloeser registriert
+else
+  echo "  ⚠ Auto-Import nicht moeglich - Workflows bitte per n8n-Oberflaeche"
+  echo "    (Port 5678, Import from File) aus n8n-workflows/ laden."
+fi
+set -e
+
 # --- Fertig ----------------------------------------------------------------
 sagen "Fertig"
 docker compose $DATEIEN ps --format "  {{.Name}}  {{.Status}}"
@@ -95,16 +153,18 @@ cat <<'ENDE'
   Oberflaeche:  http://<dieser-rechner>:3001
   Ablaufplaene: http://<dieser-rechner>:5678
 
-  NOCH ZWEI SCHRITTE VON HAND (siehe LIESMICH.md, Abschnitt "Erster Start"):
+  Die Ablaufplaene sind schon eingespielt und aktiv. Es bleiben nur noch
+  diese Schritte (einmalig, aus Sicherheitsgruenden nicht automatisierbar):
 
-  1. Auf Port 3001 ein Konto anlegen und unter
+  1. Auf Port 3001 ein Konto anlegen, dann unter
      Einstellungen -> Werkzeuge -> API-Schluessel einen Schluessel erzeugen.
 
-  2. Dann hier:   ./arbeitsbereich_anlegen.sh <Schluessel>
+  2. Den Schluessel in .secrets.env bei KI4KI_API_KEY eintragen und einmal
+     neu laden:   ./start.sh
+     (Ohne den Schluessel nimmt die Aufnahme keine Dokumente an.)
 
-     Das legt den Arbeitsbereich mit der richtigen Einstellung an.
-     ⚠ Wer den Arbeitsbereich stattdessen von Hand anlegt, bekommt
-     AnythingLLMs Voreinstellungen - und damit KEINE geprueften Quellen.
-     Warum, steht in der LIESMICH.
+  3. Einen Arbeitsbereich anlegen:   ./arbeitsbereich_anlegen.sh <Schluessel>
+     Oder per Oberflaeche - neue Bereiche stellen sich automatisch richtig ein.
+     Danach PDFs nach ./dokumente legen; die Aufnahme laeuft von selbst.
 
 ENDE

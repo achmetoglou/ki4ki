@@ -67,10 +67,16 @@ services:
     image: docker.n8n.io/n8nio/n8n@sha256:15091606d98f6d15bad10cb26bb937ccb47dfd9fee2bb7ae44c7061cba2e7a04
     container_name: ki4ki-n8n
     restart: unless-stopped
+    # bringt KI4KI_API_KEY herein - die Ingest-Workflows brauchen ihn fuer den
+    # Upload zu AnythingLLM ("=Bearer {{$env.KI4KI_API_KEY}}")
+    env_file:
+    - ./.secrets.env
     ports:
     - "5678:5678"
     environment:
     - N8N_ENABLE_EXECUTE_COMMAND=true
+    # ohne das kann der Workflow $env.KI4KI_API_KEY nicht lesen -> Upload 401
+    - N8N_BLOCK_ENV_ACCESS_IN_NODE=false
     # n8n 2.31 sperrt den executeCommand-Node sonst per Default (dann steht
     # "Install this node to use it"). Leere Ausschlussliste = nichts sperren.
     - NODES_EXCLUDE=[]
