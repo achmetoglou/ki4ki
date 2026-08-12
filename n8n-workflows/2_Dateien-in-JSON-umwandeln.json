@@ -1,1 +1,552 @@
-[{"updatedAt":"2026-07-25T00:12:20.000Z","createdAt":"2026-07-25T00:08:59.490Z","id":"uK5WCYhjVqPawcvP","name":"Dateien in JSON umwandeln","description":null,"active":true,"isArchived":false,"nodes":[{"parameters":{"method":"POST","url":"http://docling:5001/v1/convert/file","sendBody":true,"contentType":"multipart-form-data","bodyParameters":{"parameters":[{"parameterType":"formBinaryData","name":"files","inputDataFieldName":"data"},{"name":"to_formats","value":"md"},{"name":"do_formula_enrichment","value":"true"},{"name":"do_table_structure","value":"true"},{"name":"table_mode","value":"accurate"},{"name":"md_page_break_placeholder","value":"[[SEITE]]"},{"name":"do_picture_description","value":"true"},{"name":"do_picture_classification","value":"true"},{"name":"picture_description_area_threshold","value":"0.03"},{"name":"picture_description_custom_config","value":"{\n  \"prompt\": \"Beschreibe diese Abbildung aus einem technischen Fachtext zur Kunststoffverarbeitung. Antworte AUSSCHLIESSLICH auf Deutsch und beginne mit den Worten 'Die Abbildung zeigt'. Nenne, was dargestellt ist, die Beschriftungen der Achsen mit ihren Einheiten und die erkennbaren Zahlenwerte. Bei Diagrammen: beschreibe den Verlauf der Kurven und nenne Anfangs-, End- und Extremwerte. Bei technischen Zeichnungen: nenne die bezeichneten Bauteile und die eingetragenen Masse. Bei Fotografien und Mikroskopaufnahmen: beschreibe das Werkstueck, erkennbare Fehler oder Strukturen und den Massstab, sofern angegeben. Wenn du etwas nicht sicher lesen kannst, sage das, statt zu raten.\",\n  \"generation_config\": {\n    \"max_new_tokens\": 600,\n    \"do_sample\": false\n  },\n  \"engine_options\": {\n    \"engine_type\": \"api_ollama\",\n    \"url\": \"http://nothink-proxy:11435/v1/chat/completions\",\n    \"timeout\": 600,\n    \"concurrency\": 1,\n    \"params\": {\n      \"model\": \"gemma4:12b\",\n      \"max_tokens\": 2000\n    }\n  },\n  \"model_spec\": {\n    \"name\": \"gemma4-12b\",\n    \"default_repo_id\": \"gemma4:12b\",\n    \"prompt\": \"Beschreibe diese Abbildung aus einem technischen Fachtext zur Kunststoffverarbeitung. Antworte AUSSCHLIESSLICH auf Deutsch und beginne mit den Worten 'Die Abbildung zeigt'. Nenne, was dargestellt ist, die Beschriftungen der Achsen mit ihren Einheiten und die erkennbaren Zahlenwerte. Wenn du etwas nicht sicher lesen kannst, sage das, statt zu raten.\",\n    \"response_format\": \"plaintext\",\n    \"max_new_tokens\": 600,\n    \"temperature\": 0.0,\n    \"api_overrides\": {\n      \"api_ollama\": {\n        \"params\": {\n          \"model\": \"gemma4:12b\",\n          \"max_tokens\": 2000\n        }\n      }\n    }\n  },\n  \"picture_area_threshold\": 0.03,\n  \"classification_allow\": null,\n  \"classification_deny\": null\n}"}]},"options":{"timeout":21600000}},"type":"n8n-nodes-base.httpRequest","typeVersion":4.4,"position":[0,0],"id":"cce38375-887f-43ad-936e-706ec5d0bcc8","name":"Docling PDF-Extraktion"},{"parameters":{"options":{"delimiter":",","headerRow":true,"includeEmptyCells":true,"fromLine":2}},"type":"n8n-nodes-base.extractFromFile","typeVersion":1.1,"position":[0,192],"id":"8fbada4f-cd87-4f0d-b7db-4bcffe3897dd","name":"Extract from File"},{"parameters":{"operation":"html","options":{}},"type":"n8n-nodes-base.extractFromFile","typeVersion":1.1,"position":[0,384],"id":"e7a6dc67-64cd-4ae6-897c-c4fa5f156aea","name":"Extract from File1"},{"parameters":{"operation":"xlsx","options":{}},"type":"n8n-nodes-base.extractFromFile","typeVersion":1.1,"position":[0,576],"id":"863d5c2d-c524-4b49-a808-26e23f6ef5e0","name":"Extract from File2"},{"parameters":{"operation":"text","options":{}},"type":"n8n-nodes-base.extractFromFile","typeVersion":1.1,"position":[0,768],"id":"45ec3cc1-3683-4850-87bb-04fb2779406d","name":"Extract from File3"},{"parameters":{"conditions":{"options":{"caseSensitive":true,"leftValue":"","typeValidation":"strict","version":3},"conditions":[{"id":"f8d72016-b724-4d1c-8cc8-137d53a70978","leftValue":"={{ $json.fileExtension }}","rightValue":"pdf","operator":{"type":"string","operation":"equals","name":"filter.operator.equals"}}],"combinator":"or"},"options":{}},"type":"n8n-nodes-base.if","typeVersion":2.3,"position":[-896,16],"id":"b1e6281c-6da5-4464-9816-4c4270bc871e","name":"If"},{"parameters":{"conditions":{"options":{"caseSensitive":true,"leftValue":"","typeValidation":"strict","version":3},"conditions":[{"id":"cd927e6a-1865-4134-a20b-a9c7f9b5d568","leftValue":"={{ $json.fileExtension }}","rightValue":"csv","operator":{"type":"string","operation":"equals","name":"filter.operator.equals"}}],"combinator":"and"},"options":{}},"type":"n8n-nodes-base.if","typeVersion":2.3,"position":[-720,208],"id":"ee746176-e694-4195-b38f-4e9862ce71ce","name":"If1"},{"parameters":{"conditions":{"options":{"caseSensitive":true,"leftValue":"","typeValidation":"strict","version":3},"conditions":[{"id":"8580c9c4-4387-4007-b260-a1fa1fbf9552","leftValue":"={{ $json.fileExtension }}","rightValue":"html","operator":{"type":"string","operation":"equals","name":"filter.operator.equals"}}],"combinator":"and"},"options":{}},"type":"n8n-nodes-base.if","typeVersion":2.3,"position":[-560,400],"id":"4d469734-8fdd-4345-89ce-1dce6ee4ceb1","name":"If2"},{"parameters":{"conditions":{"options":{"caseSensitive":true,"leftValue":"","typeValidation":"strict","version":3},"conditions":[{"id":"7306e3f1-3a2c-4f81-ab9f-c0ca4a3318be","leftValue":"={{ $json.fileExtension }}","rightValue":"excel","operator":{"type":"string","operation":"equals","name":"filter.operator.equals"}}],"combinator":"and"},"options":{}},"type":"n8n-nodes-base.if","typeVersion":2.3,"position":[-384,592],"id":"70ee748c-1839-4056-95ae-802d648fe7ac","name":"If3"},{"parameters":{"conditions":{"options":{"caseSensitive":true,"leftValue":"","typeValidation":"strict","version":3},"conditions":[{"id":"fa844496-f601-4a18-b630-b5cd2f70cae2","leftValue":"={{ $json.fileExtension }}","rightValue":"txt","operator":{"type":"string","operation":"equals","name":"filter.operator.equals"}}],"combinator":"and"},"options":{}},"type":"n8n-nodes-base.if","typeVersion":2.3,"position":[-224,784],"id":"60f733e4-c9ad-4998-8b54-099a15869295","name":"If4"},{"parameters":{"numberInputs":5},"type":"n8n-nodes-base.merge","typeVersion":3.2,"position":[368,336],"id":"31574f36-6f0b-41d8-9ce7-8d082e809347","name":"Merge"},{"parameters":{"workflowInputs":{"values":[{"name":"fileExtension","type":"any"}]}},"id":"3d30b501-7b04-46fb-8350-42d04cb7dd94","typeVersion":1.1,"name":"Start","type":"n8n-nodes-base.executeWorkflowTrigger","position":[-1104,16]},{"parameters":{"jsCode":"// Docling liefert JSON; der restliche Workflow erwartet den Text in $json.data\nreturn $input.all().map(item => {\n  const doc = item.json?.document || {};\n  const md  = doc.md_content || doc.text_content || '';\n  return { json: { data: md, docling_filename: doc.filename || null,\n                   seiten: (md.match(/\\[\\[SEITE\\]\\]/g) || []).length + 1 },\n           binary: item.binary };\n});"},"type":"n8n-nodes-base.code","typeVersion":2,"position":[176,0],"id":"7d5d62af-b106-4b90-a182-9a70c6164fea","name":"Docling-Antwort auspacken"}],"connections":{"Extract from File1":{"main":[[{"node":"Merge","type":"main","index":2}]]},"Extract from File2":{"main":[[{"node":"Merge","type":"main","index":3}]]},"Extract from File3":{"main":[[{"node":"Merge","type":"main","index":4}]]},"Extract from File":{"main":[[{"node":"Merge","type":"main","index":1}]]},"If":{"main":[[{"node":"Docling PDF-Extraktion","type":"main","index":0}],[{"node":"If1","type":"main","index":0}]]},"If2":{"main":[[{"node":"Extract from File1","type":"main","index":0}],[{"node":"If3","type":"main","index":0}]]},"If1":{"main":[[{"node":"Extract from File","type":"main","index":0}],[{"node":"If2","type":"main","index":0}]]},"If3":{"main":[[{"node":"Extract from File2","type":"main","index":0}],[{"node":"If4","type":"main","index":0}]]},"If4":{"main":[[{"node":"Extract from File3","type":"main","index":0}]]},"Start":{"main":[[{"node":"If","type":"main","index":0}]]},"Docling PDF-Extraktion":{"main":[[{"node":"Docling-Antwort auspacken","type":"main","index":0}]]},"Docling-Antwort auspacken":{"main":[[{"node":"Merge","type":"main","index":0}]]}},"settings":{"executionOrder":"v1","binaryMode":"separate","availableInMCP":false},"staticData":null,"meta":null,"nodeGroups":[],"pinData":{},"versionId":"f4ce5430-b813-47df-ac66-ec0e411413e6","activeVersionId":"f4ce5430-b813-47df-ac66-ec0e411413e6","versionCounter":6,"triggerCount":0,"sourceWorkflowId":null,"tags":[],"shared":[{"updatedAt":"2026-07-25T00:08:59.490Z","createdAt":"2026-07-25T00:08:59.490Z","role":"workflow:owner","workflowId":"uK5WCYhjVqPawcvP","projectId":"Mx6cw2X2Mt23rpxA","project":{"updatedAt":"2026-07-22T11:58:22.047Z","createdAt":"2026-07-22T10:50:27.209Z","id":"Mx6cw2X2Mt23rpxA","name":"Emrach Achmet Oglou <emrach.achmetoglou@ikv.rwth-aachen.de>","type":"personal","icon":null,"description":null,"customTelemetryTags":[],"creatorId":"006f2887-683a-45cc-9cee-9fa8ca56d08b"}}],"versionMetadata":{"name":null,"description":null}}]
+{
+  "updatedAt": "2026-07-25T00:12:20.000Z",
+  "createdAt": "2026-07-25T00:08:59.490Z",
+  "id": "uK5WCYhjVqPawcvP",
+  "name": "Dateien in JSON umwandeln",
+  "description": null,
+  "active": true,
+  "isArchived": false,
+  "nodes": [
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "http://docling:5001/v1/convert/file",
+        "sendBody": true,
+        "contentType": "multipart-form-data",
+        "bodyParameters": {
+          "parameters": [
+            {
+              "parameterType": "formBinaryData",
+              "name": "files",
+              "inputDataFieldName": "data"
+            },
+            {
+              "name": "to_formats",
+              "value": "md"
+            },
+            {
+              "name": "do_formula_enrichment",
+              "value": "true"
+            },
+            {
+              "name": "do_table_structure",
+              "value": "true"
+            },
+            {
+              "name": "table_mode",
+              "value": "accurate"
+            },
+            {
+              "name": "md_page_break_placeholder",
+              "value": "[[SEITE]]"
+            },
+            {
+              "name": "do_picture_description",
+              "value": "true"
+            },
+            {
+              "name": "do_picture_classification",
+              "value": "true"
+            },
+            {
+              "name": "picture_description_area_threshold",
+              "value": "0.03"
+            },
+            {
+              "name": "picture_description_custom_config",
+              "value": "{\n  \"prompt\": \"Beschreibe diese Abbildung aus einem technischen Fachtext zur Kunststoffverarbeitung. Antworte AUSSCHLIESSLICH auf Deutsch und beginne mit den Worten 'Die Abbildung zeigt'. Nenne, was dargestellt ist, die Beschriftungen der Achsen mit ihren Einheiten und die erkennbaren Zahlenwerte. Bei Diagrammen: beschreibe den Verlauf der Kurven und nenne Anfangs-, End- und Extremwerte. Bei technischen Zeichnungen: nenne die bezeichneten Bauteile und die eingetragenen Masse. Bei Fotografien und Mikroskopaufnahmen: beschreibe das Werkstueck, erkennbare Fehler oder Strukturen und den Massstab, sofern angegeben. Wenn du etwas nicht sicher lesen kannst, sage das, statt zu raten.\",\n  \"generation_config\": {\n    \"max_new_tokens\": 600,\n    \"do_sample\": false\n  },\n  \"engine_options\": {\n    \"engine_type\": \"api_ollama\",\n    \"url\": \"http://nothink-proxy:11435/v1/chat/completions\",\n    \"timeout\": 600,\n    \"concurrency\": 1,\n    \"params\": {\n      \"model\": \"gemma4:12b\",\n      \"max_tokens\": 2000\n    }\n  },\n  \"model_spec\": {\n    \"name\": \"gemma4-12b\",\n    \"default_repo_id\": \"gemma4:12b\",\n    \"prompt\": \"Beschreibe diese Abbildung aus einem technischen Fachtext zur Kunststoffverarbeitung. Antworte AUSSCHLIESSLICH auf Deutsch und beginne mit den Worten 'Die Abbildung zeigt'. Nenne, was dargestellt ist, die Beschriftungen der Achsen mit ihren Einheiten und die erkennbaren Zahlenwerte. Wenn du etwas nicht sicher lesen kannst, sage das, statt zu raten.\",\n    \"response_format\": \"plaintext\",\n    \"max_new_tokens\": 600,\n    \"temperature\": 0.0,\n    \"api_overrides\": {\n      \"api_ollama\": {\n        \"params\": {\n          \"model\": \"gemma4:12b\",\n          \"max_tokens\": 2000\n        }\n      }\n    }\n  },\n  \"picture_area_threshold\": 0.03,\n  \"classification_allow\": null,\n  \"classification_deny\": null\n}"
+            }
+          ]
+        },
+        "options": {
+          "timeout": 21600000
+        }
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        0,
+        0
+      ],
+      "id": "cce38375-887f-43ad-936e-706ec5d0bcc8",
+      "name": "Docling PDF-Extraktion"
+    },
+    {
+      "parameters": {
+        "options": {
+          "delimiter": ",",
+          "headerRow": true,
+          "includeEmptyCells": true,
+          "fromLine": 2
+        }
+      },
+      "type": "n8n-nodes-base.extractFromFile",
+      "typeVersion": 1.1,
+      "position": [
+        0,
+        192
+      ],
+      "id": "8fbada4f-cd87-4f0d-b7db-4bcffe3897dd",
+      "name": "Extract from File"
+    },
+    {
+      "parameters": {
+        "operation": "html",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.extractFromFile",
+      "typeVersion": 1.1,
+      "position": [
+        0,
+        384
+      ],
+      "id": "e7a6dc67-64cd-4ae6-897c-c4fa5f156aea",
+      "name": "Extract from File1"
+    },
+    {
+      "parameters": {
+        "operation": "xlsx",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.extractFromFile",
+      "typeVersion": 1.1,
+      "position": [
+        0,
+        576
+      ],
+      "id": "863d5c2d-c524-4b49-a808-26e23f6ef5e0",
+      "name": "Extract from File2"
+    },
+    {
+      "parameters": {
+        "operation": "text",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.extractFromFile",
+      "typeVersion": 1.1,
+      "position": [
+        0,
+        768
+      ],
+      "id": "45ec3cc1-3683-4850-87bb-04fb2779406d",
+      "name": "Extract from File3"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 3
+          },
+          "conditions": [
+            {
+              "id": "f8d72016-b724-4d1c-8cc8-137d53a70978",
+              "leftValue": "={{ $json.fileExtension }}",
+              "rightValue": "pdf",
+              "operator": {
+                "type": "string",
+                "operation": "equals",
+                "name": "filter.operator.equals"
+              }
+            }
+          ],
+          "combinator": "or"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        -896,
+        16
+      ],
+      "id": "b1e6281c-6da5-4464-9816-4c4270bc871e",
+      "name": "If"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 3
+          },
+          "conditions": [
+            {
+              "id": "cd927e6a-1865-4134-a20b-a9c7f9b5d568",
+              "leftValue": "={{ $json.fileExtension }}",
+              "rightValue": "csv",
+              "operator": {
+                "type": "string",
+                "operation": "equals",
+                "name": "filter.operator.equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        -720,
+        208
+      ],
+      "id": "ee746176-e694-4195-b38f-4e9862ce71ce",
+      "name": "If1"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 3
+          },
+          "conditions": [
+            {
+              "id": "8580c9c4-4387-4007-b260-a1fa1fbf9552",
+              "leftValue": "={{ $json.fileExtension }}",
+              "rightValue": "html",
+              "operator": {
+                "type": "string",
+                "operation": "equals",
+                "name": "filter.operator.equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        -560,
+        400
+      ],
+      "id": "4d469734-8fdd-4345-89ce-1dce6ee4ceb1",
+      "name": "If2"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 3
+          },
+          "conditions": [
+            {
+              "id": "7306e3f1-3a2c-4f81-ab9f-c0ca4a3318be",
+              "leftValue": "={{ $json.fileExtension }}",
+              "rightValue": "excel",
+              "operator": {
+                "type": "string",
+                "operation": "equals",
+                "name": "filter.operator.equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        -384,
+        592
+      ],
+      "id": "70ee748c-1839-4056-95ae-802d648fe7ac",
+      "name": "If3"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 3
+          },
+          "conditions": [
+            {
+              "id": "fa844496-f601-4a18-b630-b5cd2f70cae2",
+              "leftValue": "={{ $json.fileExtension }}",
+              "rightValue": "txt",
+              "operator": {
+                "type": "string",
+                "operation": "equals",
+                "name": "filter.operator.equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        -224,
+        784
+      ],
+      "id": "60f733e4-c9ad-4998-8b54-099a15869295",
+      "name": "If4"
+    },
+    {
+      "parameters": {
+        "numberInputs": 5
+      },
+      "type": "n8n-nodes-base.merge",
+      "typeVersion": 3.2,
+      "position": [
+        368,
+        336
+      ],
+      "id": "31574f36-6f0b-41d8-9ce7-8d082e809347",
+      "name": "Merge"
+    },
+    {
+      "parameters": {
+        "workflowInputs": {
+          "values": [
+            {
+              "name": "fileExtension",
+              "type": "any"
+            }
+          ]
+        }
+      },
+      "id": "3d30b501-7b04-46fb-8350-42d04cb7dd94",
+      "typeVersion": 1.1,
+      "name": "Start",
+      "type": "n8n-nodes-base.executeWorkflowTrigger",
+      "position": [
+        -1104,
+        16
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Docling liefert JSON; der restliche Workflow erwartet den Text in $json.data\nreturn $input.all().map(item => {\n  const doc = item.json?.document || {};\n  const md  = doc.md_content || doc.text_content || '';\n  return { json: { data: md, docling_filename: doc.filename || null,\n                   seiten: (md.match(/\\[\\[SEITE\\]\\]/g) || []).length + 1 },\n           binary: item.binary };\n});"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        176,
+        0
+      ],
+      "id": "7d5d62af-b106-4b90-a182-9a70c6164fea",
+      "name": "Docling-Antwort auspacken"
+    }
+  ],
+  "connections": {
+    "Extract from File1": {
+      "main": [
+        [
+          {
+            "node": "Merge",
+            "type": "main",
+            "index": 2
+          }
+        ]
+      ]
+    },
+    "Extract from File2": {
+      "main": [
+        [
+          {
+            "node": "Merge",
+            "type": "main",
+            "index": 3
+          }
+        ]
+      ]
+    },
+    "Extract from File3": {
+      "main": [
+        [
+          {
+            "node": "Merge",
+            "type": "main",
+            "index": 4
+          }
+        ]
+      ]
+    },
+    "Extract from File": {
+      "main": [
+        [
+          {
+            "node": "Merge",
+            "type": "main",
+            "index": 1
+          }
+        ]
+      ]
+    },
+    "If": {
+      "main": [
+        [
+          {
+            "node": "Docling PDF-Extraktion",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "If1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "If2": {
+      "main": [
+        [
+          {
+            "node": "Extract from File1",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "If3",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "If1": {
+      "main": [
+        [
+          {
+            "node": "Extract from File",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "If2",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "If3": {
+      "main": [
+        [
+          {
+            "node": "Extract from File2",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "If4",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "If4": {
+      "main": [
+        [
+          {
+            "node": "Extract from File3",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Start": {
+      "main": [
+        [
+          {
+            "node": "If",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Docling PDF-Extraktion": {
+      "main": [
+        [
+          {
+            "node": "Docling-Antwort auspacken",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Docling-Antwort auspacken": {
+      "main": [
+        [
+          {
+            "node": "Merge",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate",
+    "availableInMCP": false
+  },
+  "staticData": null,
+  "meta": null,
+  "nodeGroups": [],
+  "pinData": {},
+  "versionId": "f4ce5430-b813-47df-ac66-ec0e411413e6",
+  "activeVersionId": "f4ce5430-b813-47df-ac66-ec0e411413e6",
+  "versionCounter": 6,
+  "triggerCount": 0,
+  "sourceWorkflowId": null,
+  "tags": [],
+  "shared": [
+    {
+      "updatedAt": "2026-07-25T00:08:59.490Z",
+      "createdAt": "2026-07-25T00:08:59.490Z",
+      "role": "workflow:owner",
+      "workflowId": "uK5WCYhjVqPawcvP",
+      "projectId": "Mx6cw2X2Mt23rpxA",
+      "project": {
+        "updatedAt": "2026-07-22T11:58:22.047Z",
+        "createdAt": "2026-07-22T10:50:27.209Z",
+        "id": "Mx6cw2X2Mt23rpxA",
+        "name": "Emrach Achmet Oglou <emrach.achmetoglou@ikv.rwth-aachen.de>",
+        "type": "personal",
+        "icon": null,
+        "description": null,
+        "customTelemetryTags": [],
+        "creatorId": "006f2887-683a-45cc-9cee-9fa8ca56d08b"
+      }
+    }
+  ],
+  "versionMetadata": {
+    "name": null,
+    "description": null
+  }
+}

@@ -1,1 +1,172 @@
-[{"updatedAt":"2026-07-30T08:13:22.000Z","createdAt":"2026-07-25T00:08:59.490Z","id":"J8pPkKTKmkFTXjGn","name":"Markdown-Datei erzeugen","description":null,"active":true,"isArchived":false,"nodes":[{"parameters":{"jsCode":"const items = $input.all();\n\nreturn items.map((item, index) => {\n  const sourceDoc = $('Start').itemMatching.json.Code_itemMatching_unknown(index).json;\n\n  const filename = sourceDoc.filename || 'document.pdf';\n  const baseName = filename.replace(/\\.[^.$]+$/, '');\n  const title = sourceDoc.title || baseName;\n  const tags = Array.isArray(sourceDoc.tags) ? sourceDoc.tags.join(', ') : '';\n  const docType = sourceDoc.document_type || '';\n  const content = sourceDoc.parsed_text || sourceDoc.text || '';\n\n  const markdown = [\n    `# ${title}`,\n    '',\n    `Quelle: ${filename}`,\n    docType ? `Dokumenttyp: ${docType}` : '',\n    tags ? `Tags: ${tags}` : '',\n    '',\n    '## Inhalt',\n    '',\n    content\n  ].filter(Boolean).join('\\n');\n\n  const markdownFileName = `${baseName}.md`;\n\n  return {\n    json: {\n      ...item.json,\n      markdown_filename: markdownFileName,\n      markdown_path: `/files/anythingllm/${markdownFileName}`,\n      markdown_content: markdown,\n    },\n    binary: {\n      data: {\n        data: Buffer.from(markdown, 'utf8'),\n        mimeType: 'text/markdown',\n        fileName: markdownFileName,\n      }\n    }\n  };\n});"},"type":"n8n-nodes-base.code","typeVersion":2,"position":[208,0],"id":"cc590187-f088-4d18-b06a-ccaa4eafe286","name":"Markdown erzeugen","disabled":true},{"parameters":{"inputSource":"passthrough"},"id":"81d4e90a-298a-4091-8ba5-907b470c3328","typeVersion":1.1,"name":"Start","type":"n8n-nodes-base.executeWorkflowTrigger","position":[0,0]},{"parameters":{"jsCode":"const items = $input.all();\n\nreturn items.map((item) => {\n  const sourceDoc = item.json;\n\n  const filename = sourceDoc.filename || 'document.pdf';\n  const baseName = filename.replace(/\\.[^.$]+$/, '');\n  const title = sourceDoc.title || baseName;\n\n  const docType = sourceDoc.document_type || sourceDoc.docType || '';\n  const language = sourceDoc.language || '';\n  const domain = sourceDoc.domain || '';\n  const subdomain = sourceDoc.subdomain || '';\n  const processedAt = sourceDoc.processed_at || '';\n\n  const content = sourceDoc.parsed_text || sourceDoc.text || sourceDoc.content || '';\n\n  const tags = Array.isArray(sourceDoc.tags) ? sourceDoc.tags : [];\n  const keywords = Array.isArray(sourceDoc.keywords) ? sourceDoc.keywords : [];\n  const methods = Array.isArray(sourceDoc.methods) ? sourceDoc.methods : [];\n\n  let tagsSection = '';\n  if (tags.length > 0) {\n    const tagLines = tags.map(tag => `- ${tag}`);\n    tagsSection = ['## Tags', '', ...tagLines, ''].join('\\n');\n  }\n\n  let keywordsSection = '';\n  if (keywords.length > 0) {\n    const keywordLines = keywords.map(keyword => `- ${keyword}`);\n    keywordsSection = ['## Keywords', '', ...keywordLines, ''].join('\\n');\n  }\n\n  let methodsSection = '';\n  if (methods.length > 0) {\n    const methodLines = methods.map(method => `- ${method}`);\n    methodsSection = ['## Methoden', '', ...methodLines, ''].join('\\n');\n  }\n\n  const metaLines = [\n    `Quelle: ${filename}`,\n    docType ? `Dokumenttyp: ${docType}` : '',\n    language ? `Sprache: ${language}` : '',\n    domain ? `Domain: ${domain}` : '',\n    subdomain ? `Subdomain: ${subdomain}` : '',\n    processedAt ? `Verarbeitet am: ${processedAt}` : '',\n  ].filter(Boolean);\n\n  const markdown = [\n    `# ${title}`,\n    '',\n    ...metaLines,\n    '',\n    tagsSection,\n    keywordsSection,\n    methodsSection,\n    '## Inhalt',\n    '',\n    content\n  ].filter(Boolean).join('\\n');\n\n  const markdownFileName = `${baseName}.md`;\n\n  return {\n    json: {\n      ...item.json,\n      markdown_filename: markdownFileName,\n      markdown_path: `/files/anythingllm/${markdownFileName}`,\n      markdown_content: markdown,\n    },\n    binary: {\n      data: {\n        data: Buffer.from(markdown, 'utf8'),\n        mimeType: 'text/markdown',\n        fileName: markdownFileName,\n      }\n    }\n  };\n});"},"type":"n8n-nodes-base.code","typeVersion":2,"position":[432,0],"id":"8f6633c7-10a9-4be6-a6c2-307429d79248","name":"Markdown erzeugen-fix","disabled":true},{"parameters":{"assignments":{"assignments":[{"id":"96de0805-99fc-487c-ad22-a357aac08fc8","name":"markdown_path","value":"={{ $json.markdown_path }}","type":"string"}]},"options":{}},"type":"n8n-nodes-base.set","typeVersion":3.4,"position":[640,0],"id":"82666f5b-22f8-4dd2-b769-67f44a44312a","name":"Return","disabled":true},{"parameters":{"method":"POST","url":"http://mkmd-dienst:5055/markdown","sendBody":true,"specifyBody":"json","jsonBody":"={{ JSON.stringify({ rohtext: $json.parsed_text || $json.text || $json.content || '', basisname: ($json.filename || 'dokument.pdf').replace(/\\.[^.]+$/, ''), tagging: { document_type: $json.document_type || $json.docType || '', language: $json.language || '', domain: $json.domain || '', subdomain: $json.subdomain || '', tags: $json.tags || [], keywords: $json.keywords || [], methods: $json.methods || [] } }) }}","options":{"timeout":300000}},"type":"n8n-nodes-base.httpRequest","typeVersion":4.4,"position":[220,0],"id":"717d3dfb-6b43-45f2-8ea8-11ef9fe7176e","name":"Markdown vom Dienst"},{"parameters":{"jsCode":"// Reine Umformung - die Markdown-Datei hat der Dienst gebaut.\n// Hier wird nur in das Format gebracht, das der Master-Ablauf erwartet.\n// Bewusst ohne Logik: Alles, was den Inhalt betrifft, steckt in\n// mk_md.baue_markdown() und gilt damit fuer die Skript-Kette und fuer\n// n8n gleichermassen.\nreturn $input.all().map((item) => {\n  const a = item.json;\n  const name = a.dateiname || 'dokument.md';\n  return {\n    json: {\n      markdown_filename: name,\n      markdown_path: '/files/anythingllm/' + name,\n      markdown_content: a.markdown,\n      zeichen: a.zeichen,\n      seiten: a.seiten,\n      tags: a.tags,\n      keywords: a.keywords,\n      methoden: a.methoden,\n    },\n    binary: {\n      data: {\n        data: Buffer.from(a.markdown, 'utf8').toString('base64'),\n        mimeType: 'text/markdown',\n        fileName: name,\n      },\n    },\n  };\n});\n"},"type":"n8n-nodes-base.code","typeVersion":2,"position":[440,0],"id":"326a5119-15cd-484d-be00-548659796aa5","name":"Antwort auspacken"}],"connections":{"Start":{"main":[[{"node":"Markdown vom Dienst","type":"main","index":0}]]},"Markdown vom Dienst":{"main":[[{"node":"Antwort auspacken","type":"main","index":0}]]}},"settings":{"executionOrder":"v1","binaryMode":"separate","availableInMCP":false},"staticData":null,"meta":null,"nodeGroups":[],"pinData":{},"versionId":"LYhZw4kcV29CtmSOvhJF9WrRvYP0gXMm1PE5","activeVersionId":"LYhZw4kcV29CtmSOvhJF9WrRvYP0gXMm1PE5","versionCounter":11,"triggerCount":0,"sourceWorkflowId":null,"tags":[],"shared":[{"updatedAt":"2026-07-25T00:08:59.490Z","createdAt":"2026-07-25T00:08:59.490Z","role":"workflow:owner","workflowId":"J8pPkKTKmkFTXjGn","projectId":"Mx6cw2X2Mt23rpxA","project":{"updatedAt":"2026-07-22T11:58:22.047Z","createdAt":"2026-07-22T10:50:27.209Z","id":"Mx6cw2X2Mt23rpxA","name":"Emrach Achmet Oglou <emrach.achmetoglou@ikv.rwth-aachen.de>","type":"personal","icon":null,"description":null,"customTelemetryTags":[],"creatorId":"006f2887-683a-45cc-9cee-9fa8ca56d08b"}}],"versionMetadata":{"name":null,"description":null}}]
+{
+  "updatedAt": "2026-07-30T08:13:22.000Z",
+  "createdAt": "2026-07-25T00:08:59.490Z",
+  "id": "J8pPkKTKmkFTXjGn",
+  "name": "Markdown-Datei erzeugen",
+  "description": null,
+  "active": true,
+  "isArchived": false,
+  "nodes": [
+    {
+      "parameters": {
+        "jsCode": "const items = $input.all();\n\nreturn items.map((item, index) => {\n  const sourceDoc = $('Start').itemMatching.json.Code_itemMatching_unknown(index).json;\n\n  const filename = sourceDoc.filename || 'document.pdf';\n  const baseName = filename.replace(/\\.[^.$]+$/, '');\n  const title = sourceDoc.title || baseName;\n  const tags = Array.isArray(sourceDoc.tags) ? sourceDoc.tags.join(', ') : '';\n  const docType = sourceDoc.document_type || '';\n  const content = sourceDoc.parsed_text || sourceDoc.text || '';\n\n  const markdown = [\n    `# ${title}`,\n    '',\n    `Quelle: ${filename}`,\n    docType ? `Dokumenttyp: ${docType}` : '',\n    tags ? `Tags: ${tags}` : '',\n    '',\n    '## Inhalt',\n    '',\n    content\n  ].filter(Boolean).join('\\n');\n\n  const markdownFileName = `${baseName}.md`;\n\n  return {\n    json: {\n      ...item.json,\n      markdown_filename: markdownFileName,\n      markdown_path: `/files/anythingllm/${markdownFileName}`,\n      markdown_content: markdown,\n    },\n    binary: {\n      data: {\n        data: Buffer.from(markdown, 'utf8'),\n        mimeType: 'text/markdown',\n        fileName: markdownFileName,\n      }\n    }\n  };\n});"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        208,
+        0
+      ],
+      "id": "cc590187-f088-4d18-b06a-ccaa4eafe286",
+      "name": "Markdown erzeugen",
+      "disabled": true
+    },
+    {
+      "parameters": {
+        "inputSource": "passthrough"
+      },
+      "id": "81d4e90a-298a-4091-8ba5-907b470c3328",
+      "typeVersion": 1.1,
+      "name": "Start",
+      "type": "n8n-nodes-base.executeWorkflowTrigger",
+      "position": [
+        0,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const items = $input.all();\n\nreturn items.map((item) => {\n  const sourceDoc = item.json;\n\n  const filename = sourceDoc.filename || 'document.pdf';\n  const baseName = filename.replace(/\\.[^.$]+$/, '');\n  const title = sourceDoc.title || baseName;\n\n  const docType = sourceDoc.document_type || sourceDoc.docType || '';\n  const language = sourceDoc.language || '';\n  const domain = sourceDoc.domain || '';\n  const subdomain = sourceDoc.subdomain || '';\n  const processedAt = sourceDoc.processed_at || '';\n\n  const content = sourceDoc.parsed_text || sourceDoc.text || sourceDoc.content || '';\n\n  const tags = Array.isArray(sourceDoc.tags) ? sourceDoc.tags : [];\n  const keywords = Array.isArray(sourceDoc.keywords) ? sourceDoc.keywords : [];\n  const methods = Array.isArray(sourceDoc.methods) ? sourceDoc.methods : [];\n\n  let tagsSection = '';\n  if (tags.length > 0) {\n    const tagLines = tags.map(tag => `- ${tag}`);\n    tagsSection = ['## Tags', '', ...tagLines, ''].join('\\n');\n  }\n\n  let keywordsSection = '';\n  if (keywords.length > 0) {\n    const keywordLines = keywords.map(keyword => `- ${keyword}`);\n    keywordsSection = ['## Keywords', '', ...keywordLines, ''].join('\\n');\n  }\n\n  let methodsSection = '';\n  if (methods.length > 0) {\n    const methodLines = methods.map(method => `- ${method}`);\n    methodsSection = ['## Methoden', '', ...methodLines, ''].join('\\n');\n  }\n\n  const metaLines = [\n    `Quelle: ${filename}`,\n    docType ? `Dokumenttyp: ${docType}` : '',\n    language ? `Sprache: ${language}` : '',\n    domain ? `Domain: ${domain}` : '',\n    subdomain ? `Subdomain: ${subdomain}` : '',\n    processedAt ? `Verarbeitet am: ${processedAt}` : '',\n  ].filter(Boolean);\n\n  const markdown = [\n    `# ${title}`,\n    '',\n    ...metaLines,\n    '',\n    tagsSection,\n    keywordsSection,\n    methodsSection,\n    '## Inhalt',\n    '',\n    content\n  ].filter(Boolean).join('\\n');\n\n  const markdownFileName = `${baseName}.md`;\n\n  return {\n    json: {\n      ...item.json,\n      markdown_filename: markdownFileName,\n      markdown_path: `/files/anythingllm/${markdownFileName}`,\n      markdown_content: markdown,\n    },\n    binary: {\n      data: {\n        data: Buffer.from(markdown, 'utf8'),\n        mimeType: 'text/markdown',\n        fileName: markdownFileName,\n      }\n    }\n  };\n});"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        432,
+        0
+      ],
+      "id": "8f6633c7-10a9-4be6-a6c2-307429d79248",
+      "name": "Markdown erzeugen-fix",
+      "disabled": true
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "96de0805-99fc-487c-ad22-a357aac08fc8",
+              "name": "markdown_path",
+              "value": "={{ $json.markdown_path }}",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        640,
+        0
+      ],
+      "id": "82666f5b-22f8-4dd2-b769-67f44a44312a",
+      "name": "Return",
+      "disabled": true
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "http://mkmd-dienst:5055/markdown",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ rohtext: $json.parsed_text || $json.text || $json.content || '', basisname: ($json.filename || 'dokument.pdf').replace(/\\.[^.]+$/, ''), tagging: { document_type: $json.document_type || $json.docType || '', language: $json.language || '', domain: $json.domain || '', subdomain: $json.subdomain || '', tags: $json.tags || [], keywords: $json.keywords || [], methods: $json.methods || [] } }) }}",
+        "options": {
+          "timeout": 300000
+        }
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        220,
+        0
+      ],
+      "id": "717d3dfb-6b43-45f2-8ea8-11ef9fe7176e",
+      "name": "Markdown vom Dienst"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Reine Umformung - die Markdown-Datei hat der Dienst gebaut.\n// Hier wird nur in das Format gebracht, das der Master-Ablauf erwartet.\n// Bewusst ohne Logik: Alles, was den Inhalt betrifft, steckt in\n// mk_md.baue_markdown() und gilt damit fuer die Skript-Kette und fuer\n// n8n gleichermassen.\nreturn $input.all().map((item) => {\n  const a = item.json;\n  const name = a.dateiname || 'dokument.md';\n  return {\n    json: {\n      markdown_filename: name,\n      markdown_path: '/files/anythingllm/' + name,\n      markdown_content: a.markdown,\n      zeichen: a.zeichen,\n      seiten: a.seiten,\n      tags: a.tags,\n      keywords: a.keywords,\n      methoden: a.methoden,\n    },\n    binary: {\n      data: {\n        data: Buffer.from(a.markdown, 'utf8').toString('base64'),\n        mimeType: 'text/markdown',\n        fileName: name,\n      },\n    },\n  };\n});\n"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        440,
+        0
+      ],
+      "id": "326a5119-15cd-484d-be00-548659796aa5",
+      "name": "Antwort auspacken"
+    }
+  ],
+  "connections": {
+    "Start": {
+      "main": [
+        [
+          {
+            "node": "Markdown vom Dienst",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Markdown vom Dienst": {
+      "main": [
+        [
+          {
+            "node": "Antwort auspacken",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate",
+    "availableInMCP": false
+  },
+  "staticData": null,
+  "meta": null,
+  "nodeGroups": [],
+  "pinData": {},
+  "versionId": "LYhZw4kcV29CtmSOvhJF9WrRvYP0gXMm1PE5",
+  "activeVersionId": "LYhZw4kcV29CtmSOvhJF9WrRvYP0gXMm1PE5",
+  "versionCounter": 11,
+  "triggerCount": 0,
+  "sourceWorkflowId": null,
+  "tags": [],
+  "shared": [
+    {
+      "updatedAt": "2026-07-25T00:08:59.490Z",
+      "createdAt": "2026-07-25T00:08:59.490Z",
+      "role": "workflow:owner",
+      "workflowId": "J8pPkKTKmkFTXjGn",
+      "projectId": "Mx6cw2X2Mt23rpxA",
+      "project": {
+        "updatedAt": "2026-07-22T11:58:22.047Z",
+        "createdAt": "2026-07-22T10:50:27.209Z",
+        "id": "Mx6cw2X2Mt23rpxA",
+        "name": "Emrach Achmet Oglou <emrach.achmetoglou@ikv.rwth-aachen.de>",
+        "type": "personal",
+        "icon": null,
+        "description": null,
+        "customTelemetryTags": [],
+        "creatorId": "006f2887-683a-45cc-9cee-9fa8ca56d08b"
+      }
+    }
+  ],
+  "versionMetadata": {
+    "name": null,
+    "description": null
+  }
+}
