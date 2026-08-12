@@ -17,7 +17,7 @@ DIE QUELLE: eine Metadaten-Tabelle (je Dokument Titel, Verfasser, Jahr, Art),
 aus der der Katalog `bestandsindex.json` gebaut wird. Deckt idealerweise den
 ganzen Bestand ab; fehlt zu einer Arbeit ein Eintrag, erscheint sie ohne Titel.
 
-⚠ PROVISORISCH. Die richtige Pflege kommt aus Bibliotheca (OCLC) ueber
+⚠ PROVISORISCH. Die richtige Pflege kommt aus dem Bibliothekssystem ueber
   SRU/Z39.50/OAI-PMH - OPAC ist nur dessen Suchmaske. Bis dahin ist diese
   Datei die Ersatzquelle.
 
@@ -180,7 +180,7 @@ if __name__ == "__main__":
     faelle = [("DS-00-000", "Dissertation"), ("BS-00-000", "Bachelorarbeit"),
               ("M-00-000", "Masterarbeit"), ("D-00-000", "Diplomarbeit"),
               ("S-23-001", "Studienarbeit"), ("PA-24-002", "Projektarbeit"),
-              ("DVS 2213-1", None), ("Reparatur", None), ("3485926", None)]
+              ("DVS 2213-1", None), ("Reparatur", None), ("0000000", None)]
     schlecht = 0
     for n, soll in faelle:
         ist = art_von(n)

@@ -2,7 +2,7 @@
 """Gibt Doclings Seitentrennern ihre ECHTE Seitenzahl - inhaltsbasiert.
 
 Docling schreibt nur einen Trenner ohne Nummer ([[SEITE]]) und setzt dabei
-ZU WENIGE (gemessen 41 statt 44 bei S-13-023). mk_md zaehlt sie bloss durch
+ZU WENIGE (gemessen 41 statt 44 bei S-00-000). mk_md zaehlt sie bloss durch
 - weil welche fehlen, wandert die Zahl mit dem Dokument nach unten
 (+1, +2, +3 ...).
 
@@ -82,7 +82,7 @@ def _beste_seite(woerter, seiten_text, alle_seiten):
 
     ⚠ KEINE Verriegelung: ueber ALLE Seiten suchen, nicht nur vorwaerts.
        Ein einziger falscher Vorwaerts-Sprung riss sonst den ganzen Rest
-       mit (DS-06006: Versatz -133). Ein Treffer zaehlt nur, wenn er klar
+       mit (DS-00-000: Versatz -133). Ein Treffer zaehlt nur, wenn er klar
        ueber dem zweitbesten liegt - sonst lieber keine Aussage.
     """
     if len(woerter) < 4:

@@ -79,7 +79,7 @@ def _wie_anythingllm(stamm):
 
         [Ehr06] Faserverbund...   ->  Ehr06-Faserverbund...
         LE Ultraschallprüfung     ->  LE-Ultraschallprufung
-        S-10039 .pdf              ->  S-10039-
+        S-00000 .pdf              ->  S-00000-
 
     Der Beleg in einer Antwort traegt deshalb den umgeformten Namen, der
     Dateiindex aber den echten. Diese Funktion baut die Umformung NICHT

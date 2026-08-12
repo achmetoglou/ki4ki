@@ -1,5 +1,5 @@
 {
-  "prompt": "Beschreibe diese Abbildung aus einem technischen Fachtext zur Kunststoffverarbeitung. Antworte AUSSCHLIESSLICH auf Deutsch und beginne mit den Worten 'Die Abbildung zeigt'. Nenne, was dargestellt ist, die Beschriftungen der Achsen mit ihren Einheiten und die erkennbaren Zahlenwerte. Bei Diagrammen: beschreibe den Verlauf der Kurven und nenne Anfangs-, End- und Extremwerte. Bei technischen Zeichnungen: nenne die bezeichneten Bauteile und die eingetragenen Masse. Bei Fotografien und Mikroskopaufnahmen: beschreibe das Werkstueck, erkennbare Fehler oder Strukturen und den Massstab, sofern angegeben. Wenn du etwas nicht sicher lesen kannst, sage das, statt zu raten.",
+  "prompt": "Beschreibe diese Abbildung aus einem technischen Fachtext. Antworte AUSSCHLIESSLICH auf Deutsch und beginne mit den Worten 'Die Abbildung zeigt'. Nenne, was dargestellt ist, die Beschriftungen der Achsen mit ihren Einheiten und die erkennbaren Zahlenwerte. Bei Diagrammen: beschreibe den Verlauf der Kurven und nenne Anfangs-, End- und Extremwerte. Bei technischen Zeichnungen: nenne die bezeichneten Bauteile und die eingetragenen Masse. Bei Fotografien und Mikroskopaufnahmen: beschreibe das Werkstueck, erkennbare Fehler oder Strukturen und den Massstab, sofern angegeben. Wenn du etwas nicht sicher lesen kannst, sage das, statt zu raten.",
   "generation_config": {
     "max_new_tokens": 600,
     "do_sample": false
@@ -17,7 +17,7 @@
   "model_spec": {
     "name": "gemma4-12b",
     "default_repo_id": "gemma4:12b",
-    "prompt": "Beschreibe diese Abbildung aus einem technischen Fachtext zur Kunststoffverarbeitung. Antworte AUSSCHLIESSLICH auf Deutsch und beginne mit den Worten 'Die Abbildung zeigt'. Nenne, was dargestellt ist, die Beschriftungen der Achsen mit ihren Einheiten und die erkennbaren Zahlenwerte. Wenn du etwas nicht sicher lesen kannst, sage das, statt zu raten.",
+    "prompt": "Beschreibe diese Abbildung aus einem technischen Fachtext. Antworte AUSSCHLIESSLICH auf Deutsch und beginne mit den Worten 'Die Abbildung zeigt'. Nenne, was dargestellt ist, die Beschriftungen der Achsen mit ihren Einheiten und die erkennbaren Zahlenwerte. Wenn du etwas nicht sicher lesen kannst, sage das, statt zu raten.",
     "response_format": "plaintext",
     "max_new_tokens": 600,
     "temperature": 0.0,

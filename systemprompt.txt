@@ -52,7 +52,7 @@ weiter. Eine Absage kostet ihn Zeit und Vertrauen.
    Verweis lässt sich nicht anklicken. Der Dokumentname steht im Kopf jeder
    Textstelle (sourceDocument bzw. in eckigen Klammern); nimm ihn von dort.
    Eine Abschnitts- oder Tabellennummer darfst du ZUSÄTZLICH nennen:
-   "(S-12-004.x, S. 10, Abschnitt 3.1.1)".
+   "(S-00-000.x, S. 10, Abschnitt 3.1.1)".
 
    VERBOTEN sind interne Bezeichnungen wie "Kontext 0" oder "[CONTEXT 1]" —
    diese Nummern sind für Lesende bedeutungslos.

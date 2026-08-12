@@ -32,9 +32,8 @@ class H(BaseHTTPRequestHandler):
                 # ⚠ "think" versteht nur der native Weg /api/chat. Auf dem
                 #   OpenAI-Weg /v1/chat/completions - den Docling fuer die
                 #   Bildbeschreibung benutzt - wird es stillschweigend
-                #   ignoriert; das Modell denkt weiter laut. Gemessen am
-                #   04.08.: 71,2 s mit Denken, 16,7 s ohne, und die Antwort
-                #   OHNE Denken war sogar laenger (686 statt 392 Zeichen).
+                #   ignoriert; das Modell denkt weiter laut. Gemessen: 71,2 s mit Denken, 16,7 s ohne, und die Antwort
+                #   OHNE Denken war sogar laenger.
                 if self.path.startswith("/v1/"):
                     d["reasoning_effort"] = "none"
                 body = json.dumps(d).encode()

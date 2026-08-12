@@ -670,7 +670,7 @@ def pruefe_zitat(bestand, zitat, quellen=()):
             # Steht die Stelle wortgleich in mehreren Arbeiten, werden ALLE
             # genannt - jede mit ihrer eigenen Seite und damit anklickbar.
             # Frueher blieb ein einziger Eintrag ohne Seite uebrig ("u. a.
-            # DS-05003"); der Beleg zeigte auf nichts, und der genannte Band
+            # DS-00-000"); der Beleg zeigte auf nichts, und der genannte Band
             # war womoeglich gar nicht der gemeinte.
             # Fundorte, die nur in einer Literaturliste stehen, fliegen
             # raus: Dort steht ein Verweis auf die Arbeit, nicht ihr Inhalt.
@@ -743,7 +743,7 @@ _BELEG = re.compile(
 
 # Zitate im FLIESSTEXT, gefolgt von einer Quellenangabe in Klammern:
 #
-#     … eine „ausreichend niedrige Viskositaet" zu erreichen (S-12-004.x, S. 10)
+#     … eine „ausreichend niedrige Viskositaet" zu erreichen (S-00-000.x, S. 10)
 #
 # Seit der neuen Dienstanweisung ("Antworte zuerst, belege dann")
 # ist das die uebliche Form - die alte verlangte eine eigene "Beleg:"-Zeile.
@@ -757,7 +757,7 @@ _BELEG = re.compile(
 #   geraten ist, waeren schlimmer als keine.
 _BELEG_FLIESSTEXT = re.compile(
     r'(?P<kopf>)(?P<auf>[„"“])(?P<text>[^„"“”\n]{%d,1400})(?P<zu>[“”"])'
-    # Zwischen Zitat und Quelle stehen oft Woerter ("… zu erreichen (S-12-004,
+    # Zwischen Zitat und Quelle stehen oft Woerter ("… zu erreichen (S-00-000,
     # S. 10)"). Sie werden mitgefasst UND beim Ersetzen zurueckgegeben -
     # sonst fehlen sie hinterher im Satz.
     r'(?P<zwischen>[^„"“”()\n]{0,90}?)'

@@ -148,7 +148,7 @@ def freistellen(pdf, seite, dpi=150):
 if __name__ == "__main__":
     import sys
     pdf = sys.argv[1] if len(sys.argv) > 1 else \
-        "/daten/pdfs/ikv-wissen-konfidenz/archiv/DS-00-000.pdf"
+        "/daten/pdfs/beispiel-bereich/archiv/DS-00-000.pdf"
     seiten = [int(x) for x in sys.argv[2:]] or [52, 58, 51, 99, 1]
     print("=== %s" % pdf)
     for s in seiten:

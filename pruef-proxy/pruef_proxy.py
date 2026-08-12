@@ -965,8 +965,8 @@ def titelnamen():
     Die Ablage traegt beides: Der Dateiname ist der Speichername, das Feld
     "title" darin ist, was das Modell zu sehen bekommt.
 
-        HW14-Handbuch-Faserverbundkunststoff_Composites.md-<uuid>.json
-        "title": "[HW14] Handbuch Faserverbundkunststoff_Composites.md"
+        XY00-Beispiel-Handbuch.md-<uuid>.json
+        "title": "[XY00] Beispiel-Handbuch.md"
 
     ⚠ Es werden ZWEI Formen eingetragen: der Titel selbst und derselbe
       ohne fuehrendes Klammer-Kuerzel. Das Modell laesst "[HW14] " weg -
@@ -1135,7 +1135,7 @@ STELLE = """<!doctype html>
   :root {{ color-scheme: light dark; }}
   body {{ margin:0; background:#2b2b28; color:#e8e8e4;
          font:15px/1.5 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif; }}
-  header {{ background:#00549f; color:#fff; padding:.9rem 1.2rem;
+  header {{ background:#3a3a3a; color:#fff; padding:.9rem 1.2rem;
         display:flex; gap:1.2rem; align-items:baseline; flex-wrap:wrap; }}
   header b {{ font-size:1rem; }}
   header span {{ opacity:.85; font-size:.85rem; }}
@@ -1242,7 +1242,7 @@ EINHAENGER = """
   // ki4ki-kopieren-4: Kopieren ohne HTTPS - an DER Stelle, die der
   // Chat-Knopf wirklich benutzt.
   //
-  // Im Quelltext der Anwendung nachgelesen (files-d0dbf805.js):
+  // Die Oberflaeche kopiert per clipboard.write mit ClipboardItem:
   //     await navigator.clipboard.write([new ClipboardItem({...})])
   // Also clipboard.WRITE mit ClipboardItem, nicht writeText. Drei
   // Anlaeufe an writeText haben diese Stelle nie beruehrt.
@@ -1276,15 +1276,12 @@ EINHAENGER = """
     try { window.Blob = MeinBlob; } catch (e) {}
   }
 
-  // ⛔ HIER LAG DER FEHLER (Anlauf 4). ClipboardItem GIBT ES ohne HTTPS in
-  //   Firefox ueberhaupt nicht - und ich habe den Umschlag nur gebaut,
-  //   WENN die Klasse schon existierte. Also stuerzte die Anwendung schon
-  //   bei "new ClipboardItem({...})" ab, bevor sie clipboard.write rief:
+  // ⚠ Ohne HTTPS gibt es ClipboardItem in Firefox nicht. Der Umschlag
+  //   darf daher NICHT nur gebaut werden, wenn die Klasse schon existiert -
+  //   sonst stuerzt bereits "new ClipboardItem({...})" mit
   //       ReferenceError: ClipboardItem is not defined
-  //   Ihr catch schluckte den Absturz und setzte trotzdem den Haken.
-  //
-  //   Derselbe Denkfehler zum dritten Mal: abgesichert, was DA ist, und
-  //   nicht bedacht, was FEHLT.
+  //   ab, das catch schluckt es und setzt trotzdem den Haken. Regel:
+  //   absichern, was FEHLT, nicht nur, was DA ist.
   var EchtItem = window.ClipboardItem;
   var itemDaten = new WeakMap();
   var MeinItem;
@@ -1388,7 +1385,6 @@ EINHAENGER = """
   } catch (e) {
     try { navigator.clipboard = ersatz; } catch (e2) {}
   }
-  window.__ki4kiKopieren = 5;   // zum Nachsehen in der Konsole
 })();
 </script>
 
@@ -1482,8 +1478,8 @@ EINHAENGER = """
 # Neuladen oder beim Wechsel des Gespraechsfadens waeren Belege, Seiten und
 # Verweise wieder weg - genau das faellt beim erneuten Oeffnen auf.
 #
-# In die Datenbank schreiben geht nicht: Sie gehoert dem Konto emanager
-# (ein fremdes Konto), und an fremden Rechten wird nichts gedreht. Also merkt sich
+# In die Datenbank schreiben geht nicht: Sie gehoert einem anderen Konto,
+# und an fremden Rechten wird nichts gedreht. Also merkt sich
 # der Proxy die gepruefte Fassung selbst und setzt sie beim Laden des
 # Verlaufs wieder ein. Der Schluessel ist der Rohtext - der steht in der
 # Datenbank und kommt beim Laden zurueck.
@@ -1768,16 +1764,6 @@ def _netz_hinweis_zeile():
     (Abgeschaltet: verwirrte neben AnythingLLMs eigener Metrik; die
     Einordnung ist interne Mechanik, keine Nutzer-Info.)"""
     return ""
-    try:
-        info = assistent.netz_info()
-        if not info:
-            return ""
-        return ("\n\n*\U0001F50E Einordnung ueber das kleine Modell (%s) "
-                "als \u201e%s\u201c in %s s. Die Antwort selbst stammt vom "
-                "grossen Modell.*" % (info.get("modell"), info.get("fall"),
-                                      info.get("sekunden")))
-    except Exception:
-        return ""
 
 
 def verlauf_veredeln(daten):
@@ -2077,7 +2063,7 @@ def marken_verlinken(text, pruefungen):
 #   macht aus der Fussnotenmarke [1] den Linktext "\\[1\\]". Ein Muster
 #   mit [^\]]* zerbricht daran - der Bereich gilt als ungeschuetzt, und
 #   nennungen_verlinken ersetzte den Dokumentnamen MITTEN IN DER ADRESSE:
-#       /stelle?dok=[*S-13-029*](/pdf/S-13-029)&seite=8&zitat=…
+#       /stelle?dok=[*S-00-000*](/pdf/S-00-000)&seite=8&zitat=…
 #   Im Browser: "Dieses Dokument liegt nicht vor."
 _SCHON_LINK = re.compile(r"\[(?:[^\[\]\\]|\\.)*\]\([^)]*\)")
 
@@ -2144,12 +2130,12 @@ def nennungen_verlinken(text, quellen=None):
 
     # Laengste Namen zuerst, damit ein kurzer keinen langen zerschneidet.
     #
-    # Dazu die KURZFORMEN: Die Arbeit heisst "S-12-004.x", das Modell (und
-    # die Arbeit selbst) schreibt "S-12-004". Ohne diese Zuordnung bleibt
+    # Dazu die KURZFORMEN: Die Arbeit heisst "S-00-000.x", das Modell (und
+    # die Arbeit selbst) schreibt "S-00-000". Ohne diese Zuordnung bleibt
     # jede solche Nennung unverlinkt - Beispiel: DS-00-000 blau
-    # verlinkt, S-12-004 nicht.
+    # verlinkt, S-00-000 nicht.
     #
-    # ⚠ NUR WENN EINDEUTIG. Gaebe es "S-12-004.x" und "S-12-004.y", waere
+    # ⚠ NUR WENN EINDEUTIG. Gaebe es "S-00-000.x" und "S-00-000.y", waere
     #   die Kurzform mehrdeutig; dann bleibt sie unverlinkt. Lieber kein
     #   Link als einer, der auf die falsche Arbeit fuehrt.
     kurzformen = {}
@@ -2197,7 +2183,7 @@ def nennungen_verlinken(text, quellen=None):
         # es sieht aus wie ein zerbrochener Link.
         # ", S. 10" wird mitgenommen, damit der Klick dort landet.
         # ⚠ Auch ".x" mitnehmen, nicht nur ".md". Im Prompt stand als
-        #   Beispiel "(S-12-004.x, S. 10)" - das Modell schreibt das .x ab
+        #   Beispiel "(S-00-000.x, S. 10)" - das Modell schreibt das .x ab
         #   und haengt es an JEDEN Namen. Der Link endete davor, und
         #   ".x, S. 59" stand unverlinkt daneben: sieht aus wie ein
         #   zerbrochener Link. Dasselbe Problem trat zuvor schon mit
@@ -2300,10 +2286,9 @@ def _seite_glaubhaft(name, nr):
         return None
     seiten = 0
     try:
-        # ⚠ seitenzahl() will den NAMEN, nicht den Pfad. Ich hatte den Pfad
-        #   uebergeben und den Fehler mit hasattr zugedeckt - sie lieferte
-        #   still 0, und die Pruefung "Seite groesser als die Arbeit"
-        #   griff nie.
+        # ⚠ seitenzahl() will den NAMEN, nicht den Pfad. Bei Uebergabe
+        #   des Pfades liefert sie still 0, und die Pruefung "Seite groesser
+        #   als die Arbeit" griff nie.
         schluessel = _pdf_schluessel(name)
         if schluessel:
             seiten = pdfstelle.seitenzahl(schluessel) or 0
@@ -2442,7 +2427,7 @@ def zusammenfassungs_fuss(titel, gesamt, gelesen):
 
     Frueher stand dort "Zusammenfassung des vollstaendigen
     Dokuments" - auch dann, wenn der Mittelteil ausgelassen war. Bei
-    DS-05002 waren das 48.000 von 668.061 Zeichen: sieben Prozent, als
+    DS-00-000 war das nur ein kleiner Teil des Dokuments, als
     Ganzes ausgegeben. Wer den Zusatz ueberliest, haelt sie fuer
     vollstaendig.
     """
@@ -2587,7 +2572,7 @@ def quellen_veredeln(quellen):
     """Quellenliste auf die Original-PDFs umschreiben.
 
     AnythingLLM zeigt dort den Namen der eingelesenen Markdown-Fassung
-    ("PA-19-005.md"). Fuer einen Wissenschaftler ist das die falsche
+    ("PA-00-000.md"). Fuer einen Wissenschaftler ist das die falsche
     Auskunft - er will die Arbeit, nicht unser Zwischenformat. Also wird
     der Titel auf das PDF samt Seitenzahl umgeschrieben und die Adresse
     des PDFs in den Text vorangestellt.
@@ -2834,7 +2819,7 @@ class Griff(BaseHTTPRequestHandler):
 
         # ---- Was fuer eine Frage ist das ueberhaupt? --------------------
         # AnythingLLM sucht im Modus "query" mit dem ROHEN Fragetext und
-        # kennt den Gespraechsverlauf dabei nicht (stream.js, Zeile 179).
+        # kennt den Gespraechsverlauf dabei nicht.
         # Deshalb entscheidet sich hier, ob die Frage so weitergereicht
         # wird, angereichert werden muss oder gar nicht erst zu
         # AnythingLLM gehoert.
@@ -4112,8 +4097,8 @@ class Griff(BaseHTTPRequestHandler):
             self._strom_stueck(n)
         # Das Frontend beendet das Laden (Sende-Knopf) NUR bei
         # finalizeResponseStream mit passender uuid - NICHT bei
-        # close=True eines textResponseChunk (im index.js ruft nur der
-        # finalize-Zweig t(!1)). Ohne dies haengt der Knopf auf "Stop".
+        # close=True eines textResponseChunk. Ohne dies haengt der Knopf
+        # auf "Stop".
         self._strom_stueck({"uuid": marke, "type": "finalizeResponseStream",
                             "textResponse": "", "sources": [],
                             "close": True, "error": False})
@@ -4662,17 +4647,15 @@ class Griff(BaseHTTPRequestHandler):
                   % ", ".join(d[0] for d in doppelt[:8]),
                   file=sys.stderr, flush=True)
             # ⚠ 409, NICHT 200. Die Oberflaeche entscheidet am HTTP-Status,
-            #   nicht am Inhalt - aus ihrem eigenen Quelltext:
-            #       D.ok ? g("complete") : (g("failed"), d($.error))
-            #   Mit 200 sieht der Nutzer ein gruenes Haken und liest den Text
+            #   nicht am Inhalt. Mit 200 sieht der Nutzer ein gruenes Haken und liest den Text
             #   NIE. Genau so passiert: Die Abweisung griff, die
             #   Meldung ging raus - und der Nutzer sah ein Haken.
             self._json({"success": False, "error": text}, code=409)
             return
 
         # Die Oberflaeche kennt nur zwei Zustaende:
-        #     D.ok ? g("complete") : (g("failed"), d($.error), j($.error))
-        # Gruenes Haken OHNE Text - oder roter Kasten MIT Text. Ein drittes
+        # Gruenes Haken OHNE Text (2xx) - oder roter Kasten MIT Text (4xx/5xx).
+        # Ein drittes
         # "laeuft gerade" gibt es nicht.
         #
         # Entscheidung: lieber der rote Kasten mit der
@@ -4704,8 +4687,8 @@ class Griff(BaseHTTPRequestHandler):
                   file=sys.stderr, flush=True)
 
         # Die Oberflaeche kennt nur zwei Zustaende:
-        #     D.ok ? g("complete") : (g("failed"), d($.error), j($.error))
-        # Gruenes Haken OHNE Text - oder roter Kasten MIT Text. Ein drittes
+        # Gruenes Haken OHNE Text (2xx) - oder roter Kasten MIT Text (4xx/5xx).
+        # Ein drittes
         # "laeuft gerade" gibt es nicht. Deshalb 425 statt 200: Ein gruenes
         # Haken behauptet "fertig", und genau das ist der Irrtum, den die
         # Meldung ausraeumen soll.

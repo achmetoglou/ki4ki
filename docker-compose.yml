@@ -47,7 +47,7 @@ services:
     - PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True
     # Voreinstellung 120 s brach grosse PDFs still mit HTTP 504 ab
     - DOCLING_SERVE_MAX_SYNC_WAIT=21600
-    # ⚠ 6 Stunden, nicht 1. Am 04.08. brach ein Lauf nach exakt einer
+    # ⚠ 6 Stunden, nicht 1. Ein Lauf brach nach exakt einer
     #   Stunde ab - das war diese Grenze, nicht ein Fehler. Sie haengt
     #   am Dokument, nicht am Rechner: eine grosse Arbeit mit vielen
     #   Abbildungen braucht laenger als 3600 Sekunden.

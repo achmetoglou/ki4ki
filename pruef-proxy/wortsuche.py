@@ -8,7 +8,7 @@
                                  (Platz 10 und 18)
     "Mastizieren Kautschuk"  ->  100 Textstellen geliefert, 0 mit dem Wort
 
-Das Wort steht in VIER Arbeiten, eine davon (S-12-004.x) hat eine eigene
+Das Wort steht in VIER Arbeiten, eine davon (S-00-000.x) hat eine eigene
 Ueberschrift "3.1.1 Mastizieren". Die Anlage antwortete "Dazu finde ich in
 den vorliegenden Unterlagen keine belastbare Information" - und das war
 nicht gelogen: Das Modell hat das Wort nie gesehen.

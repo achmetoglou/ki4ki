@@ -2,8 +2,7 @@
 """Macht aus der Suchmaschine einen Assistenten.
 
 Ausgangslage: AnythingLLM sucht im Modus "query" mit dem ROHEN Fragetext
-(stream.js, Zeile 179 - dort steht `input: updatedMessage`, und
-`updatedMessage` ist nur die Slash-Befehl-Auswertung, keine Umschreibung).
+(nur die Slash-Befehl-Auswertung, keine Umschreibung des Verlaufs).
 Der Gespraechsverlauf geht zwar ans Modell, aber erst NACHDEM gesucht
 wurde. Jede Frage, die ihren Gegenstand nicht selbst benennt, findet
 deshalb nichts.
@@ -716,7 +715,7 @@ def bestandsauskunft(frage, titel, bereich=None, vorher=None):
     if stichwort:
         # ⭐ Erst im Katalog suchen - Titel UND Schlagworte, deutsch wie
         #   englisch. Vorher wurden nur die DATEINAMEN durchsucht, und bei
-        #   Namen wie "DS-00-000" oder "3468552" findet das nie etwas.
+        #   Namen wie "DS-00-000" oder "0000000" findet das nie etwas.
         aus_katalog = _treffer_im_katalog(stichwort, sauber, bereich)
         if aus_katalog:
             return aus_katalog
@@ -742,7 +741,7 @@ def bestandsauskunft(frage, titel, bereich=None, vorher=None):
     if len(sauber) <= 60:
         return kopf + "\n\n" + _liste(sauber)
     # Bei grossen Bestaenden hilft eine angeschnittene Liste niemandem: Die
-    # ersten vierzig Titel der Fremdliteratur heissen "3468552" und sagen
+    # ersten vierzig Titel der Fremdliteratur heissen "0000000" und sagen
     # gar nichts. Dann lieber nur die Aufteilung zeigen und nach einem
     # Stichwort fragen.
     return (kopf + "\n\nEine vollständige Liste wäre hier wenig hilfreich. "

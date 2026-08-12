@@ -3,7 +3,7 @@
 Warum ueberhaupt: Ein Dokumentname taucht an sechs Stellen auf - Dateisystem,
 Docling, Markdown-Datei, Arbeitsbereich, Belegadresse, Wortverzeichnis - und
 jede geht anders mit ihm um. AnythingLLM schreibt ihn sogar selbst um
-(aus "S-10039 .md" wird "S-10039-.md-<Kennung>.json"). Je gewoehnlicher der
+(aus "S-00000 .md" wird "S-00000-.md-<Kennung>.json"). Je gewoehnlicher der
 Name, desto weniger kann schiefgehen.
 
 ⛔ GEMESSEN AN 1263 ARBEITEN:
