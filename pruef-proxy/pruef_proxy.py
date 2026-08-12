@@ -196,6 +196,20 @@ TIKA_ZIEL = os.environ.get("KI4KI_TIKA") or "http://tika:9998/tika"
 #  werden. Abschaltbar mit KI4KI_META_ANTWORT=0.
 # ============================================================================
 META_ANTWORT = (os.environ.get("KI4KI_META_ANTWORT", "1") != "0")
+
+# ============================================================================
+#  KI4KI-ALLROUNDER: Findet die Suche keine einzige Fundstelle (0 Quellen),
+#  verstummt die Anlage nicht mehr - das Sprachmodell antwortet dann aus
+#  seinem ALLGEMEINWISSEN, klar als solches markiert (kein Beleg). Bei echten
+#  Fundstellen bleibt die Belegpflicht unangetastet. So ist jeder Bereich ein
+#  Allrounder (wie ChatGPT/Perplexity), ohne dass jemand Bereichs-
+#  Einstellungen aendern muss. Abschaltbar mit KI4KI_ALLROUNDER=0.
+# ============================================================================
+ALLROUNDER = (os.environ.get("KI4KI_ALLROUNDER", "1") != "0")
+ALLGEMEIN_KOPF = (
+    "> \U0001F9E0 **Allgemeinwissen** \u2013 diese Antwort stammt aus dem "
+    "Sprachmodell, **nicht** aus euren hinterlegten Dokumenten (kein Beleg)."
+    "\n\n")
 _META_GRUSS = re.compile(
     r"^\s*(hallo|hi|hey|moin|servus|na|danke(\s+dir)?|"
     r"guten\s+(tag|morgen|abend)|wie\s+geht'?s?(\s+dir|\s+ihnen)?|"
@@ -3072,7 +3086,20 @@ class Griff(BaseHTTPRequestHandler):
         roh = "".join(text)
         print("[Chat] Rohantwort %d Zeichen, %d Quellen"
               % (len(roh), len(quellen)), file=sys.stderr, flush=True)
-        if gestartet:
+        # KI4KI-ALLROUNDER: 0 Quellen = die Dokumente haben nichts. Statt einer
+        # Absage antwortet das Modell aus Allgemeinwissen (unten klar markiert).
+        _allrounder = False
+        if ALLROUNDER and not quellen and (roh or "").strip():
+            try:
+                _allg = self._modell_fragen(frage, zeitgrenze=300)
+            except Exception:
+                traceback.print_exc(file=sys.stderr)
+                _allg = ""
+            if _allg:
+                roh, art, _allrounder = _allg, "allgemein", True
+                print("[Allrounder] Allgemeinwissen statt Absage: %r"
+                      % (frage or "")[:40], file=sys.stderr, flush=True)
+        if gestartet and not _allrounder:
             self._stand(stand, "Schlage jede Fundstelle im Original-PDF nach "
                         "und prüfe die Zitate …")
 
@@ -3157,6 +3184,11 @@ class Griff(BaseHTTPRequestHandler):
             quellen = quellen_veredeln(quellen)
         except Exception:
             traceback.print_exc(file=sys.stderr)
+        # KI4KI-ALLROUNDER: die geprueften Zusaetze (Belegblock, Bilanz)
+        # passen nicht zu einer Allgemeinwissen-Antwort - klar markieren.
+        if _allrounder:
+            geprueft = ALLGEMEIN_KOPF + roh + _modell_zeile(
+                MODELL_NAME, time.time() - begonnen)
         print("[Chat] geprueft, sende %d Zeichen" % len(geprueft),
               file=sys.stderr, flush=True)
         # Nachtragen im Hintergrund: der Browser soll nicht darauf warten.
@@ -3295,7 +3327,7 @@ class Griff(BaseHTTPRequestHandler):
             fund = []
             try:
                 if art in ("bestand", "zusammenfassung", "rueckfrage",
-                           "wahl-alle", "e2b", "anhang", "meta"):
+                           "wahl-alle", "e2b", "anhang", "meta", "allgemein"):
                     import time as _t
                     _ws = (m.group(1) if m else "") or ""
                     _th = (m.group(2) if (m and m.group(2)) else "default")
