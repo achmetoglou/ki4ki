@@ -178,6 +178,30 @@ VERLAUF = re.compile(
 # Textauszug - sonst fehlen Seitenmarken, Formeln und Verschlagwortung.
 UPLOAD = re.compile(r"^/api/workspace/([^/]+)/upload(?:-and-embed)?/?$")
 
+# ============================================================================
+#  KI4KI-ANHANG-WEG-A: Eine direkt an den Chat angehaengte Datei (Bueroklammer)
+#  geht ueber /parse an AnythingLLM, landet dort aber im Agentenmodus, der sie
+#  ignoriert. Deshalb: Der Proxy merkt sich den Text der Datei (ueber Tika) und
+#  beantwortet die Folge-Frage DIREKT daraus - ohne Agent, ohne Suche, ohne
+#  Belege. Gilt fuer JEDEN Bereich (Kennung aus der URL), auch kuenftige.
+# ============================================================================
+PARSE = re.compile(r"^/api/workspace/([^/]+)/parse/?$")
+TIKA_ZIEL = os.environ.get("KI4KI_TIKA") or "http://tika:9998/tika"
+_ANHANG = {}
+_ANHANG_HALTBAR = 1200
+_ANHANG_MAX = 4000000   # praktisch unbegrenzt; nur Schutz vor Extremen
+
+
+def _tika_text(roh):
+    # Content-Type MUSS gesetzt sein - sonst schickt urllib
+    # form-urlencoded und Tika liefert leer. octet-stream laesst Tika den
+    # Typ selbst erkennen (PDF, Word, PowerPoint, ...).
+    req = urllib.request.Request(TIKA_ZIEL, data=roh, method="PUT",
+                                 headers={"Accept": "text/plain",
+                                          "Content-Type": "application/octet-stream"})
+    with urllib.request.urlopen(req, timeout=180) as r:
+        return r.read().decode("utf-8", "replace")
+
 BESTAND = None
 PDFS = {}
 # ⭐ Zweites Verzeichnis nach GRUNDFORM (klein, nur Buchstaben und Ziffern).
@@ -2726,6 +2750,12 @@ class Griff(BaseHTTPRequestHandler):
             frage = (json.loads(koerper or b"{}") or {}).get("message") or ""
         except Exception:
             frage = ""
+        # KI4KI-ANHANG-WEG-A: frisch angehaengte Datei -> direkt daraus antworten
+        try:
+            if self._anhang_antwort(frage):
+                return
+        except Exception:
+            traceback.print_exc(file=sys.stderr)
 
         # ---- Was fuer eine Frage ist das ueberhaupt? --------------------
         # AnythingLLM sucht im Modus "query" mit dem ROHEN Fragetext und
@@ -3224,7 +3254,7 @@ class Griff(BaseHTTPRequestHandler):
             fund = []
             try:
                 if art in ("bestand", "zusammenfassung", "rueckfrage",
-                           "wahl-alle", "e2b"):
+                           "wahl-alle", "e2b", "anhang"):
                     import time as _t
                     _ws = (m.group(1) if m else "") or ""
                     _th = (m.group(2) if (m and m.group(2)) else "default")
@@ -4648,6 +4678,136 @@ class Griff(BaseHTTPRequestHandler):
         except Exception:
             traceback.print_exc(file=sys.stderr)
 
+    def _parse_mitschnitt(self, slug):
+        """AnythingLLMs /parse normal durchreichen UND den Text der
+        angehaengten Datei fuer die naechste Chat-Frage merken (Weg A)."""
+        laenge = int(self.headers.get("Content-Length") or 0)
+        roh = self.rfile.read(laenge) if laenge else b""
+        # ZUERST merken (vor der Antwort), damit die sofort folgende Chat-Frage
+        # den Text garantiert schon vorfindet - kein Wettlauf.
+        try:
+            dateien = _dateien_aus_formular(
+                roh, self.headers.get("Content-Type") or "")
+            if dateien:
+                name, inhalt = dateien[0]
+                text = _tika_text(inhalt)
+                if text and text.strip():
+                    _voll = text.strip()
+                    _ANHANG[slug] = {"text": _voll[:_ANHANG_MAX],
+                                     "roh_len": len(_voll),
+                                     "name": os.path.basename(name),
+                                     "wann": time.time()}
+                    print("[Anhang] '%s' gemerkt fuer %s (%d Zeichen)"
+                          % (name, slug, len(text)),
+                          file=sys.stderr, flush=True)
+        except Exception:
+            traceback.print_exc(file=sys.stderr)
+        req = urllib.request.Request(ZIEL + self.path, data=roh, method="POST")
+        for k, v in self.headers.items():
+            if k.lower() not in ("host", "content-length", "connection",
+                                 "accept-encoding"):
+                req.add_header(k, v)
+        try:
+            with urllib.request.urlopen(req, timeout=180) as r:
+                status = r.status
+                daten = r.read()
+                kopf = [(k, v) for k, v in r.headers.items()
+                        if k.lower() not in ("transfer-encoding",
+                                             "connection", "content-length")]
+        except urllib.error.HTTPError as e:
+            status = e.code
+            daten = e.read()
+            kopf = [(k, v) for k, v in e.headers.items()
+                    if k.lower() not in ("transfer-encoding",
+                                         "connection", "content-length")]
+        except Exception as e:
+            self._fehler(502, str(e))
+            return
+        self.send_response(status)
+        for k, v in kopf:
+            self.send_header(k, v)
+        self.send_header("Content-Length", str(len(daten)))
+        self.send_header("Connection", "close")
+        self.end_headers()
+        try:
+            self.wfile.write(daten)
+        except Exception:
+            pass
+
+    def _anhang_antwort(self, frage):
+        """Weg A: Wurde gerade eine Datei an den Chat angehaengt, antworte
+        direkt aus ihrem Text - kein Agent, keine Suche, keine Belege.
+        True, wenn beantwortet."""
+        m = re.match(r"^/api/(?:v1/)?workspace/([^/]+)", self.path or "")
+        if not m:
+            return False
+        eintrag = _ANHANG.get(m.group(1))
+        if not eintrag or time.time() - eintrag["wann"] > _ANHANG_HALTBAR:
+            return False
+        if not bereich_sichtbar(self.path, self.headers):
+            self._json({"error": "Workspace does not exist."}, code=404)
+            return True
+        if not (frage or "").strip():
+            return False
+        text = eintrag["text"]
+        name = eintrag["name"]
+        seit = time.time()
+        eintrag["wann"] = seit   # solange gefragt wird, bleibt das Dokument aktiv
+        # Das GANZE Dokument lesen UND die ECHTE Aufgabe erfuellen (nicht nur
+        # zusammenfassen). Der Inhalt darf aufbereitet/gegliedert werden.
+        _regel = ("Stuetze dich AUSSCHLIESSLICH auf das Dokument und erfinde "
+                  "keine Inhalte. Du DARFST den vorhandenen Inhalt aber frei "
+                  "aufbereiten, gliedern und in die gewuenschte Form bringen "
+                  "(z.B. Praesentations-Gliederung, Stichpunkte, Tabelle).")
+        try:
+            st = mehrstufig.stuecke(text)
+        except Exception:
+            st = [text] if text else []
+        if not st:
+            return False
+        try:
+            if len(st) == 1:
+                roh = (self._modell_fragen(
+                    "%s\n\nAUFGABE: %s\n\nDOKUMENT (%s):\n%s"
+                    % (_regel, frage, name, text)) or "").strip()
+            else:
+                _teile = []
+                for _i, _s in enumerate(st, 1):
+                    _t = self._modell_fragen(
+                        mehrstufig.teil_auftrag(_s, name, _i, len(st)))
+                    _teile.append((_t or "").strip() or "[Teil nicht lesbar]")
+                _zus = "\n\n".join("--- Teil %d ---\n%s" % (_i, _t)
+                                    for _i, _t in enumerate(_teile, 1))
+                roh = (self._modell_fragen(
+                    "Unten stehen Zusammenfassungen ALLER %d Teile des Dokuments "
+                    "(es wurde vollstaendig gelesen). %s\n\nAUFGABE: %s\n\n%s"
+                    % (len(st), _regel, frage, _zus)) or "").strip()
+        except Exception:
+            traceback.print_exc(file=sys.stderr)
+            return False
+        if not roh:
+            return False
+        _gelesen = ("das komplette Dokument (%d Zeichen)" % len(text)
+                    if eintrag.get("roh_len", 0) <= len(text)
+                    else "die ersten %d von %d Zeichen (Dokument extrem gross)"
+                         % (len(text), eintrag.get("roh_len", 0)))
+        roh = "*(Gelesen: %s.)*\n\n%s" % (_gelesen, roh)
+        roh += ("\n\n---\n*📎 Antwort aus dem angehaengten Dokument "
+                "**%s** · %.1f s · Chat-Upload, ohne "
+                "Fundstellen-Belege*" % (eintrag["name"], time.time() - seit))
+        self._festhalten("anhang", frage, roh)
+        self._sende_strom([
+            {"uuid": _neue_marke("anhang"), "type": "textResponseChunk",
+             "textResponse": roh, "sources": [], "close": False,
+             "error": False},
+            {"uuid": _neue_marke("anhang"), "type": "textResponseChunk",
+             "textResponse": "", "sources": [], "close": True,
+             "error": False},
+        ])
+        print("[Anhang] direkt beantwortet aus '%s' (%r)"
+              % (eintrag["name"], frage[:50]), file=sys.stderr, flush=True)
+        return True
+
     def do_POST(self):
         pfad = self.path.split("?")[0]
         if ANSTOSS.match(pfad):
@@ -4681,6 +4841,10 @@ class Griff(BaseHTTPRequestHandler):
         if CHAT_JSON.match(pfad):
             chat_gemeldet()
             self._chat_json()
+            return
+        mp = PARSE.match(pfad)
+        if mp:
+            self._parse_mitschnitt(mp.group(1))
             return
         m = UPLOAD.match(pfad)
         if m:
