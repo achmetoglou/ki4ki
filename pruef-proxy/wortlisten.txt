@@ -1,0 +1,87 @@
+# ============================================================================
+#  WORTLISTEN DER ANLAGE
+#
+#  Diese Datei darf bearbeitet werden. Sie wirkt SOFORT - kein Neustart
+#  noetig. Nach dem Speichern gilt sie ab der naechsten Frage.
+#
+#  Zeilen mit # sind Anmerkungen und werden ueberlesen.
+#  Leere Zeilen ebenso.
+# ============================================================================
+
+
+# ----------------------------------------------------------------------------
+#  AUSLOESER
+#
+#  Woerter und Wendungen, die eine Frage zur BESTANDSFRAGE machen -
+#  also zu "was liegt bei uns im Regal?" statt "was steht drin?".
+#
+#  Nur wenn hier etwas passt, wird eine Liste ausgegeben. Sonst geht die
+#  Frage den normalen Weg durch die Suche.
+#
+#  ⚠ Gross- und Kleinschreibung ist egal. Mehrere Leerzeichen auch.
+# ----------------------------------------------------------------------------
+[ausloeser]
+Bestand
+Bestandsliste
+Bestandsübersicht
+Bestandsaufnahme
+was haben wir alles an
+was haben wir an
+was habt ihr alles an
+was habt ihr an
+was habt ihr zum Thema
+was haben wir zum Thema
+Liste aller
+Liste der
+Übersicht über
+Übersicht aller
+Aufstellung aller
+welche gibt es
+wie viele gibt es
+wie viele habt ihr
+wie viele haben wir
+welche habt ihr
+welche haben wir
+was liegt vor
+was ist vorhanden
+was steht zur Verfügung
+
+
+# ----------------------------------------------------------------------------
+#  ARTEN VON ARBEITEN
+#
+#  Form:   KENNUNG = Einzahl | Mehrzahl
+#
+#  Die KENNUNG sind die Buchstaben vor der Nummer im Dateinamen:
+#  "DS-00-000" -> DS.  Damit weiss die Anlage, dass DS-00-000 eine
+#  Dissertation ist und BS-00-000 eine Bachelorarbeit.
+#
+#  ⚠ FUER PARTNER: Hier stehen die Kennungen des IKV. Ein anderes Haus
+#    hat andere - dann diese Zeilen ersetzen. Ohne Eintrag laeuft die
+#    Anlage weiter, sie kann dann nur nicht nach Art filtern.
+# ----------------------------------------------------------------------------
+[arten]
+DS = Dissertation | Dissertationen
+BS = Bachelorarbeit | Bachelorarbeiten
+M  = Masterarbeit | Masterarbeiten
+D  = Diplomarbeit | Diplomarbeiten
+S  = Studienarbeit | Studienarbeiten
+PA = Projektarbeit | Projektarbeiten
+
+
+# ----------------------------------------------------------------------------
+#  WEITERE WOERTER FUER DIESELBE ART
+#
+#  Form:   Wort = KENNUNG
+#
+#  Wer "Doktorarbeit" sagt, meint eine Dissertation. Hier stehen die
+#  Ausdruecke, die dasselbe bezeichnen.
+# ----------------------------------------------------------------------------
+[gleichbedeutend]
+Doktorarbeit = DS
+Doktorarbeiten = DS
+Promotion = DS
+Promotionen = DS
+Diss = DS
+Bachelorthesis = BS
+Masterthesis = M

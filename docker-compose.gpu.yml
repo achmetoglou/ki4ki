@@ -1,0 +1,31 @@
+# ============================================================================
+#  Zusatz fuer Rechner MIT NVIDIA-Grafikkarte
+#
+#  Wird von start.sh automatisch dazugeschaltet, wenn eine Karte samt
+#  Container-Bruecke gefunden wird. Ohne diese Datei laeuft alles auf dem
+#  Prozessor - richtig, aber deutlich langsamer.
+#
+#  Von Hand:  docker compose -f docker-compose.yml -f docker-compose.gpu.yml up -d
+# ============================================================================
+services:
+
+  ollama:
+    deploy:
+      resources:
+        reservations:
+          devices:
+          - driver: nvidia
+            count: all
+            capabilities: [gpu]
+
+  docling:
+    # Docling und das Sprachmodell teilen sich die Karte. Sie duerfen nicht
+    # gleichzeitig rechnen - der Massenlauf schaltet Docling deshalb ab,
+    # solange gefragt wird.
+    deploy:
+      resources:
+        reservations:
+          devices:
+          - driver: nvidia
+            count: all
+            capabilities: [gpu]

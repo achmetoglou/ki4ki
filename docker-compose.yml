@@ -1,0 +1,209 @@
+# ============================================================================
+#  KI4KI Wissensdatenbank - Paket fuer Netzwerkpartner
+#
+#  Ein Befehl:  ./start.sh
+#
+#  Alle Abbilder sind auf den Fingerabdruck festgenagelt, mit dem diese
+#  Fassung geprueft wurde. Ein Partner, der in drei Monaten installiert,
+#  bekommt EXAKT dieselbe Anlage - nicht die neueste, die vielleicht anders
+#  laeuft. Aktualisiert wird bewusst, nie nebenbei.
+#
+#  Daten bleiben im Haus: kein Dienst spricht nach draussen.
+# ============================================================================
+name: ki4ki
+
+services:
+
+  # --- Sprachmodell ---------------------------------------------------------
+  ollama:
+    image: ollama/ollama@sha256:6345fbc18bd73a1e16404be681dbc6fd291a027cab43ed541abe78c4c81051b0
+    container_name: ki4ki-ollama
+    restart: unless-stopped
+    volumes:
+    - modelle:/root/.ollama
+    # kein veroeffentlichter Anschluss: nur die anderen Dienste sprechen mit ihm
+
+  # --- Vermittler: haengt "think": false an, damit das Modell nicht laut denkt
+  nothink-proxy:
+    image: python@sha256:57cd7c3a7a273101a6485ba99423ee568157882804b1124b4dd04266317710de
+    container_name: ki4ki-nothink
+    restart: unless-stopped
+    command: python /app/proxy.py
+    volumes:
+    - ./nothink-proxy:/app:ro
+    depends_on:
+    - ollama
+
+  # --- Textauszug aus PDF ---------------------------------------------------
+  docling:
+    image: ghcr.io/docling-project/docling-serve@sha256:c2ba5f78e87cdc791bff9817258c3a80d6aa3ee82bb4850dcc8872ace6ea1f74
+    container_name: ki4ki-docling
+    restart: unless-stopped
+    command: docling-serve run
+    environment:
+    - OMP_NUM_THREADS=4
+    # gegen Speicher-Zerstueckelung: die Formelerkennung scheiterte sonst bei
+    # grossen Dokumenten mit "out of memory", obwohl genug Speicher da war
+    - PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True
+    # Voreinstellung 120 s brach grosse PDFs still mit HTTP 504 ab
+    - DOCLING_SERVE_MAX_SYNC_WAIT=21600
+    # ⚠ 6 Stunden, nicht 1. Am 04.08. brach ein Lauf nach exakt einer
+    #   Stunde ab - das war diese Grenze, nicht ein Fehler. Sie haengt
+    #   am Dokument, nicht am Rechner: eine grosse Arbeit mit vielen
+    #   Abbildungen braucht laenger als 3600 Sekunden.
+    #   BEHELF - richtig waere der asynchrone Weg (/v1/convert/file/async).
+    - DOCLING_SERVE_ENG_LOC_NUM_WORKERS=5
+    volumes:
+    - docling-modelle:/opt/app-root/src/.cache/docling/models
+
+  # --- Textauszug aus allem anderen (Text, HTML, Tabellen) ------------------
+  tika:
+    image: apache/tika@sha256:90b7fa1dc018434075fce9e1d9b88b1e3d0ea6979d0cf86e116c79a8073ae973
+    container_name: ki4ki-tika
+    restart: unless-stopped
+
+  # --- Ablaufsteuerung ------------------------------------------------------
+  n8n:
+    image: docker.n8n.io/n8nio/n8n@sha256:15091606d98f6d15bad10cb26bb937ccb47dfd9fee2bb7ae44c7061cba2e7a04
+    container_name: ki4ki-n8n
+    restart: unless-stopped
+    ports:
+    - "5678:5678"
+    environment:
+    - N8N_ENABLE_EXECUTE_COMMAND=true
+    - N8N_RESTRICT_FILE_ACCESS_TO=/files
+    # ohne das blockt n8n den Login ueber http:// - betrifft JEDEN ohne HTTPS
+    - N8N_SECURE_COOKIE=false
+    # Binaerdaten auf die Platte statt in den Arbeitsspeicher: 1.171 PDFs
+    # sind 8,9 GB und sprengten den Node-Speicher
+    - N8N_DEFAULT_BINARY_DATA_MODE=filesystem
+    - NODE_OPTIONS=--max-old-space-size=8192
+    # keine Nutzungsdaten nach draussen
+    - N8N_DIAGNOSTICS_ENABLED=false
+    - N8N_VERSION_NOTIFICATIONS_ENABLED=false
+    volumes:
+    - n8n-daten:/home/node/.n8n
+    - ./dokumente:/files/inbox
+    - austausch:/files/processed
+    - austausch-json:/files/json
+    - austausch-md:/files/anythingllm
+
+  # --- Oberflaeche + Wissensspeicher ---------------------------------------
+  anythingllm:
+    image: mintplexlabs/anythingllm@sha256:9a87bca983e688db2a11a0ed3290daa16c4b67556617ae77325c9d12c6a37c25
+    container_name: ki4ki-anythingllm
+    restart: unless-stopped
+    env_file:
+    - ./.secrets.env
+    environment:
+    - STORAGE_DIR=/app/server/storage
+    - LLM_PROVIDER=ollama
+    - OLLAMA_BASE_PATH=http://nothink-proxy:11435
+    - OLLAMA_MODEL_PREF=gemma4:12b
+    - OLLAMA_KEEP_ALIVE_TIMEOUT=14400
+    # ⭐ OHNE DAS SIEHT DAS MODELL NUR DIE ERSTE FUNDSTELLE.
+    # AnythingLLM teilt das Fenster fest auf: 15 % Systemteil, 70 % Frage,
+    # 15 % Verlauf. Die gefundenen Textstellen landen im Systemteil. Bei der
+    # Voreinstellung blieben dafuer ~690 Einheiten - eine einzelne Stelle ist
+    # bis 3.000 Zeichen lang. Alles ab der zweiten wurde abgeschnitten, ohne
+    # dass es irgendwo auffiel. Gemessen: 1 statt 3 zitierte Arbeiten.
+    # Obergrenze ist die Grafikkarte, nicht die Software - siehe LIESMICH.
+    - OLLAMA_MODEL_TOKEN_LIMIT=65536
+    # ⭐ sonst springt der Chat bei lokalen Modellen von selbst in den
+    # Agent-Modus - dort gibt es KEINE Quellenangaben. Der Wert ist eine
+    # Liste von Anbieter-Kuerzeln, kein Schalter: "all" waere wirkungslos.
+    - PROVIDER_DISABLE_NATIVE_TOOL_CALLING=ollama
+    - EMBEDDING_ENGINE=ollama
+    - EMBEDDING_BASE_PATH=http://ollama:11434
+    - EMBEDDING_MODEL_PREF=bge-m3:latest
+    # gemessen: 4000 Zeichen -> 3 von 25 Stuecken abgewiesen, 3000 -> keines
+    - EMBEDDING_MODEL_MAX_CHUNK_LENGTH=3000
+    - OLLAMA_EMBEDDING_BATCH_SIZE=8
+    - VECTOR_DB=lancedb
+    - DISABLE_TELEMETRY=true
+    volumes:
+    - anythingllm-daten:/app/server/storage
+    # kein veroeffentlichter Anschluss: der Zugang laeuft ueber die
+    # Belegpruefung, damit niemand versehentlich daran vorbeigeht
+
+  # --- Belegpruefung: sitzt VOR AnythingLLM ---------------------------------
+  pruef-proxy:
+    build: ./pruef-proxy
+    image: ki4ki-pruef-proxy:1
+    container_name: ki4ki-pruef-proxy
+    restart: unless-stopped
+    ports:
+    - "3001:3001"
+    # bringt KI4KI_API_KEY herein - fuer die Selbstheilung neu angelegter
+    # Bereiche (siehe KI4KI_BEREICH_HEILEN weiter unten)
+    env_file:
+    - ./.secrets.env
+    environment:
+    - KI4KI_ZIEL=http://anythingllm:3001
+    - KI4KI_POSITIVLISTE=sperren
+    - KI4KI_AUFFANGNETZ=1
+    - KI4KI_E2B_ANTWORT=1
+    - KI4KI_MODELL_ANZEIGE=1
+    - KI4KI_NENNUNG_TILGEN=1
+    # ⭐ Jeder NEU angelegte Arbeitsbereich (per Skript ODER per Klick in der
+    #   Oberflaeche) bekommt automatisch die gepruef-ten Werte: Prompt, Modus
+    #   "query", topN/Schwelle/Verlauf/Temperatur. So ist er von Geburt an
+    #   beleg-faehig. BESTEHENDE Bereiche werden nie angefasst. =0 schaltet ab.
+    - KI4KI_BEREICH_HEILEN=1
+    - KI4KI_SYSTEMPROMPT=/systemprompt.txt
+    # fuer Zusammenfassungen ganzer Dokumente: am Suchweg vorbei
+    - KI4KI_MODELL=http://nothink-proxy:11435/api/chat
+    - KI4KI_MODELL_NAME=gemma4:12b
+    - KI4KI_BESTAND=/daten/bestand/documents
+    - KI4KI_PDFS=/daten/pdfs
+    # Wohin der Hochladen-Knopf schreibt. Derselbe Ordner, den n8n
+    # als /files/inbox liest - so landet beides an derselben Stelle.
+    - KI4KI_EINGANG=/daten/eingang
+    - KI4KI_GEDAECHTNIS=/daten/pruefung/geprueft.json
+    - KI4KI_ZWISCHENSPEICHER=/daten/pruefung/vorauswahl.pickle
+    # Beim Hochladen ueber die Oberflaeche die Aufnahme direkt anstossen.
+    # Hier ist n8n der einzige Weg: Es gibt weder Waechter noch Zyklus,
+    # eine Anstoss-Datei wuerde niemand lesen.
+    - KI4KI_AUFNAHME_HAKEN=http://n8n:5678/webhook/ki4ki-aufnahme
+    volumes:
+    - anythingllm-daten:/daten/bestand:ro
+    - ./dokumente:/daten/pdfs:ro
+    # Zweiter, SCHREIBBARER Weg in denselben Ordner - nur fuer den
+    # Hochladen-Knopf der Oberflaeche. Ohne ihn kann der Proxy die Datei
+    # nirgends ablegen, und der Upload-Weg ist tot.
+    - ./dokumente:/daten/eingang
+    - pruefdaten:/daten/pruefung
+    # den gepruef-ten Systemprompt lesbar machen (fuer die Selbstheilung)
+    - ./systemprompt.txt:/systemprompt.txt:ro
+    depends_on:
+    - anythingllm
+    healthcheck:
+      test: ["CMD", "python3", "-c",
+             "import urllib.request; urllib.request.urlopen('http://127.0.0.1:3001/pruef-status', timeout=5)"]
+      interval: 60s
+      timeout: 10s
+      retries: 3
+      start_period: 120s
+
+
+  # --- Markdown-Erzeugung: von n8n aufgerufen -------------------------------
+  # Die Logik liegt nur einmal vor (mk_md.py) und wird von zwei Seiten
+  # benutzt: von der Verarbeitungskette direkt und von n8n ueber diesen
+  # Dienst. Ohne ihn muesste n8n dieselbe Umformung nachbauen - und wuerde
+  # bei jeder Verbesserung zurueckfallen.
+  mkmd-dienst:
+    build: ./mkmd-dienst
+    image: ki4ki-mkmd:1
+    container_name: ki4ki-mkmd
+    restart: unless-stopped
+    # kein veroeffentlichter Anschluss - nur im internen Netz erreichbar
+
+volumes:
+  modelle:
+  docling-modelle:
+  n8n-daten:
+  anythingllm-daten:
+  pruefdaten:
+  austausch:
+  austausch-json:
+  austausch-md:
