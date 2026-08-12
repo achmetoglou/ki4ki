@@ -187,6 +187,41 @@ UPLOAD = re.compile(r"^/api/workspace/([^/]+)/upload(?:-and-embed)?/?$")
 # ============================================================================
 PARSE = re.compile(r"^/api/workspace/([^/]+)/parse/?$")
 TIKA_ZIEL = os.environ.get("KI4KI_TIKA") or "http://tika:9998/tika"
+
+# ============================================================================
+#  KI4KI-META: Begruessungen und Fragen UEBER die Anlage selbst ("Was kannst
+#  du?", "Wer bist du?", "Wie geht's?") freundlich beantworten - fest
+#  hinterlegt, ohne Beleg, ohne Modell. Nur wenn die Nachricht GANZ so eine
+#  Meta-Nachricht ist (End-Anker), damit echte Fachfragen NICHT abgefangen
+#  werden. Abschaltbar mit KI4KI_META_ANTWORT=0.
+# ============================================================================
+META_ANTWORT = (os.environ.get("KI4KI_META_ANTWORT", "1") != "0")
+_META_GRUSS = re.compile(
+    r"^\s*(hallo|hi|hey|moin|servus|na|danke(\s+dir)?|"
+    r"guten\s+(tag|morgen|abend)|wie\s+geht'?s?(\s+dir|\s+ihnen)?|"
+    r"wie\s+l(ae|\u00e4)uft'?s?)[\s,.!?]*$", re.I)
+_META_KANN = re.compile(
+    r"^\s*(was\s+kannst\s+du|was\s+(sind|ist)\s+deine\s+"
+    r"funktion(en)?|wer\s+bist\s+du|was\s+bist\s+du|"
+    r"wie\s+funktionierst\s+du|wobei\s+(kannst|hilfst)\s+du(\s+mir)?|"
+    r"was\s+machst\s+du)[\s,.!?]*$", re.I)
+META_TEXT_KANN = (
+    "Ich bin die **Wissensdatenbank** dieser Anlage. Ich beantworte deine "
+    "**Fachfragen zu den hinterlegten Dokumenten** \u2013 und belege **jede "
+    "Aussage mit einer gepr\u00fcften Fundstelle im Original-PDF** (Seite, gelb "
+    "markiert), damit du nichts glauben musst, sondern nachschlagen kannst.\n\n"
+    "Au\u00dferdem:\n"
+    "- **Bestandsfragen** wie \u201eWelche Dissertationen habt ihr zum Thema "
+    "Kleben?\u201c beantworte ich direkt aus dem Katalog.\n"
+    "- Du kannst im Chat eine **PDF anh\u00e4ngen** \u2013 dann lese ich sie "
+    "komplett und erledige deine Aufgabe (z.\u202fB. eine Gliederung erstellen)."
+    "\n\nStell mir einfach eine Frage zu deinen Dokumenten!")
+META_TEXT_GRUSS = (
+    "Hallo! \U0001F642 Mir geht\u2019s gut, danke der Nachfrage. Ich bin die "
+    "**Wissensdatenbank** \u2013 stell mir eine **Fachfrage zu deinen "
+    "Dokumenten**, und ich beantworte sie mit belegten Fundstellen. Wenn du "
+    "wissen willst, was ich alles kann, frag einfach \u201e**Was kannst "
+    "du?**\u201c.")
 _ANHANG = {}
 _ANHANG_HALTBAR = 1200
 _ANHANG_MAX = 4000000   # praktisch unbegrenzt; nur Schutz vor Extremen
@@ -2756,6 +2791,12 @@ class Griff(BaseHTTPRequestHandler):
                 return
         except Exception:
             traceback.print_exc(file=sys.stderr)
+        # KI4KI-META: Begruessung / "Was kannst du?" freundlich beantworten
+        try:
+            if self._meta_antwort(frage):
+                return
+        except Exception:
+            traceback.print_exc(file=sys.stderr)
 
         # ---- Was fuer eine Frage ist das ueberhaupt? --------------------
         # AnythingLLM sucht im Modus "query" mit dem ROHEN Fragetext und
@@ -3254,7 +3295,7 @@ class Griff(BaseHTTPRequestHandler):
             fund = []
             try:
                 if art in ("bestand", "zusammenfassung", "rueckfrage",
-                           "wahl-alle", "e2b", "anhang"):
+                           "wahl-alle", "e2b", "anhang", "meta"):
                     import time as _t
                     _ws = (m.group(1) if m else "") or ""
                     _th = (m.group(2) if (m and m.group(2)) else "default")
@@ -4806,6 +4847,29 @@ class Griff(BaseHTTPRequestHandler):
         ])
         print("[Anhang] direkt beantwortet aus '%s' (%r)"
               % (eintrag["name"], frage[:50]), file=sys.stderr, flush=True)
+        return True
+
+    def _meta_antwort(self, frage):
+        """KI4KI-META: Begruessung/Selbstauskunft beantworten. True=erledigt."""
+        f = (frage or "").strip()
+        if not META_ANTWORT or not f:
+            return False
+        if _META_KANN.match(f):
+            text = META_TEXT_KANN
+        elif _META_GRUSS.match(f):
+            text = META_TEXT_GRUSS
+        else:
+            return False
+        self._festhalten("meta", frage, text)
+        self._sende_strom([
+            {"uuid": _neue_marke("meta"), "type": "textResponseChunk",
+             "textResponse": text, "sources": [], "close": False,
+             "error": False},
+            {"uuid": _neue_marke("meta"), "type": "textResponseChunk",
+             "textResponse": "", "sources": [], "close": True, "error": False},
+        ])
+        print("[Meta] Konversation beantwortet: %r" % f[:40],
+              file=sys.stderr, flush=True)
         return True
 
     def do_POST(self):
