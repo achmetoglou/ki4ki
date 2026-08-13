@@ -92,7 +92,7 @@ services:
     - N8N_VERSION_NOTIFICATIONS_ENABLED=false
     volumes:
     - n8n-daten:/home/node/.n8n
-    - ./dokumente:/files/inbox
+    - ./dokumente:/files/dokumente
     - austausch:/files/processed
     - austausch-json:/files/json
     - austausch-md:/files/anythingllm
@@ -166,7 +166,7 @@ services:
     - KI4KI_BESTAND=/daten/bestand/documents
     - KI4KI_PDFS=/daten/pdfs
     # Wohin der Hochladen-Knopf schreibt. Derselbe Ordner, den n8n
-    # als /files/inbox liest - so landet beides an derselben Stelle.
+    # als /files/dokumente liest - so landet beides an derselben Stelle.
     - KI4KI_EINGANG=/daten/eingang
     - KI4KI_GEDAECHTNIS=/daten/pruefung/geprueft.json
     - KI4KI_ZWISCHENSPEICHER=/daten/pruefung/vorauswahl.pickle
