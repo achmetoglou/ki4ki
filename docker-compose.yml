@@ -53,6 +53,17 @@ services:
     #   Abbildungen braucht laenger als 3600 Sekunden.
     #   BEHELF - richtig waere der asynchrone Weg (/v1/convert/file/async).
     - DOCLING_SERVE_ENG_LOC_NUM_WORKERS=5
+    # ⭐ OHNE DIESE ZWEI liefert Docling bei aktivierter Bildbeschreibung
+    #   LEEREN Text zurueck (der ganze Convert bricht ab) - und die Aufnahme
+    #   sortiert das Dokument still als "rohtext leer" aus. Der Aufnahme-
+    #   Workflow schickt eine EIGENE Bildbeschreibungs-Config, die den
+    #   ollama-VLM fernaufruft; docling-serve verbietet beides per Default:
+    #   - ALLOW_CUSTOM_...: eigene Bildbeschreibungs-Konfig erlauben
+    #     (sonst: "Custom picture description configuration is not allowed")
+    #   - ENABLE_REMOTE_SERVICES: Fernaufruf an ollama ueberhaupt zulassen
+    #   Auf der laufenden T4 sind beide gesetzt; im Paket fehlten sie.
+    - DOCLING_SERVE_ALLOW_CUSTOM_PICTURE_DESCRIPTION_CONFIG=true
+    - DOCLING_SERVE_ENABLE_REMOTE_SERVICES=true
     volumes:
     - docling-modelle:/opt/app-root/src/.cache/docling/models
 
