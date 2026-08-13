@@ -42,7 +42,7 @@
             },
             {
               "name": "do_picture_description",
-              "value": "true"
+              "value": "={{ ($env.KI4KI_BILDBESCHREIBUNG || 'an') === 'aus' ? 'false' : 'true' }}"
             },
             {
               "name": "do_picture_classification",
@@ -50,11 +50,11 @@
             },
             {
               "name": "picture_description_area_threshold",
-              "value": "0.03"
+              "value": "0.08"
             },
             {
               "name": "picture_description_custom_config",
-              "value": "{\n  \"prompt\": \"Beschreibe diese Abbildung aus einem technischen Fachtext. Antworte AUSSCHLIESSLICH auf Deutsch und beginne mit den Worten 'Die Abbildung zeigt'. Nenne, was dargestellt ist, die Beschriftungen der Achsen mit ihren Einheiten und die erkennbaren Zahlenwerte. Bei Diagrammen: beschreibe den Verlauf der Kurven und nenne Anfangs-, End- und Extremwerte. Bei technischen Zeichnungen: nenne die bezeichneten Bauteile und die eingetragenen Masse. Bei Fotografien und Mikroskopaufnahmen: beschreibe das Werkstueck, erkennbare Fehler oder Strukturen und den Massstab, sofern angegeben. Wenn du etwas nicht sicher lesen kannst, sage das, statt zu raten.\",\n  \"generation_config\": {\n    \"max_new_tokens\": 600,\n    \"do_sample\": false\n  },\n  \"engine_options\": {\n    \"engine_type\": \"api_ollama\",\n    \"url\": \"http://nothink-proxy:11435/v1/chat/completions\",\n    \"timeout\": 600,\n    \"concurrency\": 1,\n    \"params\": {\n      \"model\": \"gemma4:12b\",\n      \"max_tokens\": 2000\n    }\n  },\n  \"model_spec\": {\n    \"name\": \"gemma4-12b\",\n    \"default_repo_id\": \"gemma4:12b\",\n    \"prompt\": \"Beschreibe diese Abbildung aus einem technischen Fachtext. Antworte AUSSCHLIESSLICH auf Deutsch und beginne mit den Worten 'Die Abbildung zeigt'. Nenne, was dargestellt ist, die Beschriftungen der Achsen mit ihren Einheiten und die erkennbaren Zahlenwerte. Wenn du etwas nicht sicher lesen kannst, sage das, statt zu raten.\",\n    \"response_format\": \"plaintext\",\n    \"max_new_tokens\": 600,\n    \"temperature\": 0.0,\n    \"api_overrides\": {\n      \"api_ollama\": {\n        \"params\": {\n          \"model\": \"gemma4:12b\",\n          \"max_tokens\": 2000\n        }\n      }\n    }\n  },\n  \"picture_area_threshold\": 0.03,\n  \"classification_allow\": null,\n  \"classification_deny\": null\n}"
+              "value": "{\n  \"prompt\": \"Beschreibe diese Abbildung aus einem technischen Fachtext. Antworte AUSSCHLIESSLICH auf Deutsch und beginne mit den Worten 'Die Abbildung zeigt'. Nenne, was dargestellt ist, die Beschriftungen der Achsen mit ihren Einheiten und die erkennbaren Zahlenwerte. Bei Diagrammen: beschreibe den Verlauf der Kurven und nenne Anfangs-, End- und Extremwerte. Bei technischen Zeichnungen: nenne die bezeichneten Bauteile und die eingetragenen Masse. Bei Fotografien und Mikroskopaufnahmen: beschreibe das Werkstueck, erkennbare Fehler oder Strukturen und den Massstab, sofern angegeben. Wenn du etwas nicht sicher lesen kannst, sage das, statt zu raten.\",\n  \"generation_config\": {\n    \"max_new_tokens\": 600,\n    \"do_sample\": false\n  },\n  \"engine_options\": {\n    \"engine_type\": \"api_ollama\",\n    \"url\": \"http://nothink-proxy:11435/v1/chat/completions\",\n    \"timeout\": 600,\n    \"concurrency\": 1,\n    \"params\": {\n      \"model\": \"gemma4:12b\",\n      \"max_tokens\": 2000\n    }\n  },\n  \"model_spec\": {\n    \"name\": \"gemma4-12b\",\n    \"default_repo_id\": \"gemma4:12b\",\n    \"prompt\": \"Beschreibe diese Abbildung aus einem technischen Fachtext. Antworte AUSSCHLIESSLICH auf Deutsch und beginne mit den Worten 'Die Abbildung zeigt'. Nenne, was dargestellt ist, die Beschriftungen der Achsen mit ihren Einheiten und die erkennbaren Zahlenwerte. Wenn du etwas nicht sicher lesen kannst, sage das, statt zu raten.\",\n    \"response_format\": \"plaintext\",\n    \"max_new_tokens\": 600,\n    \"temperature\": 0.0,\n    \"api_overrides\": {\n      \"api_ollama\": {\n        \"params\": {\n          \"model\": \"gemma4:12b\",\n          \"max_tokens\": 2000\n        }\n      }\n    }\n  },\n  \"picture_area_threshold\": 0.08,\n  \"classification_allow\": null,\n  \"classification_deny\": null\n}"
             }
           ]
         },

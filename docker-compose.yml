@@ -148,6 +148,15 @@ services:
     # ueberschreibbar per .env (z.B. TZ=Europe/Vienna) fuer Partner anderswo.
     - TZ=${TZ:-Europe/Berlin}
     - GENERIC_TIMEZONE=${TZ:-Europe/Berlin}
+    # Bildbeschreibung: der Aufnahme-Workflow liest diese Einstellung.
+    #   "an"  (Standard) = nur substanzielle Abbildungen/Diagramme via VLM
+    #                      beschreiben (Schwelle 0.08) - gute Qualitaet,
+    #                      Mini-Grafiken/Logos werden uebersprungen.
+    #   "aus"            = nur Text + Bildunterschriften, keine VLM-Bild-
+    #                      beschreibung -> deutlich schneller (fuer Massenlaeufe
+    #                      oder textlastige Bestaende).
+    #   Partner setzen das per .env (KI4KI_BILDBESCHREIBUNG=aus); Standard "an".
+    - KI4KI_BILDBESCHREIBUNG=${KI4KI_BILDBESCHREIBUNG:-an}
     volumes:
     - n8n-daten:/home/node/.n8n
     - ./dokumente:/files/dokumente
