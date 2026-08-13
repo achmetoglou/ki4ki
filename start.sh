@@ -156,6 +156,30 @@ done
 docker exec ki4ki-ollama ollama pull gemma4:12b
 docker exec ki4ki-ollama ollama pull bge-m3
 
+# Docling-Formelmodell: Das Docling-Image bringt Layout/OCR/Tabellen/
+# Bild-Klassifikation mit, aber NICHT CodeFormulaV2 - der Aufnahme-Workflow
+# nutzt aber Formelerkennung. Fehlt das Modell, bricht Docling den GANZEN
+# Convert ab ("Model not found in artifacts_path") und jedes Dokument landet
+# mit leerem Text in aussortiert (ohne sichtbaren Fehler). Einmalig laden;
+# bleibt im Volume. Ausfallsicher: schlaegt es fehl, laeuft die Installation
+# weiter (Formelerkennung dann eingeschraenkt).
+set +e
+for i in $(seq 1 40); do
+  docker exec ki4ki-docling sh -c 'ls /opt/app-root/src/.cache/docling/models >/dev/null 2>&1' && break
+  sleep 3
+done
+if docker exec ki4ki-docling sh -c 'ls /opt/app-root/src/.cache/docling/models/ 2>/dev/null | grep -qi codeformula'; then
+  echo "  Docling-Formelmodell schon vorhanden"
+else
+  echo "  Docling-Formelmodell (CodeFormulaV2) laden - einmalig, ein paar Minuten ..."
+  if docker exec ki4ki-docling docling-tools models download-hf-repo docling-project/CodeFormulaV2 >/dev/null 2>&1; then
+    echo "  ✓ CodeFormulaV2 geladen"
+  else
+    echo "  ⚠ CodeFormulaV2-Download fehlgeschlagen (Internet?) - Formelerkennung eingeschraenkt."
+  fi
+fi
+set -e
+
 # --- Ablaufplaene automatisch einspielen -----------------------------------
 # Die 3 n8n-Workflows werden per CLI importiert - die IDs bleiben erhalten,
 # damit die Unter-Workflow-Verknuepfungen halten - und der Masse-Ingest wird
