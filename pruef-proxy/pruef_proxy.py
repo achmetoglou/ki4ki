@@ -1433,12 +1433,69 @@ EINHAENGER = """
     return typeof u === "string" && /\\/api\\/workspace\\/[^/]+\\/upload/.test(u);
   }
 
+  // KI4KI-KEIN-ROTER-KASTEN. AnythingLLMs eigenes Upload-Feld rendert unsere
+  // 425/409-Antwort als roten "Fehler"-Chip - abgeschnitten und alarmierend,
+  // obwohl nichts schiefging. Die gruene Karte oben sagt dasselbe in lesbar.
+  // Also: den nativen Chip an seinem eindeutigen Text finden und ausblenden.
+  // Die Dropzone (traegt das Datei-Eingabefeld) und unsere eigene Karte
+  // bleiben unangetastet - deshalb der schutz()-Riegel.
+  function verstecken(signatur) {
+    function unsere(el) {
+      var k = document.getElementById(ID);
+      return k && (el === k || k.contains(el));
+    }
+    function schutz(el) {
+      return el.id === ID ||
+             (el.querySelector && el.querySelector("input[type=file]"));
+    }
+    function fegen(wurzel) {
+      if (!wurzel || wurzel.nodeType !== 1) return;
+      var alle = wurzel.querySelectorAll ? wurzel.querySelectorAll("*") : [];
+      var liste = [];
+      for (var i = 0; i < alle.length; i++) liste.push(alle[i]);
+      liste.push(wurzel);
+      for (var j = 0; j < liste.length; j++) {
+        var el = liste[j];
+        if (el.childElementCount !== 0) continue;
+        if (!el.textContent || el.textContent.indexOf(signatur) === -1) continue;
+        if (unsere(el)) continue;
+        // vom Text-Blatt hoch bis knapp unter die Dropzone = die rote Zeile
+        var best = el, lauf = el;
+        for (var n = 0; n < 8 && lauf.parentElement; n++) {
+          var p = lauf.parentElement;
+          if (unsere(p) || schutz(p)) break;
+          if (p.textContent && p.textContent.indexOf(signatur) !== -1) {
+            best = p; lauf = p;
+          } else break;
+        }
+        best.style.setProperty("display", "none", "important");
+      }
+    }
+    fegen(document.body);
+    var beob = new MutationObserver(function (muts) {
+      for (var i = 0; i < muts.length; i++) {
+        var an = muts[i].addedNodes;
+        for (var k = 0; k < an.length; k++) {
+          if (an[k].nodeType === 1) fegen(an[k]);
+        }
+      }
+    });
+    try { beob.observe(document.body, { childList: true, subtree: true }); }
+    catch (e) {}
+    // ⚠ KEIN Dauerlauf: Der Chip erscheint kurz nach der Antwort. Nach 8 s
+    //   ist er da (oder kommt nicht) - dann den Beobachter wieder abhaengen.
+    setTimeout(function () { try { beob.disconnect(); } catch (e) {} }, 8000);
+  }
+
   function auswerten(status, roh) {
     if (status !== 425 && status !== 409) return;
     var text = "";
     try { text = (JSON.parse(roh) || {}).error || ""; } catch (e) {}
     if (!text) return;
-    zeigen(status === 409 ? "dublette" : "angenommen", text.replace(/^✓\\s*/, ""));
+    var dublette = status === 409;
+    zeigen(dublette ? "dublette" : "angenommen", text.replace(/^✓\\s*/, ""));
+    verstecken(dublette ? "bereits in diesem Arbeitsbereich"
+                        : "wird jetzt aufbereitet");
   }
 
   var echtesFetch = window.fetch;
