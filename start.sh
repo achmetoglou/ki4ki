@@ -213,6 +213,12 @@ else
     ./arbeitsbereich_anlegen.sh "$KI4KI_KEY" >/dev/null 2>&1 && echo "  Arbeitsbereich angelegt"
     echo "  Konto und Zugangsschluessel eingerichtet"
     KONTO_FERTIG=1
+    if [ -n "$PW_ERZEUGT" ]; then       # erzeugtes Passwort sichern - sonst weg
+      { echo "Oberflaeche: http://<dieser-rechner>:3001"
+        echo "Benutzer:    $ADMIN_USER"
+        echo "Passwort:    $ADMIN_PW"; } > zugangsdaten.txt
+      chmod 600 zugangsdaten.txt
+    fi
   else
     echo "  ⚠ Automatische Einrichtung nicht moeglich - siehe manuellen Weg unten."
   fi
@@ -235,7 +241,7 @@ if [ -n "$KONTO_FERTIG" ]; then
     echo "     Benutzer:  $ADMIN_USER"
     if [ -n "$PW_ERZEUGT" ]; then
       echo "     Passwort:  $ADMIN_PW"
-      echo "     ^-- JETZT NOTIEREN (automatisch erzeugt, wird nicht erneut gezeigt)."
+      echo "     ^-- automatisch erzeugt. Auch gespeichert in ./zugangsdaten.txt (nur du lesbar)."
     else
       echo "     Passwort:  (das von dir gewaehlte)"
     fi
