@@ -164,27 +164,98 @@ else
 fi
 set -e
 
+# --- Konto + Schluessel automatisch anlegen (Setup-Helfer) -----------------
+# Nimmt den letzten manuellen Rest ab: Admin-Konto, API-Schluessel und ersten
+# Arbeitsbereich. Laeuft NUR, solange in .secrets.env noch kein Schluessel
+# steht. Ausfallsicher (set +e): klappt etwas nicht, bleibt der manuelle Weg.
+KONTO_FERTIG=""; ADMIN_USER="admin"; ADMIN_PW=""; PW_ERZEUGT=""
+if grep -q '^KI4KI_API_KEY=.' .secrets.env 2>/dev/null; then
+  KONTO_FERTIG=1                       # schon eingerichtet (erneuter Lauf)
+else
+  sagen "Konto und Zugangsschluessel einrichten"
+  set +e
+  TOR="http://127.0.0.1:3001"
+  for i in $(seq 1 40); do             # auf die Oberflaeche warten
+    [ "$(curl -s -m3 -o /dev/null -w '%{http_code}' "$TOR/" 2>/dev/null)" = "200" ] && break
+    sleep 3
+  done
+  echo ""
+  echo "  Es wird EIN Admin-Konto angelegt (Benutzer: admin). Ohne Passwort"
+  echo "  kommt niemand in die Oberflaeche - der einzige Schritt fuer einen Menschen."
+  if [ -t 0 ]; then
+    printf "  Passwort festlegen (mind. 8 Zeichen, Enter = automatisch erzeugen): "
+    read -rs ADMIN_PW; echo ""
+  fi
+  if [ -z "$ADMIN_PW" ]; then
+    ADMIN_PW="$(openssl rand -base64 12 | tr -dc 'A-Za-z0-9' | cut -c1-14)"
+    PW_ERZEUGT=1
+  fi
+  _koerper="{\"username\":\"$ADMIN_USER\",\"password\":\"$ADMIN_PW\"}"
+  curl -s -m20 -X POST "$TOR/api/system/enable-multi-user" \
+       -H "Content-Type: application/json" -d "$_koerper" >/dev/null 2>&1
+  _token=$(curl -s -m20 -X POST "$TOR/api/request-token" \
+       -H "Content-Type: application/json" -d "$_koerper" \
+       | python3 -c "import sys,json;print(json.load(sys.stdin).get('token',''))" 2>/dev/null)
+  KI4KI_KEY=""
+  if [ -n "$_token" ]; then
+    KI4KI_KEY=$(curl -s -m20 -X POST "$TOR/api/admin/generate-api-key" \
+       -H "Authorization: Bearer $_token" -H "Content-Type: application/json" \
+       -d '{"name":"ki4ki-aufnahme"}' \
+       | python3 -c "import sys,json;print((json.load(sys.stdin).get('apiKey') or {}).get('secret',''))" 2>/dev/null)
+  fi
+  if [ -n "$KI4KI_KEY" ]; then
+    sed -i "s|^KI4KI_API_KEY=.*|KI4KI_API_KEY=$KI4KI_KEY|" .secrets.env
+    docker compose $DATEIEN up -d n8n pruef-proxy >/dev/null 2>&1
+    for i in $(seq 1 20); do           # auf den Proxy warten, dann Bereich anlegen
+      [ "$(curl -s -m3 -o /dev/null -w '%{http_code}' "$TOR/" 2>/dev/null)" = "200" ] && break
+      sleep 3
+    done
+    ./arbeitsbereich_anlegen.sh "$KI4KI_KEY" >/dev/null 2>&1 && echo "  Arbeitsbereich angelegt"
+    echo "  Konto und Zugangsschluessel eingerichtet"
+    KONTO_FERTIG=1
+  else
+    echo "  ⚠ Automatische Einrichtung nicht moeglich - siehe manuellen Weg unten."
+  fi
+  set -e
+fi
+
 # --- Fertig ----------------------------------------------------------------
 sagen "Fertig"
 docker compose $DATEIEN ps --format "  {{.Name}}  {{.Status}}"
 
-cat <<'ENDE'
-
-  Oberflaeche:  http://<dieser-rechner>:3001
-  Ablaufplaene: http://<dieser-rechner>:5678
-
+echo ""
+echo "  Oberflaeche:  http://<dieser-rechner>:3001"
+echo "  Ablaufplaene: http://<dieser-rechner>:5678"
+echo ""
+if [ -n "$KONTO_FERTIG" ]; then
+  echo "  Die Anlage ist eingerichtet - die Ablaufplaene laufen."
+  if [ -n "$ADMIN_PW" ]; then
+    echo ""
+    echo "  Anmeldung an der Oberflaeche (Port 3001):"
+    echo "     Benutzer:  $ADMIN_USER"
+    if [ -n "$PW_ERZEUGT" ]; then
+      echo "     Passwort:  $ADMIN_PW"
+      echo "     ^-- JETZT NOTIEREN (automatisch erzeugt, wird nicht erneut gezeigt)."
+    else
+      echo "     Passwort:  (das von dir gewaehlte)"
+    fi
+  fi
+  echo ""
+  echo "  Jetzt nur noch PDFs nach ./dokumente legen - die Aufnahme laeuft von selbst."
+  echo ""
+else
+  cat <<'ENDE'
   Die Ablaufplaene sind schon eingespielt und aktiv. Es bleiben nur noch
-  diese Schritte (einmalig, aus Sicherheitsgruenden nicht automatisierbar):
+  diese Schritte (einmalig):
 
   1. Auf Port 3001 ein Konto anlegen, dann unter
      Einstellungen -> Werkzeuge -> API-Schluessel einen Schluessel erzeugen.
 
   2. Den Schluessel in .secrets.env bei KI4KI_API_KEY eintragen und einmal
      neu laden:   ./start.sh
-     (Ohne den Schluessel nimmt die Aufnahme keine Dokumente an.)
 
   3. Einen Arbeitsbereich anlegen:   ./arbeitsbereich_anlegen.sh <Schluessel>
-     Oder per Oberflaeche - neue Bereiche stellen sich automatisch richtig ein.
      Danach PDFs nach ./dokumente legen; die Aufnahme laeuft von selbst.
 
 ENDE
+fi
