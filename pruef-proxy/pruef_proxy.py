@@ -1456,17 +1456,28 @@ EINHAENGER = """
       liste.push(wurzel);
       for (var j = 0; j < liste.length; j++) {
         var el = liste[j];
-        if (el.childElementCount !== 0) continue;
-        if (!el.textContent || el.textContent.indexOf(signatur) === -1) continue;
         if (unsere(el)) continue;
-        // vom Text-Blatt hoch bis knapp unter die Dropzone = die rote Zeile
+        if (!el.textContent || el.textContent.indexOf(signatur) === -1) continue;
+        // Nur das TIEFSTE Element mit der Signatur (nicht jeden Vorfahren,
+        // sonst faellt der ganze Body drunter). Traegt schon ein Kind die
+        // Signatur, ist el nicht tief genug. So trifft es auch, wenn Text und
+        // Icon zusammen in EINEM Kasten stecken (dann ist el kein Blatt).
+        var tiefer = false, kinder = el.children || [];
+        for (var c = 0; c < kinder.length; c++) {
+          if (kinder[c].textContent &&
+              kinder[c].textContent.indexOf(signatur) !== -1) { tiefer = true; break; }
+        }
+        if (tiefer) continue;
+        // durch REINE Wrapper hoch, bis der ganze rote Kasten erfasst ist -
+        // Stopp, sobald ein Elternteil zusaetzlichen Text traegt (kein Nachbar
+        // wird versehentlich versteckt) oder die Dropzone erreicht ist.
+        var komp = function (s) { return (s || "").replace(/\\s+/g, ""); };
         var best = el, lauf = el;
         for (var n = 0; n < 8 && lauf.parentElement; n++) {
           var p = lauf.parentElement;
           if (unsere(p) || schutz(p)) break;
-          if (p.textContent && p.textContent.indexOf(signatur) !== -1) {
-            best = p; lauf = p;
-          } else break;
+          if (komp(p.textContent) === komp(lauf.textContent)) { best = p; lauf = p; }
+          else break;
         }
         best.style.setProperty("display", "none", "important");
       }
@@ -1484,7 +1495,7 @@ EINHAENGER = """
     catch (e) {}
     // ⚠ KEIN Dauerlauf: Der Chip erscheint kurz nach der Antwort. Nach 8 s
     //   ist er da (oder kommt nicht) - dann den Beobachter wieder abhaengen.
-    setTimeout(function () { try { beob.disconnect(); } catch (e) {} }, 8000);
+    setTimeout(function () { try { beob.disconnect(); } catch (e) {} }, 12000);
   }
 
   function auswerten(status, roh) {
