@@ -233,12 +233,22 @@ else
   echo ""
   echo "  Es wird EIN Admin-Konto angelegt (Benutzer: admin). Ohne Passwort"
   echo "  kommt niemand in die Oberflaeche - der einzige Schritt fuer einen Menschen."
+  # Passwort-Regel wie n8n sie verlangt (min. 8 Zeichen, 1 Zahl, 1 Grossbuch-
+  # stabe), damit DASSELBE Passwort fuer Oberflaeche UND n8n funktioniert.
   if [ -t 0 ]; then
-    printf "  Passwort festlegen (mind. 8 Zeichen, Enter = automatisch erzeugen): "
-    read -rs ADMIN_PW; echo ""
+    while :; do
+      printf "  Passwort festlegen (min. 8 Zeichen, 1 Zahl, 1 Grossbuchstabe; Enter = automatisch): "
+      read -rs ADMIN_PW; echo ""
+      [ -z "$ADMIN_PW" ] && break        # leer = automatisch erzeugen
+      if printf '%s' "$ADMIN_PW" | grep -q '.\{8\}' \
+         && printf '%s' "$ADMIN_PW" | grep -q '[0-9]' \
+         && printf '%s' "$ADMIN_PW" | grep -q '[A-Z]'; then break; fi
+      echo "  Zu schwach - min. 8 Zeichen, 1 Zahl und 1 Grossbuchstabe (fuer n8n noetig)."
+    done
   fi
   if [ -z "$ADMIN_PW" ]; then
-    ADMIN_PW="$(openssl rand -base64 12 | tr -dc 'A-Za-z0-9' | cut -c1-14)"
+    # erzeugt, garantiert regelkonform (Grossbuchstabe + Zahl fest, Rest Zufall)
+    ADMIN_PW="Ki4ki$(openssl rand -hex 8)"
     PW_ERZEUGT=1
   fi
   _koerper="{\"username\":\"$ADMIN_USER\",\"password\":\"$ADMIN_PW\"}"
@@ -262,12 +272,28 @@ else
       sleep 3
     done
     ./arbeitsbereich_anlegen.sh "$KI4KI_KEY" >/dev/null 2>&1 && echo "  Arbeitsbereich angelegt"
+    # n8n-Owner mit DEMSELBEN Admin-Passwort anlegen -> keine "Set up owner"-
+    # Wand mehr auf :5678. n8n 2.31 nimmt den Deaktivier-Schalter nicht mehr an,
+    # also richten wir das Konto direkt ein. E-Mail ist bei n8n Pflicht
+    # (admin@ki4ki.local, Partner brauchen n8n eh nie); Passwort ist identisch.
+    _n8n_body=$(ADMIN_PW="$ADMIN_PW" python3 -c "import json,os;print(json.dumps({'email':'admin@ki4ki.local','firstName':'KI4KI','lastName':'Admin','password':os.environ['ADMIN_PW']}))" 2>/dev/null)
+    for i in $(seq 1 20); do            # auf n8n warten
+      [ "$(curl -s -m3 -o /dev/null -w '%{http_code}' http://127.0.0.1:5678/ 2>/dev/null)" != "000" ] && break
+      sleep 3
+    done
+    curl -s -m20 -X POST http://127.0.0.1:5678/rest/owner/setup \
+         -H "Content-Type: application/json" -d "$_n8n_body" 2>/dev/null \
+         | grep -q '"isOwner":true' && echo "  n8n-Konto eingerichtet (kein Setup-Bildschirm)"
     echo "  Konto und Zugangsschluessel eingerichtet"
     KONTO_FERTIG=1
     if [ -n "$PW_ERZEUGT" ]; then       # erzeugtes Passwort sichern - sonst weg
       { echo "Oberflaeche: http://<dieser-rechner>:3001"
         echo "Benutzer:    $ADMIN_USER"
-        echo "Passwort:    $ADMIN_PW"; } > zugangsdaten.txt
+        echo "Passwort:    $ADMIN_PW"
+        echo ""
+        echo "n8n (nur intern, meist nicht noetig): http://<dieser-rechner>:5678"
+        echo "Benutzer:    admin@ki4ki.local"
+        echo "Passwort:    (dasselbe wie oben)"; } > zugangsdaten.txt
       chmod 600 zugangsdaten.txt
     fi
   else

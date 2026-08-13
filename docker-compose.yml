@@ -131,16 +131,12 @@ services:
     # keine Nutzungsdaten nach draussen
     - N8N_DIAGNOSTICS_ENABLED=false
     - N8N_VERSION_NOTIFICATIONS_ENABLED=false
-    # Kein zweiter Login: n8n ist eine INTERNE Maschine, nicht die Oberflaeche
-    # fuer Nutzer. Ohne das steht auf :5678 eine "Set up owner account"-Wand -
-    # verwirrt jeden Laien, der dort nachschaut ("ist doch schon alles per
-    # Admin-Konto eingerichtet?"). Der Aufnahme-Durchgang laeuft ohnehin ueber
-    # einen offenen Webhook, also OHNE Login - die Wand blockiert nur die
-    # Editor-Ansicht, nie die Maschine.
-    # ⚠ Aeltere n8n nehmen die Wand damit weg. Nimmt eine neuere Version den
-    #   Schalter nicht mehr an, richtet start.sh das Owner-Konto automatisch
-    #   mit demselben Admin-Passwort ein (Fallback, gegen A40-Frisch geprueft).
-    - N8N_USER_MANAGEMENT_DISABLED=true
+    # Kein zweiter Login: Die "Set up owner account"-Wand auf :5678 richtet
+    # start.sh automatisch mit DEMSELBEN Admin-Passwort ein (POST
+    # /rest/owner/setup). n8n ist eine interne Maschine - Partner brauchen den
+    # Editor nie; die Aufnahme laeuft ueber einen offenen Webhook, ohne Login.
+    # (Der fruehere Schalter N8N_USER_MANAGEMENT_DISABLED wirkt ab n8n 2.31
+    #  nicht mehr - deshalb der Weg ueber start.sh.)
     # Zeitzone: sonst schreibt n8n die Zeitstempel (z.B. in aussortiert.log)
     # in der Container-Voreinstellung (UTC/US) - das verwirrt, weil es nicht
     # zur Server-Uhr passt. TZ steuert die Uhr fuer new Date() in Code-Nodes,
