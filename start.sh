@@ -171,9 +171,20 @@ docker exec ki4ki-n8n sh -c 'rm -rf /tmp/wf && mkdir -p /tmp/wf'
 for wf in n8n-workflows/*.json; do docker cp "$wf" ki4ki-n8n:/tmp/wf/ >/dev/null 2>&1; done
 if docker exec ki4ki-n8n n8n import:workflow --separate --input=/tmp/wf >/dev/null 2>&1; then
   echo "  Workflows importiert (Verknuepfungen bleiben erhalten)"
-  docker exec ki4ki-n8n n8n update:workflow --id=1DKWgDbdCiwa25E1 --active=true >/dev/null 2>&1 \
-    && echo "  Masse-Ingest aktiviert"
-  docker restart ki4ki-n8n >/dev/null 2>&1   # damit der Zeitplan-Ausloeser registriert
+  # ⭐ ALLE DREI aktivieren, nicht nur den Haupt-Workflow. n8n weigert sich,
+  #   eine INAKTIVE Unterkette auszufuehren ("Workflow is not active and
+  #   cannot be executed"). Dann ruft der Masse-Ingest die Docling- und die
+  #   Markdown-Unterkette NIE auf - jedes Dokument landet mit leerem Text in
+  #   aussortiert, ganz ohne Fehlermeldung (der Aufruf-Node schluckt sie per
+  #   onError=continueRegularOutput). Die executeWorkflow-Verknuepfungen
+  #   brauchen die Unterketten AKTIV.
+  _wf_ok=1
+  for _wid in 1DKWgDbdCiwa25E1 uK5WCYhjVqPawcvP J8pPkKTKmkFTXjGn; do
+    docker exec ki4ki-n8n n8n update:workflow --id="$_wid" --active=true >/dev/null 2>&1 || _wf_ok=0
+  done
+  [ "$_wf_ok" = 1 ] && echo "  Masse-Ingest + Unterketten aktiviert" \
+    || echo "  ⚠ Nicht alle Workflows aktiviert - bitte in n8n pruefen"
+  docker restart ki4ki-n8n >/dev/null 2>&1   # damit Zeitplan + aktive Unterketten registrieren
 else
   echo "  ⚠ Auto-Import nicht moeglich - Workflows bitte per n8n-Oberflaeche"
   echo "    (Port 5678, Import from File) aus n8n-workflows/ laden."
