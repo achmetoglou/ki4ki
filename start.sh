@@ -124,6 +124,22 @@ else
   echo "  (Funktioniert, ist aber deutlich langsamer als mit NVIDIA-GPU.)"
 fi
 
+# Die erkannte Datei-Auswahl DAUERHAFT festhalten. Sonst zieht ein spaeteres
+# blankes `docker compose up`/`restart` NUR die Basis-Datei - ohne die
+# GPU-Bruecke. Ergebnis: ollama verliert die Karte und stuerzt ab
+# (llama-server segfault), docling faellt auf CPU. Genau das darf keinem
+# Partner passieren, der mal neu startet. docker compose liest COMPOSE_FILE
+# aus .env automatisch bei JEDEM Aufruf -> die GPU-Datei ist ab jetzt immer
+# dabei, ohne dass jemand `-f ...` tippen muss.
+COMPOSE_WERT=$(printf '%s' "$DATEIEN" | sed 's/-f //g' | xargs | tr ' ' ':')
+touch .env
+if grep -q '^COMPOSE_FILE=' .env 2>/dev/null; then
+  sed -i "s|^COMPOSE_FILE=.*|COMPOSE_FILE=$COMPOSE_WERT|" .env
+else
+  printf 'COMPOSE_FILE=%s\n' "$COMPOSE_WERT" >> .env
+fi
+echo "  Compose-Auswahl in .env gemerkt: $COMPOSE_WERT"
+
 # --- Bauen und starten -----------------------------------------------------
 sagen "Belegpruefung bauen"
 docker compose $DATEIEN build pruef-proxy
