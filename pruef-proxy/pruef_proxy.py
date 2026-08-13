@@ -1882,7 +1882,35 @@ def seite_pruefen(dokument, vermutung, zitat):
     return seite
 
 
-def _zitat_zu(pruefungen, name, seite):
+def _wort_norm(s):
+    """Kennzeichnende Woerter (>=4 Zeichen, klein) einer Zeichenkette."""
+    return set(re.findall(r"[a-zA-Z0-9À-ɏ]{4,}", (s or "").lower()))
+
+
+def _zitat_disambig(treffer, kontext):
+    """Bei mehreren Zitaten auf DERSELBEN Seite den passenden waehlen.
+
+    Jeder Beleg schreibt sein Zitat unmittelbar VOR die Seitenangabe - also
+    steht das richtige Zitat im Fliesstext direkt vor DIESEM Link. Wir nehmen
+    das Zitat, dessen kennzeichnende Woerter in diesem Textstueck am
+    staerksten vorkommen - und NUR bei klarem Treffer (sonst lieber keins,
+    damit nie die falsche Stelle markiert wird).
+    """
+    kw = _wort_norm(kontext)
+    if not kw:
+        return ""
+    best, best_anteil = "", 0.0
+    for z in treffer:
+        zw = _wort_norm(z)
+        if len(zw) < 3:
+            continue
+        anteil = len(zw & kw) / float(len(zw))
+        if anteil > best_anteil:
+            best_anteil, best = anteil, z
+    return best if best_anteil >= 0.6 else ""
+
+
+def _zitat_zu(pruefungen, name, seite, kontext=""):
     """Das Zitat, das zu genau diesem Dokument und dieser Seite gehoert.
 
     Vorher wurde ueber einen Laufindex gepaart: der n-te Fund von
@@ -1913,7 +1941,17 @@ def _zitat_zu(pruefungen, name, seite):
                 zitat = p.get("original", "")
                 if zitat and zitat not in treffer:
                     treffer.append(zitat)
-    return treffer[0] if len(treffer) == 1 else ""
+    if len(treffer) == 1:
+        return treffer[0]
+    # ⭐ Mehrere Zitate auf EINER Seite: frueher blieb die Markierung ganz aus
+    #   (siehe oben). Jetzt den passenden am Fliesstext vor DIESEM Link
+    #   erkennen - jeder Beleg schreibt sein Zitat direkt davor. Nur bei
+    #   klarem Treffer; sonst weiterhin lieber keine als die falsche Marke.
+    if len(treffer) > 1 and kontext:
+        b = _zitat_disambig(treffer, kontext)
+        if b:
+            return b
+    return ""
 
 
 def _csv_feld(wert):
@@ -2064,7 +2102,11 @@ def mit_verweisen(text, pruefungen=None, quellen=None):
         if not name or m.start() - len(name) < bis:
             continue
         ergebnis.append(text[bis:m.start() - len(name)])
-        zitat = _zitat_zu(pruefungen, name, m.group(1))
+        # Kontext = der Fliesstext dieses Belegs (vom Ende des vorigen Links
+        # bis hierher). Enthaelt das Zitat, das das Modell direkt vor die
+        # Seitenangabe geschrieben hat - so lassen sich mehrere Zitate auf
+        # derselben Seite dem richtigen Link zuordnen.
+        zitat = _zitat_zu(pruefungen, name, m.group(1), text[bis:m.start()])
         ziel = "/stelle?dok=%s&seite=%s" % (quote(name), m.group(1))
         if zitat:
             ziel += "&zitat=" + quote(zitat[:400])
