@@ -4578,6 +4578,18 @@ class Griff(BaseHTTPRequestHandler):
             wurzel = os.path.dirname(ziel)
             for unter in ("input", "parkplatz", "archiv", "aussortiert"):
                 os.makedirs(os.path.join(wurzel, unter), exist_ok=True)
+            # Der Proxy laeuft als root, n8n als node (1000). Frisch
+            # angelegte Ordner gehoeren sonst root - dann kann n8n hier
+            # keine Datei nach archiv/ verschieben, und die Aufnahme eines
+            # NEU angelegten Bereichs scheitert still. Also den Ordner
+            # gleich an node uebergeben. Nur-lesbar? Dann sind wir nicht
+            # root (Entwicklung); der Rechte-Vorlauf beim Start faengt es.
+            try:
+                os.chown(wurzel, 1000, 1000)
+                for unter in ("input", "parkplatz", "archiv", "aussortiert"):
+                    os.chown(os.path.join(wurzel, unter), 1000, 1000)
+            except (PermissionError, OSError):
+                pass
         except Exception as e:
             self._json({"success": False,
                         "error": "Eingangsordner nicht beschreibbar: %s"

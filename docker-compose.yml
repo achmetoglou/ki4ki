@@ -62,11 +62,41 @@ services:
     container_name: ki4ki-tika
     restart: unless-stopped
 
+  # --- Rechte-Vorlauf -------------------------------------------------------
+  # Frisch angelegte Docker-Volumes gehoeren root. n8n laeuft aber als
+  # node (1000) und MUSS in die geteilten Ordner schreiben (Laufsperre,
+  # JSON, Markdown) und Dateien nach archiv/ verschieben. Ohne diesen
+  # Vorlauf scheitert die Aufnahme auf JEDER frischen Installation still
+  # beim allerersten Schreibversuch - kein Partner soll das je erleben.
+  # Laeuft bei jedem `up` kurz an, uebergibt die Ordner an node und
+  # beendet sich; n8n startet erst, wenn er fertig ist. Nutzt das ohnehin
+  # vorhandene n8n-Image (kein zusaetzlicher Download).
+  rechte-init:
+    image: docker.n8n.io/n8nio/n8n@sha256:15091606d98f6d15bad10cb26bb937ccb47dfd9fee2bb7ae44c7061cba2e7a04
+    container_name: ki4ki-rechte-init
+    user: "0:0"
+    entrypoint: ["/bin/sh", "-c"]
+    command:
+    - |
+      for d in /files/json /files/processed /files/anythingllm /files/dokumente; do
+        mkdir -p "$$d" && chown -R 1000:1000 "$$d"
+      done
+      echo "Rechte gesetzt: n8n (1000) darf in die geteilten Ordner schreiben."
+    volumes:
+    - ./dokumente:/files/dokumente
+    - austausch:/files/processed
+    - austausch-json:/files/json
+    - austausch-md:/files/anythingllm
+    restart: "no"
+
   # --- Ablaufsteuerung ------------------------------------------------------
   n8n:
     image: docker.n8n.io/n8nio/n8n@sha256:15091606d98f6d15bad10cb26bb937ccb47dfd9fee2bb7ae44c7061cba2e7a04
     container_name: ki4ki-n8n
     restart: unless-stopped
+    depends_on:
+      rechte-init:
+        condition: service_completed_successfully
     # bringt KI4KI_API_KEY herein - die Ingest-Workflows brauchen ihn fuer den
     # Upload zu AnythingLLM ("=Bearer {{$env.KI4KI_API_KEY}}")
     env_file:
