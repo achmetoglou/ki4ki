@@ -141,6 +141,13 @@ services:
     #   Schalter nicht mehr an, richtet start.sh das Owner-Konto automatisch
     #   mit demselben Admin-Passwort ein (Fallback, gegen A40-Frisch geprueft).
     - N8N_USER_MANAGEMENT_DISABLED=true
+    # Zeitzone: sonst schreibt n8n die Zeitstempel (z.B. in aussortiert.log)
+    # in der Container-Voreinstellung (UTC/US) - das verwirrt, weil es nicht
+    # zur Server-Uhr passt. TZ steuert die Uhr fuer new Date() in Code-Nodes,
+    # GENERIC_TIMEZONE den Zeitplan-Ausloeser. Standard deutsche Zeit,
+    # ueberschreibbar per .env (z.B. TZ=Europe/Vienna) fuer Partner anderswo.
+    - TZ=${TZ:-Europe/Berlin}
+    - GENERIC_TIMEZONE=${TZ:-Europe/Berlin}
     volumes:
     - n8n-daten:/home/node/.n8n
     - ./dokumente:/files/dokumente
