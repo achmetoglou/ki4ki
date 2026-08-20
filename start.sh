@@ -144,8 +144,12 @@ fi
 echo "  Compose-Auswahl in .env gemerkt: $COMPOSE_WERT"
 
 # --- Bauen und starten -----------------------------------------------------
-sagen "Belegpruefung bauen"
-docker compose $DATEIEN build pruef-proxy
+sagen "Belegpruefung und Markdown-Dienst bauen"
+# BEIDE selbstgebauten Images, nicht nur der Proxy. Fehlt ki4ki-mkmd:1
+# lokal (echte Null-Installation), versucht 'compose up' es aus einer
+# Registry zu ziehen und zeigt ein beunruhigendes "pull access denied" -
+# das Image gibt es nirgends zu ziehen, es entsteht nur hier.
+docker compose $DATEIEN build pruef-proxy mkmd-dienst
 
 sagen "Anlage starten"
 docker compose $DATEIEN up -d
