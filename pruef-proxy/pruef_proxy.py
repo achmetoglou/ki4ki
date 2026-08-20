@@ -299,6 +299,47 @@ def _ordnername(bereich):
     return sauber or "sonstiges"
 
 
+def _inhaltsgleich(wurzel, inhalt):
+    """Liegt dieselbe Datei (byte-gleich) schon in diesem Bereich?
+
+    Der Namensvergleich beim Hochladen kennt nur FERTIG aufgenommene
+    Dokumente. Eine Datei, die noch in der Aufbereitung steckt (input/)
+    oder als Original im Archiv liegt, sah er nicht - der zweite Klick
+    auf dieselbe Datei wurde zu "-1" umbenannt und als NEUES Dokument
+    eingebettet. Deshalb hier byteweise vergleichen, unabhaengig vom Namen.
+
+    Erst die Groesse (billig, sortiert fast alles aus), dann SHA-256 -
+    nur bei gleicher Groesse. Rueckgabe (unterordner, dateiname) oder
+    None. Lesefehler gelten als "nicht vorhanden": Eine Stoerung darf
+    das Hochladen nicht verhindern, die Aufnahmekette prueft ohnehin.
+    """
+    laenge = len(inhalt)
+    pruefsumme = None
+    for unter in ("input", "parkplatz", "archiv"):
+        ordner = os.path.join(wurzel, unter)
+        try:
+            eintraege = sorted(os.listdir(ordner))
+        except OSError:
+            continue
+        for name in eintraege:
+            pfad = os.path.join(ordner, name)
+            try:
+                if (not os.path.isfile(pfad)
+                        or os.path.getsize(pfad) != laenge):
+                    continue
+                if pruefsumme is None:
+                    pruefsumme = hashlib.sha256(inhalt).hexdigest()
+                h = hashlib.sha256()
+                with open(pfad, "rb") as fh:
+                    for stueck in iter(lambda: fh.read(1 << 20), b""):
+                        h.update(stueck)
+                if h.hexdigest() == pruefsumme:
+                    return unter, name
+            except OSError:
+                continue
+    return None
+
+
 def _dateien_aus_formular(roh, art):
     """Dateien aus einem multipart/form-data-Rumpf holen.
 
@@ -4648,6 +4689,7 @@ class Griff(BaseHTTPRequestHandler):
 
         namen = []
         doppelt = []
+        in_arbeit = []
         geaendert = []
         for name, inhalt in dateien:
             # ⭐ Name saeubern, BEVOR irgendetwas damit passiert. Der Name
@@ -4668,6 +4710,23 @@ class Griff(BaseHTTPRequestHandler):
                 pdfstelle._wie_anythingllm(os.path.splitext(sicher)[0]))
             if schon:
                 doppelt.append((sicher, schon))
+                continue
+            # ⭐ INHALTS-DUBLETTE, byteweise. Genau so entstanden auf einer
+            #   frischen Anlage drei Fassungen desselben Dokuments
+            #   (Original, "-1", "-2"): Waehrend die erste noch aufbereitet
+            #   wurde, kam derselbe Klick noch zweimal - der Namensvergleich
+            #   oben griff nicht (noch nichts im Bestand), und die
+            #   Umbenennung machte aus jeder Kopie ein "neues" Dokument.
+            gleich = _inhaltsgleich(wurzel, inhalt)
+            if gleich:
+                unter, vorhanden = gleich
+                if unter == "archiv":
+                    doppelt.append((sicher, vorhanden))
+                else:
+                    in_arbeit.append((sicher, vorhanden))
+                print("[Upload] Inhalts-Dublette: %s = %s/%s"
+                      % (sicher, unter, vorhanden),
+                      file=sys.stderr, flush=True)
                 continue
             # nicht ueberschreiben: sonst ist eine gleichnamige aeltere Fassung
             # weg, bevor jemand sie vermisst
@@ -4708,18 +4767,34 @@ class Griff(BaseHTTPRequestHandler):
                       file=sys.stderr, flush=True)
 
         # Alles waren Dubletten: nichts abgelegt - und das wird gesagt.
-        if doppelt and not namen:
+        if (doppelt or in_arbeit) and not namen:
+            saetze = []
             if len(doppelt) == 1:
-                text = ("\u201e%s\u201c liegt bereits in diesem Arbeitsbereich "
-                        "(als \u201e%s\u201c). Es wurde nichts hochgeladen."
-                        % (doppelt[0][0],
-                           assistent._titel_saubern(doppelt[0][1])))
-            else:
-                text = ("Diese %d Dateien liegen bereits in diesem Arbeitsbereich: "
-                        "%s. Es wurde nichts hochgeladen."
-                        % (len(doppelt), ", ".join(d[0] for d in doppelt[:8])))
-            print("[Upload] abgewiesen, schon im Bestand: %s"
-                  % ", ".join(d[0] for d in doppelt[:8]),
+                saetze.append(
+                    "\u201e%s\u201c liegt bereits in diesem Arbeitsbereich "
+                    "(als \u201e%s\u201c)."
+                    % (doppelt[0][0],
+                       assistent._titel_saubern(doppelt[0][1])))
+            elif doppelt:
+                saetze.append(
+                    "Diese %d Dateien liegen bereits in diesem Arbeitsbereich: "
+                    "%s." % (len(doppelt),
+                             ", ".join(d[0] for d in doppelt[:8])))
+            if len(in_arbeit) == 1:
+                saetze.append(
+                    "\u201e%s\u201c wurde bereits hochgeladen und wird gerade "
+                    "aufbereitet \u2014 es erscheint von selbst, bitte nicht "
+                    "erneut hochladen." % in_arbeit[0][0])
+            elif in_arbeit:
+                saetze.append(
+                    "Diese %d Dateien wurden bereits hochgeladen und werden "
+                    "gerade aufbereitet: %s \u2014 bitte nicht erneut "
+                    "hochladen." % (len(in_arbeit),
+                                    ", ".join(d[0] for d in in_arbeit[:8])))
+            saetze.append("Es wurde nichts hochgeladen.")
+            text = " ".join(saetze)
+            print("[Upload] abgewiesen, Dublette: %s"
+                  % ", ".join(d[0] for d in (doppelt + in_arbeit)[:8]),
                   file=sys.stderr, flush=True)
             # ⚠ 409, NICHT 200. Die Oberflaeche entscheidet am HTTP-Status,
             #   nicht am Inhalt. Mit 200 sieht der Nutzer ein gruenes Haken und liest den Text
@@ -4781,7 +4856,16 @@ class Griff(BaseHTTPRequestHandler):
                     "(Seiten, Formeln, Abbildungen). Das Dokument erscheint "
                     "danach von selbst hier \u2014 bitte nicht erneut "
                     "hochladen."
-                    % ", ".join(teile)}, code=200)
+                    % ", ".join(teile)
+                    # Gemischter Fall: manches angenommen, manches Dublette.
+                    # Ohne diesen Satz verschwaenden die uebergangenen
+                    # Dateien wortlos - der Mensch wartet dann auf ein
+                    # Dokument, das nie kommt.
+                    + ("" if not (doppelt or in_arbeit) else
+                       " \u00dcbergangen, weil schon vorhanden oder in "
+                       "Aufbereitung: %s."
+                       % ", ".join(d[0] for d in (doppelt + in_arbeit)[:8]))},
+                   code=200)
 
     def _bereich_neu(self):
         """Neuen Bereich anlegen lassen und ihn danach absichern.
