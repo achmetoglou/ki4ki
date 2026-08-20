@@ -1433,77 +1433,21 @@ EINHAENGER = """
     return typeof u === "string" && /\\/api\\/workspace\\/[^/]+\\/upload/.test(u);
   }
 
-  // KI4KI-KEIN-ROTER-KASTEN. AnythingLLMs eigenes Upload-Feld rendert unsere
-  // 425/409-Antwort als roten "Fehler"-Chip - abgeschnitten und alarmierend,
-  // obwohl nichts schiefging. Die gruene Karte oben sagt dasselbe in lesbar.
-  // Also: den nativen Chip an seinem eindeutigen Text finden und ausblenden.
-  // Die Dropzone (traegt das Datei-Eingabefeld) und unsere eigene Karte
-  // bleiben unangetastet - deshalb der schutz()-Riegel.
-  function verstecken(signatur) {
-    function unsere(el) {
-      var k = document.getElementById(ID);
-      return k && (el === k || k.contains(el));
-    }
-    function schutz(el) {
-      return el.id === ID ||
-             (el.querySelector && el.querySelector("input[type=file]"));
-    }
-    function fegen(wurzel) {
-      if (!wurzel || wurzel.nodeType !== 1) return;
-      var alle = wurzel.querySelectorAll ? wurzel.querySelectorAll("*") : [];
-      var liste = [];
-      for (var i = 0; i < alle.length; i++) liste.push(alle[i]);
-      liste.push(wurzel);
-      for (var j = 0; j < liste.length; j++) {
-        var el = liste[j];
-        if (unsere(el)) continue;
-        if (!el.textContent || el.textContent.indexOf(signatur) === -1) continue;
-        // Nur das TIEFSTE Element mit der Signatur (nicht jeden Vorfahren,
-        // sonst faellt der ganze Body drunter). Traegt schon ein Kind die
-        // Signatur, ist el nicht tief genug. So trifft es auch, wenn Text und
-        // Icon zusammen in EINEM Kasten stecken (dann ist el kein Blatt).
-        var tiefer = false, kinder = el.children || [];
-        for (var c = 0; c < kinder.length; c++) {
-          if (kinder[c].textContent &&
-              kinder[c].textContent.indexOf(signatur) !== -1) { tiefer = true; break; }
-        }
-        if (tiefer) continue;
-        // durch REINE Wrapper hoch, bis der ganze rote Kasten erfasst ist -
-        // Stopp, sobald ein Elternteil zusaetzlichen Text traegt (kein Nachbar
-        // wird versehentlich versteckt) oder die Dropzone erreicht ist.
-        var komp = function (s) { return (s || "").replace(/\\s+/g, ""); };
-        var best = el, lauf = el;
-        for (var n = 0; n < 8 && lauf.parentElement; n++) {
-          var p = lauf.parentElement;
-          if (unsere(p) || schutz(p)) break;
-          if (komp(p.textContent) === komp(lauf.textContent)) { best = p; lauf = p; }
-          else break;
-        }
-        best.style.setProperty("display", "none", "important");
-      }
-    }
-    // ⭐ Zeitunabhaengig statt MutationObserver: Der rote Kasten taucht ueber
-    //   einen Weg auf, den ein Observer nicht zuverlaessig meldet (React-
-    //   Re-Render aendert vorhandene Knoten, statt neue hinzuzufuegen). Darum
-    //   den ganzen Body ein paar Sekunden lang WIEDERHOLT absuchen - sobald
-    //   der Kasten da ist, wird er versteckt. Billig und kurzlebig (~10 s).
-    fegen(document.body);
-    var runden = 0;
-    var takt = setInterval(function () {
-      fegen(document.body);
-      if (++runden > 34) clearInterval(takt);   // ~10 s bei 300 ms
-    }, 300);
-  }
-
-  function auswerten(status, roh) {
-    if (status !== 425 && status !== 409) return;
-    var text = "";
-    try { text = (JSON.parse(roh) || {}).error || ""; } catch (e) {}
-    if (!text) return;
-    var dublette = status === 409;
-    zeigen(dublette ? "dublette" : "angenommen", text.replace(/^✓\\s*/, ""));
-    verstecken(dublette ? "bereits in diesem Arbeitsbereich"
-                        : "wird jetzt aufbereitet");
+  // KI4KI-KEIN-ROTER-KASTEN. Frueher gab der Upload 425/409 zurueck; damit
+  // rendert AnythingLLMs Upload-Feld einen roten "Fehler"-Chip - alarmierend,
+  // obwohl nichts schiefging, und sein Text WECHSELT (erst die Meldung, dann
+  // nur der Dateiname), weshalb Ausblenden per Text-Suche nicht zuverlaessig
+  // greift. Loesung: Der Upload liefert jetzt bewusst 200/Erfolg, sodass
+  // AnythingLLM erst gar keinen Fehler-Chip zeigt. Der eigentliche Hinweis
+  // ("angenommen, wird aufbereitet ...") steckt im Feld ki4ki_hinweis und
+  // wird als EINE, lesbare gruene Karte gezeigt.
+  function auswerten(roh) {
+    var d = {};
+    try { d = JSON.parse(roh) || {}; } catch (e) {}
+    var hinweis = d.ki4ki_hinweis;
+    if (!hinweis) return;
+    zeigen(d.ki4ki_dublette ? "dublette" : "angenommen",
+           String(hinweis).replace(/^✓\\s*/, ""));
   }
 
   var echtesFetch = window.fetch;
@@ -1514,8 +1458,7 @@ EINHAENGER = """
       var antwort = echtesFetch.apply(this, arguments);
       if (istUpload(weg)) {
         antwort.then(function (a) {
-          if (a.status !== 425 && a.status !== 409) return;
-          a.clone().text().then(function (t) { auswerten(a.status, t); });
+          a.clone().text().then(function (t) { auswerten(t); });
         }).catch(function () {});
       }
       return antwort;
@@ -1527,7 +1470,7 @@ EINHAENGER = """
     this.__ki4kiUpload = istUpload(weg);
     if (this.__ki4kiUpload) {
       this.addEventListener("load", function () {
-        auswerten(this.status, this.responseText);
+        auswerten(this.responseText);
       });
     }
     return echtesOeffnen.apply(this, arguments);
@@ -4769,7 +4712,12 @@ class Griff(BaseHTTPRequestHandler):
             #   nicht am Inhalt. Mit 200 sieht der Nutzer ein gruenes Haken und liest den Text
             #   NIE. Genau so passiert: Die Abweisung griff, die
             #   Meldung ging raus - und der Nutzer sah ein Haken.
-            self._json({"success": False, "error": text}, code=409)
+            # 200/Erfolg statt 409: sonst roter Fehler-Chip. Der Hinweis
+            # (liegt bereits, nichts hochgeladen) kommt als Karten-Text ueber
+            # ki4ki_hinweis; ki4ki_dublette steuert die Farbe. Nichts abgelegt.
+            self._json({"success": True, "error": None, "documents": [],
+                        "ki4ki_hinweis": text, "ki4ki_dublette": True},
+                       code=200)
             return
 
         # Die Oberflaeche kennt nur zwei Zustaende:
@@ -4811,7 +4759,7 @@ class Griff(BaseHTTPRequestHandler):
         # "laeuft gerade" gibt es nicht. Deshalb 425 statt 200: Ein gruenes
         # Haken behauptet "fertig", und genau das ist der Irrtum, den die
         # Meldung ausraeumen soll.
-        self._json({"success": False, "error":
+        self._json({"success": True, "error": None, "documents": [], "ki4ki_hinweis":
                     # ⚠ Kurz halten. Die alte Fassung war 330 Zeichen lang
                     #   und erklaerte in fuenf Nebensaetzen, warum der Weg
                     #   so gewollt ist - das interessiert beim Hochladen
@@ -4820,7 +4768,7 @@ class Griff(BaseHTTPRequestHandler):
                     "(Seiten, Formeln, Abbildungen). Das Dokument erscheint "
                     "danach von selbst hier \u2014 bitte nicht erneut "
                     "hochladen."
-                    % ", ".join(teile)}, code=425)
+                    % ", ".join(teile)}, code=200)
 
     def _bereich_neu(self):
         """Neuen Bereich anlegen lassen und ihn danach absichern.
