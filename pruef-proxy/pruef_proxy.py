@@ -4571,6 +4571,18 @@ class Griff(BaseHTTPRequestHandler):
             wurzel = os.path.dirname(ziel)
             for unter in ("input", "parkplatz", "archiv", "aussortiert"):
                 os.makedirs(os.path.join(wurzel, unter), exist_ok=True)
+            # ⭐ bereich.json anlegen, falls sie fehlt. Ohne sie bricht die
+            #   Aufnahme im Node "Bereichskarte bauen" ab ("Keine bereich.json
+            #   gefunden") - auf einer FRISCHEN Anlage legt sie sonst niemand
+            #   an, und der erste Durchgang scheitert. Sie verknuepft den
+            #   Ordner <slug> mit dem AnythingLLM-Ablageordner; fuer einen neu
+            #   angelegten Bereich ist beides der slug.
+            _konf = os.path.join(wurzel, "bereich.json")
+            if not os.path.exists(_konf):
+                _slug = _ordnername(bereich)
+                with open(_konf, "w", encoding="utf-8") as fh:
+                    json.dump({"bereich": _slug, "ablage": _slug}, fh,
+                              ensure_ascii=False)
             # Der Proxy laeuft als root, n8n als node (1000). Frisch
             # angelegte Ordner gehoeren sonst root - dann kann n8n hier
             # keine Datei nach archiv/ verschieben, und die Aufnahme eines
@@ -4579,6 +4591,7 @@ class Griff(BaseHTTPRequestHandler):
             # root (Entwicklung); der Rechte-Vorlauf beim Start faengt es.
             try:
                 os.chown(wurzel, 1000, 1000)
+                os.chown(_konf, 1000, 1000)
                 for unter in ("input", "parkplatz", "archiv", "aussortiert"):
                     os.chown(os.path.join(wurzel, unter), 1000, 1000)
             except (PermissionError, OSError):
