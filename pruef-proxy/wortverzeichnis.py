@@ -158,6 +158,17 @@ def laden(pfad=VERZEICHNIS, ordner=BESTAND, melden=None):
     if _GELADEN is not None:
         return _GELADEN
     if not os.path.exists(pfad):
+        # ⚠ Nie gebaut - nicht nur ablehnen, sondern bauen (dieselbe Regel
+        #   wie beim veralteten Verzeichnis unten). Der Neubau hing bisher
+        #   NUR am Fall "Datei da, aber veraltet"; auf einer frischen
+        #   Anlage (oder nach jedem Neubau des Containers - die Datei liegt
+        #   im Container-Dateisystem) gab es die Datei nie, und die
+        #   woertliche Suche blieb bei jeder Frage lautlos aus
+        #   ("Wortverzeichnis nicht verfuegbar"). Nur bauen, wenn es
+        #   ueberhaupt Arbeiten gibt - sonst dreht eine leere Anlage
+        #   Leerlauf-Runden.
+        if _dateien(ordner):
+            _neu_bauen_im_hintergrund(pfad, ordner, melden)
         return None
     try:
         with open(pfad, encoding="utf-8") as f:
