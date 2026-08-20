@@ -1482,20 +1482,17 @@ EINHAENGER = """
         best.style.setProperty("display", "none", "important");
       }
     }
+    // ⭐ Zeitunabhaengig statt MutationObserver: Der rote Kasten taucht ueber
+    //   einen Weg auf, den ein Observer nicht zuverlaessig meldet (React-
+    //   Re-Render aendert vorhandene Knoten, statt neue hinzuzufuegen). Darum
+    //   den ganzen Body ein paar Sekunden lang WIEDERHOLT absuchen - sobald
+    //   der Kasten da ist, wird er versteckt. Billig und kurzlebig (~10 s).
     fegen(document.body);
-    var beob = new MutationObserver(function (muts) {
-      for (var i = 0; i < muts.length; i++) {
-        var an = muts[i].addedNodes;
-        for (var k = 0; k < an.length; k++) {
-          if (an[k].nodeType === 1) fegen(an[k]);
-        }
-      }
-    });
-    try { beob.observe(document.body, { childList: true, subtree: true }); }
-    catch (e) {}
-    // ⚠ KEIN Dauerlauf: Der Chip erscheint kurz nach der Antwort. Nach 8 s
-    //   ist er da (oder kommt nicht) - dann den Beobachter wieder abhaengen.
-    setTimeout(function () { try { beob.disconnect(); } catch (e) {} }, 12000);
+    var runden = 0;
+    var takt = setInterval(function () {
+      fegen(document.body);
+      if (++runden > 34) clearInterval(takt);   // ~10 s bei 300 ms
+    }, 300);
   }
 
   function auswerten(status, roh) {
