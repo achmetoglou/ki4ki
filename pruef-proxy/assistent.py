@@ -1003,6 +1003,46 @@ def _flach(text):
     return re.sub(r"[^a-z0-9]", "", t)
 
 
+# Wonach jemand fragt, ohne einen Namen zu nennen. Die Kennungs-Praefixe
+# entsprechen den Arten aus dem Katalog (DS=Dissertation usw.); None heisst
+# "irgendein Dokument".
+_ART_WORTE = {
+    "dissertation": "DS", "doktorarbeit": "DS", "promotion": "DS",
+    "masterarbeit": "M", "bachelorarbeit": "BS", "studienarbeit": "S",
+    "diplomarbeit": "D", "projektarbeit": "PA",
+    "dokument": None, "arbeit": None, "werk": None, "datei": None,
+    "unterlage": None, "pdf": None, "buch": None,
+}
+
+
+def _generisch_gemeint(frage, titel):
+    """'Fasse die Dissertation zusammen' - ohne Namen, aber eindeutig?
+
+    Auf einer kleinen Anlage (ein Partner faengt mit EINEM Dokument an)
+    ist "das Dokument" oder "die Dissertation" voellig klar - die
+    Titelwort-Suche findet aber nichts, weil kein Titelwort in der Frage
+    steht, und die Zusammenfassung fiel still auf Schnipsel zurueck.
+
+    Gewaehlt wird NUR bei Eindeutigkeit: genau ein Dokument insgesamt,
+    oder genau eines der genannten Art (Kennungs-Praefix wie DS-...).
+    Bei mehreren bleibt es bei None - raten waere schlimmer.
+    """
+    f = (frage or "").lower()
+    getroffen = [(w, art) for w, art in _ART_WORTE.items() if w in f]
+    if not getroffen:
+        return None
+    if len(titel) == 1:
+        return titel[0]
+    arten = {art for _, art in getroffen if art}
+    if len(arten) == 1:
+        art = arten.pop()
+        passend = [t for t in titel
+                   if re.match(r"%s-?\d" % art, (t or "").strip(), re.I)]
+        if len(passend) == 1:
+            return passend[0]
+    return None
+
+
 def dokument_gemeint(frage, titel):
     """Welches Dokument meint "Worum geht es in DVS 2213-1"?
 
@@ -1034,7 +1074,8 @@ def dokument_gemeint(frage, titel):
     woerter = [w for w in re.findall(r"[A-Za-zÄÖÜäöüß0-9]{2,}", kern)
                if w.lower() not in _FUELLWORT]
     if not woerter:
-        return None, []
+        g = _generisch_gemeint(frage, titel)
+        return (g, [g]) if g else (None, [])
     punkte = {}
     for t in titel:
         flach_titel = _flach(t)
@@ -1044,7 +1085,11 @@ def dokument_gemeint(frage, titel):
         # Lange Woerter wiegen schwerer: "Klangpruefung" sagt mehr als "1".
         punkte[t] = sum(len(_flach(w)) for w in getroffen)
     if not punkte:
-        return None, []
+        # Kein Titelwort in der Frage - der haeufigste Fall auf einer
+        # kleinen Anlage: "Fasse mir die Dissertation zusammen" nennt
+        # keinen Namen, meint aber offensichtlich das einzige Dokument.
+        g = _generisch_gemeint(frage, titel)
+        return (g, [g]) if g else (None, [])
     sortiert = sorted(punkte.items(), key=lambda x: -x[1])
     beste = [t for t, p in sortiert if p == sortiert[0][1]]
     # Mindestens ein Wort mit Substanz muss getroffen sein - sonst reicht
