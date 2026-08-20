@@ -1147,7 +1147,34 @@ def _grundform(name):
     return re.sub(r"[^a-z0-9]", "", (name or "").lower())
 
 
-def _pdf_schluessel(name):
+_PDFS_SPERRE = threading.Lock()
+_PDFS_STAND = [0.0]
+
+
+def _pdfs_erneuern_wenn_faellig():
+    """Das PDF-Verzeichnis nachladen - gedrosselt.
+
+    Der Index entsteht beim Start. Auf einer frischen Anlage startet der
+    Proxy aber IMMER, bevor das erste PDF existiert - ohne Nachladen
+    blieben gelbe Markierung, Beleg-Sprung und Abbildungs-Ausgabe
+    dauerhaft ohne Original ("Fundstelle nicht automatisch bestimmbar"),
+    bis jemand den Proxy von Hand neu startet. Dieselbe Fehlerklasse wie
+    beim Wortverzeichnis: abgesichert war, was da ist - nicht, was noch
+    fehlt. Und: Die Aufnahme VERSCHIEBT Dateien (input/ -> archiv/), auch
+    ein gemerkter Pfad kann also veralten.
+
+    Hoechstens alle 15 Sekunden, sonst bezahlt jede vergebliche Suche
+    einen kompletten Verzeichnislauf.
+    """
+    jetzt = time.time()
+    with _PDFS_SPERRE:
+        if jetzt - _PDFS_STAND[0] < 15:
+            return
+        _PDFS_STAND[0] = jetzt
+        pdfs_einlesen()
+
+
+def _pdf_schluessel_roh(name):
     """Den echten Schluessel in PDFS zu einem geschriebenen Namen finden.
 
     ⚠ EINE Funktion fuer ALLE sieben Nachschlagestellen. Vorher verglich
@@ -1166,6 +1193,21 @@ def _pdf_schluessel(name):
             name = kurz
             break
     return PDFS_GRUND.get(_grundform(name))
+
+
+def _pdf_schluessel(name):
+    """Wie _pdf_schluessel_roh - aber bei Fehlschlag einmal nachladen.
+
+    Fehlschlag heisst: Schluessel unbekannt ODER der gemerkte Pfad
+    existiert nicht mehr (Datei von der Aufnahme verschoben).
+    """
+    s = _pdf_schluessel_roh(name)
+    if s and os.path.exists(PDFS.get(s, "")):
+        return s
+    if not name:
+        return None
+    _pdfs_erneuern_wenn_faellig()
+    return _pdf_schluessel_roh(name)
 
 
 STELLE = """<!doctype html>
@@ -4544,6 +4586,14 @@ class Griff(BaseHTTPRequestHandler):
             self._strom_schliessen()
             return
         if pfad == "/pruef-status":
+            # Live zaehlen, nicht den Startzustand: Auf einer frischen
+            # Anlage waren beide Zahlen sonst so lange 0, bis jemand den
+            # Proxy neu startete - und die 0 sah aus wie ein Defekt.
+            try:
+                BESTAND.aktualisiere()
+            except Exception:
+                pass
+            _pdfs_erneuern_wenn_faellig()
             daten = json.dumps({"bestand": len(BESTAND.titel()),
                                 "pdfs": len(PDFS)}).encode()
             self.send_response(200)
