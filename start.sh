@@ -339,6 +339,13 @@ if [ -n "$KONTO_FERTIG" ]; then
     else
       echo "     Passwort:  (das von dir gewaehlte)"
     fi
+    # Auch die n8n-Anmeldung nennen - sonst steht sie nirgends, wenn der
+    # Mensch sein Passwort selbst gewaehlt hat (zugangsdaten.txt entsteht
+    # nur beim automatisch erzeugten Passwort).
+    echo ""
+    echo "  Anmeldung an den Ablaufplaenen (Port 5678, meist nicht noetig):"
+    echo "     Benutzer:  admin@ki4ki.local"
+    echo "     Passwort:  (dasselbe wie oben)"
   fi
   echo ""
   echo "  Jetzt nur noch PDFs nach ./dokumente legen - die Aufnahme laeuft von selbst."

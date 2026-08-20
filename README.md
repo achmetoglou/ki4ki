@@ -127,7 +127,10 @@ Status `Up`/`running`. Die Oberfläche ist dann erreichbar (nächster Schritt).
 - **Am Server selbst:** `http://localhost:3001`
 - **Von einem anderen PC im Haus:** `http://<server-ip>:3001` — die IP findest du
   mit `hostname -I`. *(Die spitzen Klammern nicht mit-eintippen.)*
-- Ablaufpläne (n8n): dieselbe Adresse mit `:5678`.
+- Ablaufpläne (n8n): dieselbe Adresse mit `:5678`. Anmeldung dort:
+  **`admin@ki4ki.local`** mit demselben Admin-Passwort wie an der
+  Oberfläche (das Konto legt `start.sh` automatisch an). Für den
+  Alltag ist n8n nicht nötig — nur zum Nachschauen der Aufnahme-Läufe.
 
 ### 3.2 · Konto anlegen (in der Oberfläche)
 
