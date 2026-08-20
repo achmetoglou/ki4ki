@@ -92,8 +92,13 @@ elif command -v nvidia-smi >/dev/null 2>&1 && nvidia-smi >/dev/null 2>&1; then
   echo "  NVIDIA-Karte da, aber die Docker-GPU-Bruecke fehlt - richte sie ein ..."
   if command -v apt-get >/dev/null 2>&1; then
     set +e
+    # --batch --yes: Liegt der Schluessel von einer frueheren Installation
+    # schon da, fragt gpg sonst interaktiv "Ueberschreiben (j/N)?" - und die
+    # Installation haengt mitten im Lauf an einer Rueckfrage, die niemand
+    # erwartet. Es ist derselbe oeffentliche NVIDIA-Schluessel, frisch
+    # geladen; Ueberschreiben ist immer richtig.
     curl -fsSL https://nvidia.github.io/libnvidia-container/gpgkey \
-      | sudo gpg --dearmor -o /usr/share/keyrings/nvidia-container-toolkit-keyring.gpg
+      | sudo gpg --dearmor --batch --yes -o /usr/share/keyrings/nvidia-container-toolkit-keyring.gpg
     curl -s -L https://nvidia.github.io/libnvidia-container/stable/deb/nvidia-container-toolkit.list \
       | sed 's#deb https://#deb [signed-by=/usr/share/keyrings/nvidia-container-toolkit-keyring.gpg] https://#g' \
       | sudo tee /etc/apt/sources.list.d/nvidia-container-toolkit.list >/dev/null
