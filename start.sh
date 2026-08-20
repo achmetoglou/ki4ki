@@ -60,10 +60,8 @@ if [ ! -f .secrets.env ]; then
   } > .secrets.env
   chmod 600 .secrets.env
   echo "  .secrets.env angelegt - BITTE SICHERN, ohne sie kommt niemand mehr rein"
-  echo ""
-  echo "  NOCH ZU TUN, sonst nimmt die Anlage keine Dokumente auf:"
-  echo "  In AnythingLLM unter Einstellungen > API-Schluessel einen Schluessel"
-  echo "  anlegen und in .secrets.env bei KI4KI_API_KEY eintragen."
+  echo "  (Den Zugangsschluessel legt der Setup-Helfer gleich automatisch an -"
+  echo "   nichts von Hand noetig.)"
 else
   echo "  .secrets.env vorhanden - bleibt unangetastet"
   # Wer von einer aelteren Fassung kommt, hat den Eintrag noch nicht.
@@ -277,13 +275,23 @@ else
     # also richten wir das Konto direkt ein. E-Mail ist bei n8n Pflicht
     # (admin@ki4ki.local, Partner brauchen n8n eh nie); Passwort ist identisch.
     _n8n_body=$(ADMIN_PW="$ADMIN_PW" python3 -c "import json,os;print(json.dumps({'email':'admin@ki4ki.local','firstName':'KI4KI','lastName':'Admin','password':os.environ['ADMIN_PW']}))" 2>/dev/null)
-    for i in $(seq 1 20); do            # auf n8n warten
-      [ "$(curl -s -m3 -o /dev/null -w '%{http_code}' http://127.0.0.1:5678/ 2>/dev/null)" != "000" ] && break
+    # ⚠ n8n wurde beim Einrichten neu gestartet und braucht einen Moment, bis
+    #   der Owner-Endpunkt bereit ist. Ein EINMALIGER Aufruf kam zu frueh und
+    #   die "Set up owner"-Wand blieb stehen. Darum WIEDERHOLT versuchen, bis
+    #   es klappt (oder das Konto schon steht).
+    _n8n_ok=""
+    for i in $(seq 1 40); do
+      _resp=$(curl -s -m10 -X POST http://127.0.0.1:5678/rest/owner/setup \
+                   -H "Content-Type: application/json" -d "$_n8n_body" 2>/dev/null)
+      case "$_resp" in
+        *'"isOwner":true'*) _n8n_ok=1; break ;;   # frisch angelegt
+        *already*)          _n8n_ok=1; break ;;   # schon vorhanden (erneuter Lauf)
+      esac
       sleep 3
     done
-    curl -s -m20 -X POST http://127.0.0.1:5678/rest/owner/setup \
-         -H "Content-Type: application/json" -d "$_n8n_body" 2>/dev/null \
-         | grep -q '"isOwner":true' && echo "  n8n-Konto eingerichtet (kein Setup-Bildschirm)"
+    [ -n "$_n8n_ok" ] \
+      && echo "  n8n-Konto eingerichtet (kein Setup-Bildschirm)" \
+      || echo "  ⚠ n8n-Konto nicht automatisch angelegt - :5678 einmal von Hand einrichten"
     echo "  Konto und Zugangsschluessel eingerichtet"
     KONTO_FERTIG=1
     if [ -n "$PW_ERZEUGT" ]; then       # erzeugtes Passwort sichern - sonst weg
