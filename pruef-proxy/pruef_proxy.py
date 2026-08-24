@@ -2346,9 +2346,21 @@ def nennungen_verlinken(text, quellen=None):
             if quellen is not None and _nm not in quellen and name not in quellen:
                 continue
             _kontext = text[max(0, a - 250):a]
-            # ⭐ VERIFIZIEREN statt der genannten Seite trauen: die Seite
-            #   finden, auf der die Aussage wirklich steht.
-            _seite = _verifizierte_seite(_nm, _kontext)
+            # ⭐ VERIFIZIEREN statt der genannten Seite blind trauen - aber
+            #   die Modell-Seite MITGEBEN: Nennt das Modell eine Seite, hat
+            #   es oft die Seitenmarke seiner Fundstelle gesehen. Vorher
+            #   wurde eine RICHTIGE 43 zu einer falschen 42 "korrigiert",
+            #   weil eine fruehere Seite zufaellig aehnliche Woerter trug.
+            #   Ersetzt wird die Modell-Seite nur noch, wenn die Aussage
+            #   dort NICHT wiederzufinden ist.
+            _modellseite = None
+            if m.group("nr"):
+                try:
+                    _modellseite = int(m.group("nr"))
+                except (TypeError, ValueError):
+                    _modellseite = None
+            _seite = _verifizierte_seite(_nm, _kontext,
+                                         bevorzugt=_modellseite)
             if _seite is None:
                 # Dokument enthaelt die Aussage nicht auf einer klaren Seite
                 # -> gar kein Link, lieber schweigen als falsch belegen.
@@ -2372,8 +2384,16 @@ def nennungen_verlinken(text, quellen=None):
         # ⭐ Die Kernbegriffe der Aussage mitgeben, damit /stelle
         #   sie gelb markiert (Stichwort-Rueckfall in pdfstelle.kaesten) -
         #   auch ohne woertliches Zitat.
+        # ⚠ NUR Fachwoerter, nicht den rohen Antwort-Markdown: Der
+        #   Stichwort-Rueckfall markierte sonst Allerweltswoerter wie
+        #   "folgende" quer ueber die Seite - das sah aus wie ein Beleg
+        #   fuer nichts. Bleibt kein Fachwort uebrig, wird die Seite ohne
+        #   Markierung gezeigt - ehrlicher als bunte Zufallstreffer.
+        _fachworte = [w for w in re.sub(r"[^0-9a-zA-ZäöüÄÖÜß]+", " ",
+                                        kontext).split()
+                      if len(w) > 6 and w.lower() not in _FUELLWOERTER][:12]
         ziel = "/stelle?dok=%s&seite=%s&zitat=%s" % (
-            quote(name), seite, quote(kontext[-160:].strip()))
+            quote(name), seite, quote(" ".join(_fachworte)))
         # \u2b50 SICHTBARE KENNZEICHNUNG: Der
         #   Unterschied geprueft/genannt lag bisher NUR in der Kursivschrift
         #   und "S." statt "Seite" - das war im Text kaum zu erkennen.
@@ -2491,7 +2511,7 @@ def _dok_hat_aussage(name, kontext):
     return False
 
 
-def _verifizierte_seite(name, kontext):
+def _verifizierte_seite(name, kontext, bevorzugt=None):
     """Die Seite im Dokument, auf der die AUSSAGE wirklich steht - oder None.
 
     ⭐ Gemessen an echten Antworten nennt das Modell zu 94% das
@@ -2502,6 +2522,15 @@ def _verifizierte_seite(name, kontext):
     Deckt sich keine Seite genug (Dokument enthaelt die Aussage nicht),
     kommt None: dann kein Link, lieber schweigen als auf die falsche Seite
     zeigen.
+
+    ⭐ `bevorzugt` = die Seite, die das MODELL genannt hat. Besteht sie
+    dieselbe Deckungspruefung wie alle anderen, gewinnt SIE - auch wenn
+    eine andere Seite rechnerisch knapp hoeher deckt. Gemessen (C1/C2 im
+    WLF-Ansatz): Das Modell nannte richtig Seite 43, die reine
+    Bestwahl "korrigierte" auf die falsche 42, weil eine fruehere Seite
+    zufaellig aehnliche Allerweltswoerter trug. Eine Modell-Seite, die die
+    Pruefung NICHT besteht (z. B. das notorische "S. 1"), wird weiterhin
+    ersetzt oder verworfen.
     """
     schluessel = _pdf_schluessel(name)
     if not schluessel:
@@ -2524,6 +2553,7 @@ def _verifizierte_seite(name, kontext):
     ziel6 = {w for w in ziel if len(w) > 6 and w not in _FUELLWOERTER}
     streng = len(ziel6) >= 3
     beste, wert = None, 0.0
+    bestanden = set()          # Seiten, die die volle Pruefung bestehen
     for i, txt in enumerate(seiten, 1):
         sw = {w for w in re.sub(r"[^0-9a-zA-zäöüÄÖÜß]+", " ",
                                 (txt or "").lower()).split() if len(w) > 4}
@@ -2533,8 +2563,12 @@ def _verifizierte_seite(name, kontext):
                                    if len(w) > 6 and w not in _FUELLWOERTER}) < 3:
             continue   # zu wenig unterscheidende Deckung -> diese Seite nicht
         d = len(ziel & sw) / len(ziel)
+        if d >= 0.25:
+            bestanden.add(i)
         if d > wert:
             beste, wert = i, d
+    if bevorzugt in bestanden:
+        return bevorzugt
     return beste if wert >= 0.25 else None
 
 
