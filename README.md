@@ -37,6 +37,7 @@ ChatGPT fragen":
 |---|---|
 | Fachfragen mit Belegen, Link + gelbe Markierung im Original | Antwort: **gemma4:12b** · Prüfung: **Programmcode**, kein Modell — kann nicht halluzinieren |
 | Volltext-Zusammenfassung ganzer Dokumente (nicht nur Fundstellen) | gemma4:12b liest das Dokument in Teilen komplett |
+| **Aufträge über ein ganzes Dokument:** Präsentations-Gliederung, Folien-Stichpunkte, Handout, Vortrag, Lernkarten („Bereite mir aus der Dissertation eine Präsentation vor") | derselbe Volltext-Weg; Inhalte nur aus dem Dokument, Form frei |
 | Abbildungen/Diagramme der belegten Seiten direkt im Chat | Programmcode (schneidet sie aus der PDF-Seite aus) |
 | Bestandslisten („was habt ihr an …") in unter einer Sekunde | Katalog-Abfrage, **ganz ohne KI** |
 | Wörtliche Suche nach seltenen Fachbegriffen | Wortverzeichnis (baut sich selbst); Ähnlichkeitssuche: **bge-m3** |

@@ -294,6 +294,37 @@ _ZUSAMMENFASSUNG = re.compile(
     r"worum\s+handelt\s+es\s+sich|"
     r"was\s+ist\s+das\s+(?:thema|anliegen|ziel)\s+(?:von|der|des))", re.I)
 
+# ⭐ DOKUMENT-AUFTRAG: Aus einem GANZEN Dokument etwas Neues bauen -
+#   Praesentation, Gliederung, Handout, Stichpunkte, Vortrag, Lernkarten.
+#   Dasselbe Beduerfnis wie die Zusammenfassung (das ganze Dokument lesen,
+#   nicht neun Schnipsel), nur mit anderem Ziel. Laeuft ueber denselben
+#   Volltext-Weg; die Frage selbst wird zur Aufgabe fuers Modell.
+_DOK_AUFTRAG = re.compile(
+    r"\b(?:pr(?:ae|ä)sentation\w*|powerpoint|ppt|pptx|folien(?:satz)?|"
+    r"vortrag\w*|gliederung|handout|stichpunkt\w*|stichworte|"
+    r"lernkarte\w*|karteikarte\w*|skript|expos(?:e|é)|abstract|"
+    r"kurzfassung|management\s*summary|zusammenfassung|"
+    r"aufbereit\w*|bereite\w*\s+(?:\w+\s+){0,4}?(?:vor|auf))\b", re.I)
+
+
+def ist_dokument_auftrag(frage):
+    """Will jemand aus einem Dokument etwas ERARBEITET haben (Praesentation,
+    Gliederung, Handout ...)? Dann gilt der Volltext-Weg mit der Frage als
+    Aufgabe. Eine Sachfrage, in der 'Vortrag' nur als Thema vorkommt
+    ("Was sagt der Vortrag zu X?"), zaehlt nicht - es braucht ein
+    Erstell-Verb oder eine Form-Angabe."""
+    f = frage or ""
+    if not _DOK_AUFTRAG.search(f):
+        return False
+    return bool(re.search(
+        r"\b(?:erstell\w*|mach\w*|bau\w*|bereite\w*|schreib\w*|entwirf\w*|"
+        r"entwerf\w*|formulier\w*|generier\w*|leite\w*\s+ab|fass\w*|"
+        r"zusammenfass\w*|aufbereit\w*|gib\s+mir|brauche|will|m(?:oe|ö)chte|"
+        r"kannst\s+du|k(?:oe|ö)nntest\s+du|f(?:ue|ü)r\s+(?:eine|einen|ein|meine|"
+        r"meinen|mein)\s+(?:pr(?:ae|ä)sentation|vortrag|powerpoint|handout|"
+        r"folien))\b", f, re.I))
+
+
 # Vergleichsfragen. Das Trennwort wird gleich mitgenommen, damit sich die
 # beiden Seiten hinterher zerlegen lassen.
 _VERGLEICH = re.compile(
@@ -361,6 +392,42 @@ def _netz_frageart(frage):
         return None
 
 
+_NETZ_BILD_ANWEISUNG = (
+    "Will der Nutzer mit der folgenden Eingabe ein BILD, DIAGRAMM, eine "
+    "GRAFIK oder ABBILDUNG angezeigt bekommen (auch bei Tippfehlern oder "
+    "schlechtem Deutsch)? Antworte NUR mit JA oder NEIN. NEIN bei Sachfragen, "
+    "in denen ein Diagramm nur als Thema vorkommt (z.B. 'Welche Typen zeigt "
+    "das Diagramm?').")
+
+
+def netz_bildwunsch(frage):
+    """Kleines Modell als Ja/Nein-Instanz fuer Bildwuensche mit Tippfehlern
+    oder fremder Wortwahl. None = kein Netz / kein Ergebnis. Wirft nie."""
+    if not NETZ_AN or not (frage or "").strip():
+        return None
+    try:
+        from urllib.request import Request, urlopen
+        leib = json.dumps({
+            "model": NETZ_MODELL,
+            "messages": [{"role": "user",
+                          "content": _NETZ_BILD_ANWEISUNG + chr(10) + "Eingabe: "
+                                     + frage + chr(10) + "Antwort:"}],
+            "think": False, "stream": False, "options": {"temperature": 0},
+        }).encode("utf-8")
+        a = Request(NETZ_URL, data=leib,
+                    headers={"Content-Type": "application/json"}, method="POST")
+        with urlopen(a, timeout=NETZ_TIMEOUT) as r:
+            inhalt = (((json.loads(r.read()).get("message") or {})
+                       .get("content") or "")).strip().upper()
+        if inhalt.startswith("JA"):
+            return True
+        if inhalt.startswith("NEIN"):
+            return False
+        return None
+    except Exception:
+        return None
+
+
 def _netz_protokoll(frage, fall):
     """Haelt fest, dass das Netz gegriffen hat - fuer Nachvollziehbarkeit
     (auf welchem Weg entstand die Antwort) und fuer die Auswertung im Test."""
@@ -406,7 +473,7 @@ def einordnen(frage, hat_verlauf=False):
         if hat_verlauf:
             return "folgefrage"
 
-    if _ZUSAMMENFASSUNG.search(text):
+    if _ZUSAMMENFASSUNG.search(text) or ist_dokument_auftrag(text):
         return "zusammenfassung"
 
     if hat_verlauf and _ist_folgefrage(text):
@@ -467,6 +534,8 @@ def _ist_bestandsfrage(text):
     #   "fasse ... zusammen" oder "worum geht es" sagt, will Inhalt.
     if re.search(r"\bfass(?:e|t)?\b.*\bzusammen\b|\bzusammenfass\w*|"
                  r"\bzusammenfassung\b|\bworum\s+geht", text or "", re.I):
+        return False
+    if ist_dokument_auftrag(text):
         return False
     # ⭐ Ein klarer ERZEUGE/EXTRAHIERE/FASSE-Auftrag OHNE genannte Dokument-Art
     #   ist eine Inhalts-Aufgabe (mach etwas MIT Inhalt), keine Bestandsfrage.

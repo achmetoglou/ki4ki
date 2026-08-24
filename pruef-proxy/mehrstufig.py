@@ -141,10 +141,32 @@ def teil_auftrag(stueck, titel, nr, gesamt):
         "Satz.\n\n%s" % (nr, gesamt, titel, stueck))
 
 
-def gesamt_auftrag(teile, titel):
-    """Aus den Teilzusammenfassungen die endgueltige bauen."""
+AUFTRAG_REGEL = (
+    "Stuetze dich AUSSCHLIESSLICH auf das Dokument und erfinde keine "
+    "Inhalte. Du DARFST den vorhandenen Inhalt aber frei aufbereiten, "
+    "gliedern und in die gewuenschte Form bringen (z.B. Praesentations-"
+    "Gliederung mit Folientiteln und Stichpunkten je Folie, Handout, "
+    "Tabelle, Lernkarten). Antworte auf Deutsch.")
+
+
+def auftrag_direkt(text, titel, auftrag):
+    """Ein Dokument, das in einen Durchgang passt, mit der Aufgabe des
+    Nutzers bearbeiten."""
+    return ("%s\n\nAUFGABE: %s\n\nDOKUMENT „%s“:\n%s"
+            % (AUFTRAG_REGEL, auftrag, titel, text))
+
+
+def gesamt_auftrag(teile, titel, auftrag=None):
+    """Aus den Teilzusammenfassungen die endgueltige bauen - oder, wenn
+    eine AUFGABE gestellt ist, diese aus ALLEN Teilen erfuellen."""
     zusammen = "\n\n".join("--- Teil %d ---\n%s" % (i, t)
                            for i, t in enumerate(teile, 1))
+    if auftrag:
+        return (
+            "Unten stehen Zusammenfassungen ALLER %d Teile des Dokuments "
+            "„%s“ - es wurde vollstaendig gelesen. %s\n\n"
+            "AUFGABE: %s\n\n%s" % (len(teile), titel, AUFTRAG_REGEL,
+                                    auftrag, zusammen))
     return (
         "Unten stehen die Zusammenfassungen ALLER %d Teile des Dokuments "
         "„%s“. Verbinde sie zu einer einzigen Zusammenfassung auf Deutsch.\n\n"
@@ -158,7 +180,7 @@ def gesamt_auftrag(teile, titel):
         "einem Satz.\n\n%s" % (len(teile), titel, zusammen))
 
 
-def zusammenfassen(volltext, titel, frage_modell, melden=None):
+def zusammenfassen(volltext, titel, frage_modell, melden=None, auftrag=None):
     """Ein Dokument vollstaendig zusammenfassen - ueber so viele Durchgaenge
     wie noetig.
 
@@ -170,7 +192,9 @@ def zusammenfassen(volltext, titel, frage_modell, melden=None):
     Liefert ein dict: text, teile, zeichen, vollstaendig.
     """
     volltext = volltext or ""
-    alt = gemerkt(titel, volltext)
+    # Der Speicher kennt nur ZUSAMMENFASSUNGEN. Eine Praesentations-
+    # Gliederung ist etwas anderes - die wird immer frisch gebaut.
+    alt = None if auftrag else gemerkt(titel, volltext)
     if alt:
         return dict(alt, aus_dem_speicher=True)
 
@@ -182,10 +206,11 @@ def zusammenfassen(volltext, titel, frage_modell, melden=None):
     if len(st) == 1:
         if melden:
             melden("Lese das Dokument (%d Zeichen) …" % len(volltext))
-        text = frage_modell(teil_auftrag(st[0], titel, 1, 1))
+        text = frage_modell(auftrag_direkt(st[0], titel, auftrag) if auftrag
+                            else teil_auftrag(st[0], titel, 1, 1))
         ergebnis = {"text": text or "", "teile": 1, "zeichen": len(volltext),
                     "vollstaendig": bool(text)}
-        if text:
+        if text and not auftrag:
             merken(titel, volltext, ergebnis)
         return dict(ergebnis, aus_dem_speicher=False)
 
@@ -204,13 +229,14 @@ def zusammenfassen(volltext, titel, frage_modell, melden=None):
             teile.append(t)
 
     if melden:
-        melden("Verbinde %d Teile zur Gesamtzusammenfassung …" % len(st))
-    text = frage_modell(gesamt_auftrag(teile, titel))
+        melden(("Erfülle die Aufgabe aus allen %d Teilen …" if auftrag
+                else "Verbinde %d Teile zur Gesamtzusammenfassung …") % len(st))
+    text = frage_modell(gesamt_auftrag(teile, titel, auftrag))
     fehlend = sum(1 for t in teile if t.startswith("[Teil "))
     ergebnis = {"text": text or "", "teile": len(st),
                 "zeichen": len(volltext),
                 "vollstaendig": bool(text) and fehlend == 0,
                 "fehlende_teile": fehlend}
-    if text and fehlend == 0:
+    if text and fehlend == 0 and not auftrag:
         merken(titel, volltext, ergebnis)
     return dict(ergebnis, aus_dem_speicher=False)

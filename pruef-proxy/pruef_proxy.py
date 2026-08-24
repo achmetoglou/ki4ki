@@ -2598,7 +2598,7 @@ def nennungshinweis(anzahl):
             "Klick führt auf die gefundene Stelle.*" % anzahl)
 
 
-def zusammenfassungs_fuss(titel, gesamt, gelesen):
+def zusammenfassungs_fuss(titel, gesamt, gelesen, auftrag=False):
     """Der ehrliche Fuss unter einer Zusammenfassung.
 
     Frueher stand dort "Zusammenfassung des vollstaendigen
@@ -2608,6 +2608,14 @@ def zusammenfassungs_fuss(titel, gesamt, gelesen):
     vollstaendig.
     """
     name = assistent._titel_saubern(titel)
+    if auftrag and gelesen >= gesamt:
+        return ("*Aus dem vollständigen Dokument „%s“ (%d Zeichen) "
+                "erarbeitet — nicht aus einzelnen Fundstellen. Inhalte nur "
+                "aus dem Dokument, Form frei aufbereitet.*" % (name, gesamt))
+    if auftrag:
+        return ("*Aus „%s“ erarbeitet — gelesen wurden %d von %d Zeichen "
+                "(Anfang und Schluss); der Mittelteil ist ausgelassen.*"
+                % (name, gelesen, gesamt))
     if gelesen >= gesamt:
         return ("*Zusammenfassung des vollständigen Dokuments „%s“ "
                 "(%d Zeichen) — nicht aus einzelnen Fundstellen, sondern "
@@ -3919,7 +3927,7 @@ class Griff(BaseHTTPRequestHandler):
                 "Fassung nenne bitte eines davon):" + chr(10) + chr(10))
         return kopf + (chr(10) + chr(10)).join(teile)
 
-    def _zusammenfassung_ganz(self, dok, titel, melden=None):
+    def _zusammenfassung_ganz(self, dok, titel, melden=None, auftrag=None):
         """Ein Dokument VOLLSTAENDIG zusammenfassen - notfalls in Etappen.
 
         Liefert (text, gelesen, gesamt). "gelesen" geht in den Fuss unter
@@ -3939,7 +3947,7 @@ class Griff(BaseHTTPRequestHandler):
         ganz = (dok.text or "") if dok else ""
         try:
             e = mehrstufig.zusammenfassen(ganz, titel, self._modell_fragen,
-                                          melden)
+                                          melden, auftrag=auftrag)
             if e and (e.get("text") or "").strip():
                 return e["text"], int(e.get("zeichen") or 0), len(ganz)
             print("mehrstufig lieferte nichts fuer %r" % (titel,),
@@ -3950,8 +3958,13 @@ class Griff(BaseHTTPRequestHandler):
         # Rueckfallweg: lieber eine gekuerzte Zusammenfassung als gar keine.
         # Der Fuss nennt dann die 48.000 - stillschweigend auf sieben
         # Prozent zurueckzufallen waere genau der alte Fehler.
-        auftrag, _ = assistent.zusammenfassungs_auftrag(ganz, titel)
-        return self._modell_fragen(auftrag), min(len(ganz), 48000), len(ganz)
+        if auftrag:
+            gekuerzt = ganz[:48000]
+            return (self._modell_fragen(
+                mehrstufig.auftrag_direkt(gekuerzt, titel, auftrag)),
+                len(gekuerzt), len(ganz))
+        _auftrag, _ = assistent.zusammenfassungs_auftrag(ganz, titel)
+        return self._modell_fragen(_auftrag), min(len(ganz), 48000), len(ganz)
 
     def _modell_fragen(self, auftrag, zeitgrenze=900, modell=None):
         """Das Sprachmodell direkt fragen - ohne Suche, ohne AnythingLLM.
@@ -4062,13 +4075,19 @@ class Griff(BaseHTTPRequestHandler):
         # also immer um eins zu niedrig - und bei kurzen Dokumenten sagt
         # sie ohnehin nichts ueber die Wartezeit. Deshalb erst ab drei.
         seiten = len(dok.marken) + 1 if dok.marken else 0
-        self._stand(stand, "Lese *%s* vollständig%s und fasse zusammen — "
+        # Ein DOKUMENT-AUFTRAG (Praesentation, Gliederung, Handout ...) nutzt
+        # denselben Volltext-Weg - die Frage selbst ist die Aufgabe.
+        _auftrag = frage if assistent.ist_dokument_auftrag(frage) else None
+        self._stand(stand, "Lese *%s* vollständig%s und %s — "
                     "das dauert länger als eine gewöhnliche Frage …"
                     % (assistent._titel_saubern(gewaehlt),
-                       " (%d Seiten)" % seiten if seiten >= 3 else ""))
+                       " (%d Seiten)" % seiten if seiten >= 3 else "",
+                       "bereite daraus auf, was du wünschst" if _auftrag
+                       else "fasse zusammen"))
         try:
             text, _gelesen, _ganz = self._zusammenfassung_ganz(
-                dok, gewaehlt, lambda m: self._stand(stand, m))
+                dok, gewaehlt, lambda m: self._stand(stand, m),
+                auftrag=_auftrag)
         except Exception as e:
             traceback.print_exc(file=sys.stderr)
             self._stand_weg(stand)
@@ -4086,7 +4105,8 @@ class Griff(BaseHTTPRequestHandler):
             return False
 
         text += "\n".join(["", "---",
-                           zusammenfassungs_fuss(gewaehlt, _ganz, _gelesen)])
+                           zusammenfassungs_fuss(gewaehlt, _ganz, _gelesen,
+                                                 auftrag=bool(_auftrag))])
 
         self._festhalten("zusammenfassung", frage, text)
         self._stand_weg(stand)
@@ -5574,9 +5594,53 @@ _BILD_ZEIGEN = re.compile(
     r"[^?]*?\b" + _BILDWORT + r")", re.I)
 
 
+_BILDWOERTER = ("bild", "bilder", "abbildung", "abbildungen", "diagramm",
+                "diagramme", "grafik", "grafiken", "graphik", "schaubild",
+                "skizze", "zeichnung", "figur", "figure", "chart", "picture",
+                "image", "graph", "plot")
+_ZEIGWOERTER = ("zeig", "zeige", "zeigen", "zeigst", "anzeigen", "sehen",
+                "show", "display")
+
+
+def _unscharf(wort, liste, mindest=0.8, minlaenge=4):
+    """Tippfehler-tolerant: 'diagrm', 'abbildng', 'zeg mir'."""
+    import difflib
+    w = wort.lower()
+    if len(w) < minlaenge:
+        return False
+    return any(difflib.SequenceMatcher(None, w, z).ratio() >= mindest
+               for z in liste)
+
+
 def _ist_bildwunsch(frage):
+    """Bildwunsch erkennen - in drei Stufen.
+
+    1. Regel (klare Formen, genannte Bildnummer).
+    2. Unscharf: Tippfehler und Fremdwoerter ('Zeig mir ein Diagrm',
+       'show me a picture') - Wortvergleich, ohne Modell.
+    3. Kleines Modell als Ja/Nein-Instanz, wenn ein Zeig-Verb da ist, aber
+       kein Bildwort erkannt wurde - fuer alles, was Regeln nicht ahnen.
+    ⚠ Sachfragen, in denen ein Diagramm nur vorkommt ("Welche Typen zeigt
+      das Diagramm?"), bleiben in allen drei Stufen Fachfragen.
+    """
     f = frage or ""
-    return bool(_BILDNUMMER.search(f) or _BILD_ZEIGEN.search(f))
+    if _BILDNUMMER.search(f) or _BILD_ZEIGEN.search(f):
+        return True
+    woerter = re.findall(r"[A-Za-zÄÖÜäöüß]+", f)
+    if not woerter:
+        return False
+    zeig_vorn = any(_unscharf(w, _ZEIGWOERTER, 0.75, 3) for w in woerter[:3]) \
+        or re.match(r"^\s*(?:kannst|k(?:oe|ö)nntest|gibt|hast|habt|can|could)\b",
+                    f, re.I)
+    bildwort = any(_unscharf(w, _BILDWOERTER) for w in woerter)
+    if zeig_vorn and bildwort:
+        return True
+    if zeig_vorn and not bildwort:
+        try:
+            return bool(assistent.netz_bildwunsch(f))
+        except Exception:
+            return False
+    return False
 
 
 def _bildunterschrift(seitentext, nummer=None):
