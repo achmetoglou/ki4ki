@@ -4080,7 +4080,14 @@ class Griff(BaseHTTPRequestHandler):
         except Exception:
             return False
         roh = (roh or "").strip()
-        if len(roh) < 25 or roh.upper().startswith("NICHTS"):
+        # Das Modell haelt sich nicht immer an "antworte NUR mit dem Wort
+        # NICHTS" - gemessen: "Der Text enthaelt keine Informationen
+        # darueber, was ein Wendelverteiler ist. NICHTS" - das Steuerwort
+        # stand am ENDE und landete roh beim Nutzer. Fehlanzeige gilt
+        # deshalb, sobald das grossgeschriebene Steuerwort irgendwo als
+        # eigenes Wort steht; in einer echten Kurzantwort kommt es nicht
+        # vor. Rueckfall bleibt das grosse Modell.
+        if len(roh) < 25 or re.search(r"\bNICHTS\b", roh):
             return False   # Fail-safe -> grosses Modell
         namen = list(dict.fromkeys(re.findall(r"\[([^\],]+)", zusatz)))
         quellstaemme = {(t[:-3] if t.endswith(".md") else t) for t in namen}
