@@ -40,10 +40,12 @@ ChatGPT fragen":
 | Betriebssystem | Linux mit **Docker** und **Docker Compose v2** |
 | Arbeitsspeicher | **32 GB**, besser 64 GB |
 | Festplatte | **100 GB** frei, plus etwa das Doppelte der eigenen PDF-Menge |
-| Grafikkarte | **empfohlen** — NVIDIA ab 16 GB + NVIDIA Container Toolkit |
+| Grafikkarte | **empfohlen** — NVIDIA ab 16 GB. Einzige Voraussetzung: der **NVIDIA-Treiber** ist installiert (`nvidia-smi` zeigt die Karte — bei GPU-Servern der Normalfall). Die Docker-GPU-Brücke (Container Toolkit) richtet `start.sh` **selbst** ein. |
 
 **Ohne Grafikkarte läuft alles**, nur deutlich langsamer (aus ~1,5 Min je Antwort
-werden zehn und mehr).
+werden zehn und mehr). `start.sh` erkennt selbst, was da ist: NVIDIA → GPU-Betrieb,
+AMD → ROCm-Fassung (vorbereitet, auf echter AMD-Hardware noch ungetestet),
+sonst CPU.
 
 ---
 
