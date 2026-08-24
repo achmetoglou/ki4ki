@@ -4882,11 +4882,22 @@ class Griff(BaseHTTPRequestHandler):
             # NEU angelegten Bereichs scheitert still. Also den Ordner
             # gleich an node uebergeben. Nur-lesbar? Dann sind wir nicht
             # root (Entwicklung); der Rechte-Vorlauf beim Start faengt es.
+            # Gruppe = die des Server-Nutzers (KI4KI_GID aus der .env), Modus
+            # 2775 mit setgid: n8n (1000) verschiebt, der Mensch legt per
+            # SFTP Dateien ab. Mit 1000:1000/755 war ihm sein eigener
+            # Dokumentordner verschlossen ("Uebertragung konnte nicht
+            # gestartet werden").
             try:
-                os.chown(wurzel, 1000, 1000)
-                os.chown(_konf, 1000, 1000)
-                for unter in ("input", "parkplatz", "archiv", "aussortiert"):
-                    os.chown(os.path.join(wurzel, unter), 1000, 1000)
+                _gid = int(os.environ.get("KI4KI_GID") or 1000)
+            except ValueError:
+                _gid = 1000
+            try:
+                for _p in [wurzel] + [os.path.join(wurzel, u) for u in
+                                      ("input", "parkplatz", "archiv", "aussortiert")]:
+                    os.chown(_p, 1000, _gid)
+                    os.chmod(_p, 0o2775)
+                os.chown(_konf, 1000, _gid)
+                os.chmod(_konf, 0o664)
             except (PermissionError, OSError):
                 pass
         except Exception as e:

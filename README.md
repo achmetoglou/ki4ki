@@ -260,7 +260,10 @@ der start.sh-Verlauf „⚠ Nicht alle Workflows aktiviert" gemeldet hat:
    **`./dokumente/<bereich>/input/`** (z. B.
    `./dokumente/wissensdatenbank/input/`) — **nicht** in die `./dokumente`-Wurzel,
    dort schaut niemand nach. Die Aufnahme startet automatisch (alle 5 Min wird
-   geschaut).
+   geschaut). **Massenlauf per SFTP/FileZilla/scp:** mit dem Server-Nutzer, der
+   `start.sh` ausgeführt hat, direkt nach `dokumente/<bereich>/input/`
+   (oder `parkplatz/` zum Zwischenlagern) — die Ordner sind dafür für diesen
+   Nutzer schreibbar eingerichtet.
    **Fertig erkennst du daran**, dass das Dokument in der Oberfläche durchsuchbar
    ist bzw. in `dokumente/<bereich>/archiv/` gewandert ist. Bildreiche Scans
    dauern einige Minuten.

@@ -89,10 +89,18 @@ services:
     entrypoint: ["/bin/sh", "-c"]
     command:
     - |
-      for d in /files/json /files/processed /files/anythingllm /files/dokumente; do
+      for d in /files/json /files/processed /files/anythingllm; do
         mkdir -p "$$d" && chown -R 1000:1000 "$$d"
       done
-      echo "Rechte gesetzt: n8n (1000) darf in die geteilten Ordner schreiben."
+      # ./dokumente teilen sich n8n (1000) und der MENSCH auf dem Server
+      # (seine Gruppe kommt aus der .env, KI4KI_GID): Ordner 2775 mit
+      # setgid, Dateien 664 - so kann er per SFTP/scp Massenlaeufe
+      # einspielen, und n8n darf weiterhin verschieben.
+      mkdir -p /files/dokumente
+      chown -R 1000:${KI4KI_GID:-1000} /files/dokumente
+      find /files/dokumente -type d -exec chmod 2775 {} +
+      find /files/dokumente -type f -exec chmod 664 {} +
+      echo "Rechte gesetzt: n8n (1000) und Server-Nutzer (Gruppe ${KI4KI_GID:-1000}) duerfen schreiben."
     volumes:
     - ./dokumente:/files/dokumente
     - austausch:/files/processed
@@ -237,6 +245,9 @@ services:
     # Daten-Volume, nicht im Abbild: Was das Modell vom Deckblatt liest,
     # muss einen Neubau des Containers ueberleben.
     - KI4KI_BESTANDSINDEX=/daten/pruefung/bestandsindex.json
+    # Gruppe des Server-Nutzers (aus .env): neu angelegte Bereichs-Ordner
+    # bekommen 1000:<Gruppe> + setgid, damit Mensch UND n8n schreiben.
+    - KI4KI_GID=${KI4KI_GID:-1000}
     # Beim Hochladen ueber die Oberflaeche die Aufnahme direkt anstossen.
     # Hier ist n8n der einzige Weg: Es gibt weder Waechter noch Zyklus,
     # eine Anstoss-Datei wuerde niemand lesen.

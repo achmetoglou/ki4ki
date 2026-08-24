@@ -136,6 +136,16 @@ fi
 # dabei, ohne dass jemand `-f ...` tippen muss.
 COMPOSE_WERT=$(printf '%s' "$DATEIEN" | sed 's/-f //g' | xargs | tr ' ' ':')
 touch .env
+# Der Server-Nutzer (wer start.sh ausfuehrt) muss in ./dokumente schreiben
+# duerfen - fuer Massenlaeufe per SFTP/scp/FileZilla. Vorher gehoerte der
+# Ordner komplett n8n (uid 1000, Modus 755): FileZilla meldete "Uebertragung
+# konnte nicht gestartet werden". Jetzt seine Gruppe in die .env; rechte-init
+# und der Proxy geben die Ordner an 1000:<diese Gruppe> mit setgid (2775),
+# so duerfen n8n UND der Mensch schreiben.
+for kv in "KI4KI_UID=$(id -u)" "KI4KI_GID=$(id -g)"; do
+  k="${kv%%=*}"
+  if grep -q "^$k=" .env 2>/dev/null; then sed -i "s|^$k=.*|$kv|" .env; else echo "$kv" >> .env; fi
+done
 if grep -q '^COMPOSE_FILE=' .env 2>/dev/null; then
   sed -i "s|^COMPOSE_FILE=.*|COMPOSE_FILE=$COMPOSE_WERT|" .env
 else
