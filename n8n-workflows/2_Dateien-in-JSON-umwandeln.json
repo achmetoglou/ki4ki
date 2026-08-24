@@ -42,7 +42,7 @@
             },
             {
               "name": "do_picture_description",
-              "value": "={{ ($env.KI4KI_BILDBESCHREIBUNG || 'an') === 'aus' ? 'false' : 'true' }}"
+              "value": "={{ ($json.massenlauf === true || $json.massenlauf === 'true') ? 'false' : ((($env.KI4KI_BILDBESCHREIBUNG || 'an') === 'aus') ? 'false' : 'true') }}"
             },
             {
               "name": "do_picture_classification",
@@ -321,6 +321,10 @@
             {
               "name": "fileExtension",
               "type": "any"
+            },
+            {
+              "name": "massenlauf",
+              "type": "boolean"
             }
           ]
         }

@@ -161,6 +161,12 @@ services:
     #                      oder textlastige Bestaende).
     #   Partner setzen das per .env (KI4KI_BILDBESCHREIBUNG=aus); Standard "an".
     - KI4KI_BILDBESCHREIBUNG=${KI4KI_BILDBESCHREIBUNG:-an}
+    # Massenlauf-Automatik: Liegen mindestens so viele Dateien im Eingang,
+    # laeuft der Durchgang OHNE Bildbeschreibung (Stunden statt Wochen) und
+    # jedes Dokument kommt in <bereich>/bilder-nachholen.txt zum spaeteren
+    # Nachreichen der Bilder. Alltag (einzelne Uploads) bleibt mit Bildern.
+    # Niemand schaltet von Hand. Per .env aenderbar.
+    - KI4KI_MASSENLAUF_AB=${KI4KI_MASSENLAUF_AB:-6}
     volumes:
     - n8n-daten:/home/node/.n8n
     - ./dokumente:/files/dokumente

@@ -315,6 +315,18 @@ auf diesen Dienst.
 Standard **an** (`=1`). Abschalten: `=0` + `docker compose up -d pruef-proxy`.
 Unter jeder Antwort steht das verantwortliche Modell (`KI4KI_MODELL_ANZEIGE`).
 
+### 5.1a · Massenlauf-Automatik (viele Dokumente auf einmal)
+
+Ein Dokument mit Bildbeschreibung braucht 10–25 Minuten (jedes Diagramm geht
+einzeln durchs Vision-Modell). Für 1000 Dokumente wären das Wochen. Deshalb
+entscheidet die Aufnahme **selbst**: Liegen **mindestens 6 Dateien** im
+Eingang (`KI4KI_MASSENLAUF_AB`), läuft der Durchgang **ohne**
+Bildbeschreibung — Text, OCR, Formeln, Bildunterschriften bleiben; die
+Dokumente sind in Minuten durchsuchbar und belegbar. Jedes so aufgenommene
+Dokument steht in **`dokumente/<bereich>/bilder-nachholen.txt`**; die
+Bildbeschreibungen werden später nachgereicht. Einzelne Uploads im Alltag
+laufen weiter mit Bildern. Niemand muss etwas umschalten.
+
 ### 5.2 · Bestandslisten (der Katalog)
 
 „Was habt ihr an …?", „wie viele … gibt es?" → **direkt aus dem Katalog**, ohne
