@@ -233,6 +233,10 @@ services:
     - KI4KI_EINGANG=/daten/eingang
     - KI4KI_GEDAECHTNIS=/daten/pruefung/geprueft.json
     - KI4KI_ZWISCHENSPEICHER=/daten/pruefung/vorauswahl.pickle
+    # Der Katalog (Titel/Verfasser/Jahr je Dokument) - dauerhaft im
+    # Daten-Volume, nicht im Abbild: Was das Modell vom Deckblatt liest,
+    # muss einen Neubau des Containers ueberleben.
+    - KI4KI_BESTANDSINDEX=/daten/pruefung/bestandsindex.json
     # Beim Hochladen ueber die Oberflaeche die Aufnahme direkt anstossen.
     # Hier ist n8n der einzige Weg: Es gibt weder Waechter noch Zyklus,
     # eine Anstoss-Datei wuerde niemand lesen.

@@ -354,7 +354,8 @@ if [ -n "$KONTO_FERTIG" ]; then
     echo "     Passwort:  (dasselbe wie oben)"
   fi
   echo ""
-  echo "  Jetzt nur noch PDFs nach ./dokumente legen - die Aufnahme laeuft von selbst."
+  echo "  Jetzt PDFs ueber den Hochladen-Knopf der Oberflaeche einspielen - oder auf dem"
+  echo "  Server nach ./dokumente/<bereich>/input/ legen. Die Aufnahme laeuft von selbst."
   echo ""
 else
   cat <<'ENDE'
@@ -368,7 +369,7 @@ else
      neu laden:   ./start.sh
 
   3. Einen Arbeitsbereich anlegen:   ./arbeitsbereich_anlegen.sh <Schluessel>
-     Danach PDFs nach ./dokumente legen; die Aufnahme laeuft von selbst.
+     Danach PDFs ueber die Oberflaeche hochladen (oder nach ./dokumente/<bereich>/input/ legen); die Aufnahme laeuft von selbst.
 
 ENDE
 fi

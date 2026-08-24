@@ -460,6 +460,14 @@ def _bestand_signal():
 
 
 def _ist_bestandsfrage(text):
+    # ⭐⭐ Ein ZUSAMMENFASSUNGS-Auftrag ist NIE eine Bestandsfrage - auch nicht
+    #   mit genannter Art. Gemessen: "Fasse mir die Dissertation von Malte
+    #   zusammen" lieferte eine Bestandstabelle statt der Zusammenfassung,
+    #   weil "Dissertation" (Art) die Fasse-Ausnahme unten aushebelte. Wer
+    #   "fasse ... zusammen" oder "worum geht es" sagt, will Inhalt.
+    if re.search(r"\bfass(?:e|t)?\b.*\bzusammen\b|\bzusammenfass\w*|"
+                 r"\bzusammenfassung\b|\bworum\s+geht", text or "", re.I):
+        return False
     # ⭐ Ein klarer ERZEUGE/EXTRAHIERE/FASSE-Auftrag OHNE genannte Dokument-Art
     #   ist eine Inhalts-Aufgabe (mach etwas MIT Inhalt), keine Bestandsfrage.
     #   Mit Art ("erstelle eine Liste aller Dissertationen") bleibt es Bestand -
@@ -739,6 +747,11 @@ def bestandsauskunft(frage, titel, bereich=None, vorher=None):
         zeilen = ["- **%s** — %d" % (name, n) for name, n in gruppen]
         kopf += "\n\n" + "\n".join(zeilen)
     if len(sauber) <= 60:
+        try:
+            import bestand as _bst
+            _bst.nachtragen(sauber)
+        except Exception:
+            pass
         return kopf + "\n\n" + _liste(sauber)
     # Bei grossen Bestaenden hilft eine angeschnittene Liste niemandem: Die
     # ersten vierzig Titel der Fremdliteratur heissen "0000000" und sagen
@@ -795,6 +808,15 @@ def _liste_nach_art(frage, namen, bereich=None):
         Zeilenumbrueche in Titeln ebenso."""
         return (t or "").replace("|", "\\|").replace("\n", " ").strip()
 
+    # ⭐ Katalog vor Modell - aber Leerstellen fuellt das Modell: Fehlt der
+    #   Eintrag (frische Anlage ohne Katalog, Fremddokument), liest das
+    #   kleine Modell Titel/Verfasser/Jahr vom Deckblatt und traegt sie ein.
+    #   Vorher stand in jeder Zeile "kein Katalogeintrag" - eine
+    #   Bestandsliste ohne Titel ist wertlos.
+    try:
+        bestand.nachtragen(passend)
+    except Exception:
+        pass
     zeilen = ["| Kennung | Titel | Verfasser | Jahr |",
               "|---|---|---|---|"]
     ohne_titel = 0
@@ -805,15 +827,16 @@ def _liste_nach_art(frage, namen, bereich=None):
         # im Namen traegt.
         verweis = "[%s](/pdf/%s)" % (_zelle(n), quote(n, safe=""))
         if a and a["titel"]:
-            zeilen.append("| %s | %s | %s | %s |"
-                          % (verweis, _zelle(a["titel"]),
+            marke = "°" if a.get("quelle") == "modell" else ""
+            zeilen.append("| %s | %s%s | %s | %s |"
+                          % (verweis, _zelle(a["titel"]), marke,
                              _zelle(a["verfasser"]), _zelle(a["jahr"])))
         else:
             ohne_titel += 1
             zeilen.append("| %s | *kein Katalogeintrag* |  |  |" % verweis)
 
-    fuss = ("\n\n*Die Titel stammen aus dem hinterlegten Katalog, "
-            "nicht aus den Dokumenten selbst.*")
+    fuss = ("\n\n*Titel aus dem hinterlegten Katalog; mit ° markierte hat das "
+            "kleine Modell aus dem Deckblatt gelesen.*")
     if ohne_titel:
         fuss += ("\n\n*Zu %d Arbeit(en) liegt kein Katalogeintrag vor.*"
                  % ohne_titel)
@@ -883,7 +906,26 @@ def _titel_saubern(t):
 
 
 def _liste(titel):
-    return "\n".join("- %s" % t for t in titel)
+    """Eine Zeile je Dokument - mit Titel, Verfasser und Jahr, wo bekannt.
+
+    Vorher stand hier nur der Dateiname ("DS-00-000"). Fuer jemanden, der
+    den Bestand nicht auswendig kennt, sagt das nichts."""
+    try:
+        import bestand
+    except Exception:
+        bestand = None
+    zeilen = []
+    for t in titel:
+        a = bestand.angaben(t) if bestand else None
+        if a and a.get("titel"):
+            extra = ", ".join(x for x in (a.get("verfasser"),
+                                         str(a.get("jahr") or "")) if x)
+            zeilen.append("- **%s** — %s%s%s" % (
+                t, a["titel"], (" (%s)" % extra) if extra else "",
+                "°" if a.get("quelle") == "modell" else ""))
+        else:
+            zeilen.append("- %s" % t)
+    return "\n".join(zeilen)
 
 
 def _fussnote(gesamt):

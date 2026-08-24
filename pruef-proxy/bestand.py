@@ -167,6 +167,157 @@ def nach_art(namen, kennzeichen):
     return [n for n in namen if kennung(n) == kennzeichen]
 
 
+# ------------------------------------------ Katalog aus dem Dokument fuellen
+#
+# REGEL (Entscheidung 11.08.): Katalog vor Modell - das Modell fuellt NUR
+# Leerstellen. Auf einer frischen Anlage gibt es keinen Katalog; ohne diesen
+# Weg staende in jeder Bestandsliste "kein Katalogeintrag". Das kleine Modell
+# liest Titel, Verfasser und Jahr vom Deckblatt (gemessen: bei 839 von 1256
+# Arbeiten deckungsgleich mit dem Katalog) und der Eintrag wird dauerhaft
+# abgelegt - markiert mit quelle="modell", damit ein spaeterer Katalog ihn
+# ueberschreiben darf.
+
+_BESTAND_ORDNER = os.environ.get("KI4KI_BESTAND") or "/daten/bestand/documents"
+_NETZ_MODELL = os.environ.get("KI4KI_NETZ_MODELL") or "gemma4:e2b"
+_NETZ_URL = os.environ.get("KI4KI_NETZ_URL") or "http://nothink-proxy:11435/api/chat"
+_NACHTRAG_SPERRE = threading.Lock()
+_NACHTRAG_LAEUFT = set()
+
+_DECKBLATT_ANWEISUNG = (
+    "Unten steht der Anfang eines wissenschaftlichen Dokuments (Deckblatt, "
+    "Impressum). Lies daraus den TITEL der Arbeit, den VERFASSER (die Person, "
+    "die die Arbeit geschrieben hat - nicht Betreuer, Gutachter oder Institut) "
+    "und das JAHR. Antworte NUR mit einer JSON-Zeile der Form "
+    '{"titel": "...", "verfasser": "...", "jahr": "..."}. Was nicht dasteht, '
+    "bleibt leer. Nichts erfinden.")
+
+
+def _volltext_anfang(name, zeichen=4000):
+    """Der Anfang des aufbereiteten Textes (Deckblatt, Impressum) - oder ''."""
+    stamm = str(name)
+    if stamm.lower().endswith((".pdf", ".md")):
+        stamm = stamm.rsplit(".", 1)[0]
+    ziel = _grund(stamm)
+    for wurzel, _, dateien in os.walk(_BESTAND_ORDNER):
+        for d in dateien:
+            if not d.endswith(".json"):
+                continue
+            if _grund(d.split(".md-")[0]) != ziel:
+                continue
+            try:
+                with open(os.path.join(wurzel, d), encoding="utf-8") as f:
+                    return (json.load(f).get("pageContent") or "")[:zeichen]
+            except Exception:
+                return ""
+    return ""
+
+
+def _json_aus(inhalt):
+    """Titel/Verfasser/Jahr aus der Modellantwort - oder None."""
+    m = re.search(r"\{.*?\}", inhalt or "", re.S)
+    if not m:
+        return None
+    try:
+        d = json.loads(m.group(0))
+    except Exception:
+        return None
+    if not isinstance(d, dict):
+        return None
+    titel = re.sub(r"\s+", " ", str(d.get("titel") or "")).strip()
+    if len(titel) < 8:
+        return None
+    jahr = re.search(r"(?:19|20)\d{2}", str(d.get("jahr") or ""))
+    return {"titel": titel[:300],
+            "verfasser": re.sub(r"\s+", " ", str(d.get("verfasser") or "")).strip()[:120],
+            "jahr": jahr.group(0) if jahr else ""}
+
+
+def _deckblatt_lesen(text):
+    """Fragt das kleine Modell. Gibt dict oder None - wirft NIE."""
+    try:
+        from urllib.request import Request, urlopen
+        leib = json.dumps({
+            "model": _NETZ_MODELL,
+            "messages": [{"role": "user",
+                          "content": _DECKBLATT_ANWEISUNG + "\n\n" + text}],
+            "think": False, "stream": False,
+            "options": {"temperature": 0},
+        }).encode("utf-8")
+        a = Request(_NETZ_URL, data=leib,
+                    headers={"Content-Type": "application/json"}, method="POST")
+        with urlopen(a, timeout=90) as r:
+            antwort = json.loads(r.read())
+        return _json_aus(((antwort.get("message") or {}).get("content") or ""))
+    except Exception:
+        return None
+
+
+def eintragen(name, angabe, quelle="modell", pfad=VERZEICHNIS):
+    """Einen Katalogeintrag dauerhaft ablegen und den Speicher nachziehen."""
+    global _GELADEN
+    with _SPERRE:
+        try:
+            with open(pfad, encoding="utf-8") as f:
+                d = json.load(f)
+        except Exception:
+            d = {}
+        eintrag = dict(angabe)
+        eintrag["quelle"] = quelle
+        d[str(name)] = eintrag
+        try:
+            os.makedirs(os.path.dirname(pfad) or ".", exist_ok=True)
+            tmp = pfad + ".neu"
+            with open(tmp, "w", encoding="utf-8") as f:
+                json.dump(d, f, ensure_ascii=False, indent=1)
+            os.replace(tmp, pfad)
+        except Exception:
+            pass          # dann gilt der Eintrag nur bis zum Neustart
+        _GELADEN = None   # beim naechsten laden() frisch einlesen
+    return eintrag
+
+
+def _einen_nachtragen(name):
+    with _NACHTRAG_SPERRE:
+        if name in _NACHTRAG_LAEUFT:
+            return False
+        _NACHTRAG_LAEUFT.add(name)
+    try:
+        text = _volltext_anfang(name)
+        if not text.strip():
+            return False
+        angabe = _deckblatt_lesen(text)
+        if not angabe:
+            return False
+        eintragen(name, angabe, quelle="modell")
+        return True
+    finally:
+        with _NACHTRAG_SPERRE:
+            _NACHTRAG_LAEUFT.discard(name)
+
+
+def nachtragen(namen, hoechstens=5):
+    """Fehlende Katalogeintraege vom Deckblatt lesen lassen.
+
+    Bis `hoechstens` sofort (je ~1-2 s), der Rest im Hintergrund - eine
+    Bestandsfrage darf nicht minutenlang haengen, nur weil 500 Arbeiten
+    noch keinen Eintrag haben. Beim naechsten Aufruf sind mehr da.
+    Liefert die Zahl der sofort nachgetragenen."""
+    offen = []
+    for n in namen or []:
+        a = angaben(n)
+        if a and a.get("titel"):
+            continue
+        offen.append(n)
+    if not offen:
+        return 0
+    sofort, spaeter = offen[:hoechstens], offen[hoechstens:]
+    getan = sum(1 for n in sofort if _einen_nachtragen(n))
+    if spaeter:
+        threading.Thread(target=lambda: [_einen_nachtragen(n) for n in spaeter],
+                         daemon=True).start()
+    return getan
+
+
 def wie_viele_im_katalog(kennzeichen):
     """Wie viele Arbeiten dieser Art kennt der Katalog insgesamt?"""
     d = laden()

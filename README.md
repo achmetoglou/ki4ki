@@ -315,7 +315,12 @@ Unter jeder Antwort steht das verantwortliche Modell (`KI4KI_MODELL_ANZEIGE`).
 
 „Was habt ihr an …?", „wie viele … gibt es?" → **direkt aus dem Katalog**, ohne
 Modell. Der Katalog ist **eine Datei** `bestandsindex.json` (Titel, Verfasser,
-Jahr, Art), erzeugt aus einer Metadaten-Tabelle. **Wann eine Liste kommt**,
+Jahr, Art) im Daten-Volume `pruefdaten`. **Er füllt sich selbst:** Fehlt zu
+einem Dokument der Eintrag (frische Anlage, Fremddokument), liest das kleine
+Modell Titel, Verfasser und Jahr vom Deckblatt und trägt sie ein — in der
+Liste mit **°** markiert. Regel: Katalog vor Modell, das Modell füllt nur
+Leerstellen. Wer eine eigene Metadaten-Tabelle hat, kann die Datei damit
+überschreiben. **Wann eine Liste kommt**,
 steuern die **Auslöser-Wörter** in `wortlisten.txt` (ohne Neustart änderbar); dort
 stehen auch die **Kennungen** (DS = Dissertation, BS = …).
 

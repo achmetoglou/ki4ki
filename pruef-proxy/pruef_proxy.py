@@ -1150,6 +1150,10 @@ def _grundform(name):
 _PDFS_SPERRE = threading.Lock()
 _PDFS_STAND = [0.0]
 
+# Die laufende Frage und ihre Quellen - fuer die Abbildungs-Auswahl unter
+# der Antwort (ThreadingHTTPServer: ein Thread je Anfrage).
+_ANFRAGE = threading.local()
+
 
 def _pdfs_erneuern_wenn_faellig():
     """Das PDF-Verzeichnis nachladen - gedrosselt.
@@ -3298,7 +3302,9 @@ class Griff(BaseHTTPRequestHandler):
             geprueft = kopf + rest
             if wieviele:
                 geprueft += "\n\n" + nennungshinweis(wieviele)
+            _ANFRAGE.frage, _ANFRAGE.namen = frage, list(namen)
             geprueft += "\n\n" + bilanzzeile(pruefungen, roh)
+            geprueft = ohne_bildleugnung(geprueft, "/abbildung?dok=" in geprueft)
             # Live-Modellhinweis OHNE Zahlen (AnythingLLMs graue Metrik
             #   liefert Zeit/Token erst beim Neuladen; hier nur der Name,
             #   damit im Direkt-Output steht, WER geantwortet hat).
@@ -3807,7 +3813,10 @@ class Griff(BaseHTTPRequestHandler):
             _g = _kopf + _rest
             if _wieviele:
                 _g += "\n\n" + nennungshinweis(_wieviele)
+            _ANFRAGE.frage, _ANFRAGE.namen = frage, list(namen)
             antwort["textResponse"] = _g + "\n\n" + bilanzzeile(pruefungen, roh)
+            antwort["textResponse"] = ohne_bildleugnung(
+                antwort["textResponse"], "/abbildung?dok=" in antwort["textResponse"])
             antwort["belegpruefung"] = veredeln.bilanz(pruefungen)
             antwort["fundstellen"] = [veredeln.fundstelle(p)
                                       for p in pruefungen if p.get("doku")]
@@ -5309,6 +5318,24 @@ def _mit_abbildungen(text, pruefungen, rohtext):
     return text + ("\n".join(zusatz) if zusatz else "")
 
 
+# Nur Saetze mit VERNEINUNG ("kann keine", "nicht moeglich"): "Das Diagramm
+# kann die Verteilung zeigen" ist eine Sachaussage und bleibt stehen.
+_LEUGNUNG = re.compile(
+    r"[^.\n]*\b(?:ich|es|mir)\b[^.\n]*\b(?:kann|können|ist|sind)\b[^.\n]*"
+    r"\b(?:keine?|kein|nicht)\b[^.\n]*"
+    r"\b(?:Bild(?:er)?|Grafik(?:en)?|Diagramm(?:e)?|Abbildung(?:en)?)\b"
+    r"[^.\n]*\.\s*", re.I)
+
+
+def ohne_bildleugnung(text, hat_bilder):
+    """Saetze wie "Ich kann keine Bilder anzeigen" streichen - wenn die
+    Anlage gerade Bilder anhaengt. Sonst steht die Leugnung direkt ueber
+    dem Bild, und der Leser haelt die Anlage fuer kaputt."""
+    if not hat_bilder:
+        return text
+    return _LEUGNUNG.sub("", text or "")
+
+
 def _abbildungen_zeigen(pruefungen, rohtext="", hoechstens=2):
     """Abbildungen der belegten Seiten als Markdown-Bilder.
 
@@ -5321,6 +5348,15 @@ def _abbildungen_zeigen(pruefungen, rohtext="", hoechstens=2):
       und die Antwort selbst waere nicht mehr zu finden.
     """
     from urllib.parse import quote
+    # ⭐ AUSDRUECKLICHER BILDWUNSCH ("zeig mir ein Diagramm", "Bild 2.1"):
+    #   Dann reichen die belegten Seiten nicht - die Suche liefert zu so
+    #   einer Frage Vorwort und Inhaltsverzeichnis, und dort gibt es keine
+    #   Bilder. Stattdessen die Seiten mit Bildunterschriften im Dokument
+    #   suchen (bei einer Nummer genau diese), und bis zu drei zeigen.
+    anfrage = getattr(_ANFRAGE, "frage", "") or ""
+    bildwunsch = bool(_BILDWUNSCH.search(anfrage))
+    if bildwunsch:
+        hoechstens = max(hoechstens, 3)
     gesehen, raus = set(), []
     kandidaten = []
     for p in pruefungen or []:
@@ -5331,6 +5367,13 @@ def _abbildungen_zeigen(pruefungen, rohtext="", hoechstens=2):
         if p.get("doku") and s:
             kandidaten.append((p["doku"], s))
     kandidaten += _seiten_aus_text(rohtext)
+    if bildwunsch:
+        try:
+            kandidaten = _abbildungs_seiten(
+                anfrage, kandidaten,
+                getattr(_ANFRAGE, "namen", None) or []) + kandidaten
+        except Exception:
+            traceback.print_exc(file=sys.stderr)
     for doku, seite in kandidaten:
         # ⚠ Frueher nur zu GEPRUEFTEN Zitaten. Zu streng: Eine Antwort
         #   ohne woertliche Zitate ("Diese Antwort
@@ -5369,7 +5412,64 @@ def _abbildungen_zeigen(pruefungen, rohtext="", hoechstens=2):
             break
     if not raus:
         return []
-    return ["", "*Abbildungen von den belegten Seiten:*", ""] + raus + [""]
+    kopf = ("*Abbildungen aus dem Dokument:*" if bildwunsch
+            else "*Abbildungen von den belegten Seiten:*")
+    return ["", kopf, ""] + raus + [""]
+
+
+_BILDWUNSCH = re.compile(
+    r"\b(zeig\w*|bild(?:er)?|abbildung(?:en)?|abb\.|diagramm\w*|grafik\w*|"
+    r"schaubild\w*|figur\w*|figure)\b", re.I)
+_BILDNUMMER = re.compile(
+    r"\b(?:bild|abbildung|abb\.?|figure|fig\.?)\s*(\d{1,2}(?:[.\-]\d{1,3})?)", re.I)
+_BILDUNTERSCHRIFT = re.compile(
+    r"^\s*(?:Bild|Abbildung|Abb\.|Figure|Fig\.)\s*\d{1,2}(?:[.\-]\d{1,3})?\b",
+    re.I | re.M)
+
+
+def _abbildungs_seiten(anfrage, kandidaten, namen):
+    """Seiten mit Abbildungen fuer einen ausdruecklichen Bildwunsch.
+
+    Reihenfolge der Dokumente: erst die aus Belegen/Nennungen, dann die
+    Quellen der Suche. Bei "Bild 2.1" genau diese Unterschrift - und zwar
+    am ZEILENANFANG (die Unterschrift steht bei der Abbildung; "siehe Bild
+    2.1" im Fliesstext steht woanders). Ohne Nummer: alle Seiten mit einer
+    Bildunterschrift. Nur EIN Dokument, sonst wird es ein Bilderbuch.
+    """
+    dokus = []
+    for d, _ in kandidaten:
+        if d and d not in dokus:
+            dokus.append(d)
+    for n in namen:
+        s = n[:-3] if n.endswith(".md") else n
+        if s not in dokus:
+            dokus.append(s)
+    gewuenscht = _BILDNUMMER.search(anfrage)
+    for doku in dokus[:3]:
+        schluessel = _pdf_schluessel(doku)
+        if not schluessel:
+            continue
+        try:
+            seiten = pdfstelle.seitentexte(schluessel) or []
+        except Exception:
+            continue
+        if gewuenscht:
+            nr = re.escape(gewuenscht.group(1).replace("-", "."))
+            muster = re.compile(
+                r"(?m)^\s*(?:Bild|Abbildung|Abb\.?|Figure|Fig\.?)\s*" + nr
+                + r"(?![\d.])", re.I)
+            lose = re.compile(
+                r"\b(?:Bild|Abbildung|Abb\.?|Figure|Fig\.?)\s*" + nr
+                + r"(?![\d.])", re.I)
+            genau = [i for i, t in enumerate(seiten, 1) if muster.search(t or "")]
+            treffer = genau or [i for i, t in enumerate(seiten, 1)
+                                if lose.search(t or "")]
+        else:
+            treffer = [i for i, t in enumerate(seiten, 1)
+                       if _BILDUNTERSCHRIFT.search(t or "")]
+        if treffer:
+            return [(schluessel, i) for i in treffer[:12]]
+    return []
 
 
 # Steht unter jeder Antwort. Der EU AI Act (Art. 50) verlangt ab dem
