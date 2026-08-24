@@ -31,6 +31,21 @@ ChatGPT fragen":
   aus dem Katalog, sofort.
 - **Alles lokal:** eigenes Sprachmodell (Ollama/Gemma), keine Cloud.
 
+**Was die Anlage kann — auf einen Blick** (und wer es jeweils erledigt):
+
+| Fähigkeit | Wer arbeitet |
+|---|---|
+| Fachfragen mit Belegen, Link + gelbe Markierung im Original | Antwort: **gemma4:12b** · Prüfung: **Programmcode**, kein Modell — kann nicht halluzinieren |
+| Volltext-Zusammenfassung ganzer Dokumente (nicht nur Fundstellen) | gemma4:12b liest das Dokument in Teilen komplett |
+| Abbildungen/Diagramme der belegten Seiten direkt im Chat | Programmcode (schneidet sie aus der PDF-Seite aus) |
+| Bestandslisten („was habt ihr an …") in unter einer Sekunde | Katalog-Abfrage, **ganz ohne KI** |
+| Wörtliche Suche nach seltenen Fachbegriffen | Wortverzeichnis (baut sich selbst); Ähnlichkeitssuche: **bge-m3** |
+| Frage-Einordnung bei Umschreibungen („Auffangnetz", s. 5.1) | **gemma4:e2b** (klein, ~1 s) |
+| Kurzantworten auf schlichte Definitionsfragen | **gemma4:e2b**, gestützt auf Fundstellen |
+| Begrüßung / „Was kannst du?" | feste Antworten, ohne Modell |
+| Allgemeinwissen NUR wenn die Suche nichts findet — sichtbar markiert | gemma4:12b, Fußzeile „nicht aus euren Dokumenten belegt" |
+| Aufnahme: OCR, Formeln (CodeFormulaV2), Bildbeschreibung; Dubletten-Sperre (byte-genau) und Selbst-Aufräumen hängengebliebener Läufe | Docling + Vision-Modell + n8n-Ablauf |
+
 ---
 
 ## 2 · Voraussetzungen
@@ -46,6 +61,13 @@ ChatGPT fragen":
 werden zehn und mehr). `start.sh` erkennt selbst, was da ist: NVIDIA → GPU-Betrieb,
 AMD → ROCm-Fassung (vorbereitet, auf echter AMD-Hardware noch ungetestet),
 sonst CPU.
+
+**Windows Server:** Es ist derselbe Code, kein eigenes Paket — die Container sind
+Linux-Container. Zwei Wege: eine **Linux-VM** auf dem Windows-Server (Hyper-V,
+sauberster Weg; GPU-Durchreichung per DDA möglich) oder **WSL2** mit Docker.
+Beides ist mit diesem Paket noch nicht praktisch erprobt — die erste
+Windows-Installation bitte als begleiteten Test einplanen. Native
+Windows-Container funktionieren **nicht**.
 
 ---
 
@@ -237,8 +259,17 @@ auf diesen Dienst.
 
 ### 5.1 · Das kleine Modell (Gemma E2B) — das „Auffangnetz"
 
-- **Frage einordnen (`KI4KI_AUFFANGNETZ`):** bei unsicheren Wortlisten liest das
-  kleine Modell die Frage und entscheidet die Kategorie. Greift nur im Zweifel.
+- **Frage einordnen (`KI4KI_AUFFANGNETZ`):** Zuerst versuchen es die **Regeln**
+  (Auslöser-Wörter aus `wortlisten.txt` plus Satzform-Erkennung: „Was ist
+  KEINE…", „Vergleiche…", „Fasse…"). Erkennen die nichts, bekommt das kleine
+  Modell die Frage zusammen mit einer **festen Liste der sechs Kategorien**
+  (bestand · negativfrage · vergleich · zusammenfassung · verfahren · normal)
+  und antwortet mit **genau einem Kategorie-Wort** (Temperatur 0, ~1 s). So
+  landet auch „gib mir mal einen Überblick, was ihr da habt" beim
+  Bestands-Weg. Die **Antwort** formuliert weiterhin das große Modell; die
+  Fußzeile nennt den Weg („Einordnung über gemma4:e2b als …"). Fällt das
+  kleine Modell aus oder antwortet es Unbrauchbares, läuft die Frage einfach
+  den normalen Weg — das Netz kann nie blockieren.
 - **Definitionen beantworten (`KI4KI_E2B_ANTWORT`):** eine schlichte „**Was ist
   X?**"-Frage zu einem **seltenen** Fachbegriff beantwortet das kleine Modell
   direkt — **grounded aus den Fundstellen** und **nur aus Dokumenten, die der
@@ -255,6 +286,11 @@ Modell. Der Katalog ist **eine Datei** `bestandsindex.json` (Titel, Verfasser,
 Jahr, Art), erzeugt aus einer Metadaten-Tabelle. **Wann eine Liste kommt**,
 steuern die **Auslöser-Wörter** in `wortlisten.txt` (ohne Neustart änderbar); dort
 stehen auch die **Kennungen** (DS = Dissertation, BS = …).
+
+**Wo die Datei liegt:** `~/ki4ki/pruef-proxy/wortlisten.txt` auf dem Server —
+einfach mit einem Texteditor ändern, sie wird bei der nächsten Frage neu
+gelesen. Ist die Datei kaputt oder fehlt sie, gelten eingebaute Vorgaben; ein
+Tippfehler kann die Anlage also nie lahmlegen.
 
 ---
 

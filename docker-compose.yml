@@ -247,6 +247,11 @@ services:
     - pruefdaten:/daten/pruefung
     # den gepruef-ten Systemprompt lesbar machen (fuer die Selbstheilung)
     - ./systemprompt.txt:/systemprompt.txt:ro
+    # Die Wortlisten von der Platte, nicht aus dem Abbild: So wirkt eine
+    # Aenderung an ~/ki4ki/pruef-proxy/wortlisten.txt SOFORT (die Datei
+    # wird bei jeder Frage auf ihren Zeitstempel geprueft) - ohne Neubau,
+    # ohne Neustart. Faellt der Mount weg, greift die Kopie im Abbild.
+    - ./pruef-proxy/wortlisten.txt:/app/wortlisten.txt:ro
     depends_on:
     - anythingllm
     healthcheck:

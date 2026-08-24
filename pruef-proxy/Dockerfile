@@ -21,6 +21,12 @@ RUN pip install --no-cache-dir pillow==11.*
 
 WORKDIR /app
 COPY *.py /app/
+# Die Wortlisten MIT ins Abbild: Ohne diese Zeile fehlte die Datei im
+# Container, und es galten stillschweigend die eingebauten Vorgaben -
+# die "ohne Neustart pflegbar"-Schiene war damit tot. Das Compose haengt
+# zusaetzlich die Host-Datei darueber (live aenderbar); diese Kopie ist
+# der Rueckfall, falls der Mount fehlt.
+COPY wortlisten.txt /app/
 
 ENV PYTHONUNBUFFERED=1
 EXPOSE 3001
