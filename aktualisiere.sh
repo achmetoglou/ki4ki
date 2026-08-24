@@ -29,5 +29,27 @@ done
 echo "→ Aktualisierte Dienste starten ..."
 docker compose up -d
 
+# Ablaufplaene (n8n-Workflows) mit einspielen - sie sind Teil des Pakets.
+# Ohne diesen Schritt bliebe eine Aenderung an den Workflow-Dateien auf
+# bestehenden Anlagen wirkungslos (nur start.sh importierte sie). Import
+# behaelt die IDs, danach ALLE DREI aktivieren (inaktive Unterketten
+# fuehrt n8n nicht aus) und n8n neu starten, damit es die Fassung laedt.
+echo "→ Ablaufplaene einspielen ..."
+set +e
+docker exec ki4ki-n8n sh -c 'rm -rf /tmp/wf && mkdir -p /tmp/wf' >/dev/null 2>&1
+for wf in n8n-workflows/*.json; do docker cp "$wf" ki4ki-n8n:/tmp/wf/ >/dev/null 2>&1; done
+if docker exec ki4ki-n8n n8n import:workflow --separate --input=/tmp/wf >/dev/null 2>&1; then
+  _ok=1
+  for _wid in 1DKWgDbdCiwa25E1 uK5WCYhjVqPawcvP J8pPkKTKmkFTXjGn; do
+    docker exec ki4ki-n8n n8n update:workflow --id="$_wid" --active=true >/dev/null 2>&1 || _ok=0
+  done
+  docker restart ki4ki-n8n >/dev/null 2>&1
+  [ "$_ok" = 1 ] && echo "  Ablaufplaene eingespielt und aktiviert (n8n neu gestartet)" \
+    || echo "  ⚠ Nicht alle Ablaufplaene aktiviert - bitte in n8n (Port 5678) pruefen"
+else
+  echo "  ⚠ Ablaufplaene konnten nicht importiert werden - bitte in n8n (Port 5678) von Hand importieren"
+fi
+set -e
+
 echo "✓ Fertig. Aktueller Stand:"
 git log -1 --format='   %h  %s'
