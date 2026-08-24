@@ -5600,6 +5600,8 @@ _BILDWOERTER = ("bild", "bilder", "abbildung", "abbildungen", "diagramm",
                 "image", "graph", "plot")
 _ZEIGWOERTER = ("zeig", "zeige", "zeigen", "zeigst", "anzeigen", "sehen",
                 "show", "display")
+_FRAGEWOERTER = ("kannst", "könntest", "koenntest", "gibt", "gibts", "hast",
+                 "habt", "can", "could")
 
 
 def _unscharf(wort, liste, mindest=0.8, minlaenge=4):
@@ -5629,9 +5631,12 @@ def _ist_bildwunsch(frage):
     woerter = re.findall(r"[A-Za-zÄÖÜäöüß]+", f)
     if not woerter:
         return False
-    zeig_vorn = any(_unscharf(w, _ZEIGWOERTER, 0.75, 3) for w in woerter[:3]) \
-        or re.match(r"^\s*(?:kannst|k(?:oe|ö)nntest|gibt|hast|habt|can|could)\b",
-                    f, re.I)
+    # Das Zeig- oder Frageverb muss VORN stehen (Befehl/Frage an die Anlage:
+    # "Zeig mir ...", "Kanst du mir ..."). Ein "zeigt" mitten im Satz
+    # ("Welche Typen zeigt das Diagramm?") ist eine Sachfrage. Tippfehler
+    # sind in beiden Verben erlaubt.
+    zeig_vorn = (_unscharf(woerter[0], _ZEIGWOERTER, 0.75, 3)
+                 or _unscharf(woerter[0], _FRAGEWOERTER, 0.75, 3))
     bildwort = any(_unscharf(w, _BILDWOERTER) for w in woerter)
     if zeig_vorn and bildwort:
         return True
