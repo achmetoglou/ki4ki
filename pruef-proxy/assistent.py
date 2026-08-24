@@ -906,7 +906,8 @@ def _titel_saubern(t):
 
 
 def _liste(titel):
-    """Eine Zeile je Dokument - mit Titel, Verfasser und Jahr, wo bekannt.
+    """Alle Dokumente als Tabelle (Kennung · Titel · Verfasser · Jahr), sobald
+    zu einem der Titel bekannt ist - sonst schlichte Aufzaehlung.
 
     Vorher stand hier nur der Dateiname ("DS-00-000"). Fuer jemanden, der
     den Bestand nicht auswendig kennt, sagt das nichts."""
@@ -914,17 +915,27 @@ def _liste(titel):
         import bestand
     except Exception:
         bestand = None
-    zeilen = []
-    for t in titel:
-        a = bestand.angaben(t) if bestand else None
+    from urllib.parse import quote
+    angaben = [(t, bestand.angaben(t) if bestand else None) for t in titel]
+    if not any(a and a.get("titel") for _, a in angaben):
+        return "\n".join("- %s" % t for t in titel)
+
+    def _zelle(x):
+        return (x or "").replace("|", "\\|").replace("\n", " ").strip()
+
+    zeilen = ["| Kennung | Titel | Verfasser | Jahr |", "|---|---|---|---|"]
+    for t, a in angaben:
+        verweis = "[%s](/pdf/%s)" % (_zelle(t), quote(t, safe=""))
         if a and a.get("titel"):
-            extra = ", ".join(x for x in (a.get("verfasser"),
-                                         str(a.get("jahr") or "")) if x)
-            zeilen.append("- **%s** — %s%s%s" % (
-                t, a["titel"], (" (%s)" % extra) if extra else "",
-                "°" if a.get("quelle") == "modell" else ""))
+            marke = "°" if a.get("quelle") == "modell" else ""
+            zeilen.append("| %s | %s%s | %s | %s |" % (
+                verweis, _zelle(a["titel"]), marke,
+                _zelle(a.get("verfasser")), _zelle(str(a.get("jahr") or ""))))
         else:
-            zeilen.append("- %s" % t)
+            zeilen.append("| %s | *kein Katalogeintrag* |  |  |" % verweis)
+    if any(a and a.get("quelle") == "modell" for _, a in angaben):
+        zeilen.append("")
+        zeilen.append("*° = vom kleinen Modell aus dem Deckblatt gelesen.*")
     return "\n".join(zeilen)
 
 

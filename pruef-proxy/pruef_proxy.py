@@ -1833,6 +1833,11 @@ def _katalog_zeile():
 
 
 E2B_ANTWORT = (os.environ.get("KI4KI_E2B_ANTWORT", "1") != "0")
+# KI4KI-BILD: "Zeig mir Bild 2.1" / "Kannst du mir ein Diagramm zeigen?" direkt
+# aus dem Dokument beantworten (Bildunterschrift-Seite suchen, Bild anhaengen),
+# statt ueber die Aehnlichkeitssuche, die zu "2.1" nur Zufallsstellen liefert.
+# Abschaltbar mit KI4KI_BILD_ANTWORT=0.
+BILD_ANTWORT = (os.environ.get("KI4KI_BILD_ANTWORT", "1") != "0")
 
 _DEF_MUSTER = re.compile(
     r"^\s*(was ist (ein|eine|der|die|das)?|was sind|was bedeutet|"
@@ -2987,6 +2992,12 @@ class Griff(BaseHTTPRequestHandler):
                 return
         except Exception:
             traceback.print_exc(file=sys.stderr)
+        # KI4KI-BILD: "Zeig mir Bild 2.1" direkt aus dem Dokument
+        try:
+            if self._bild_antwort(frage):
+                return
+        except Exception:
+            traceback.print_exc(file=sys.stderr)
 
         # ---- Was fuer eine Frage ist das ueberhaupt? --------------------
         # AnythingLLM sucht im Modus "query" mit dem ROHEN Fragetext und
@@ -3505,7 +3516,8 @@ class Griff(BaseHTTPRequestHandler):
             fund = []
             try:
                 if art in ("bestand", "zusammenfassung", "rueckfrage",
-                           "wahl-alle", "e2b", "anhang", "meta", "allgemein"):
+                           "wahl-alle", "e2b", "anhang", "meta", "allgemein",
+                           "bild"):
                     import time as _t
                     _ws = (m.group(1) if m else "") or ""
                     _th = (m.group(2) if (m and m.group(2)) else "default")
@@ -4091,6 +4103,123 @@ class Griff(BaseHTTPRequestHandler):
               % (gewaehlt, len(dok.text), len(text)),
               file=sys.stderr, flush=True)
         return True
+
+    def _bild_antwort(self, frage):
+        """KI4KI-BILD: Bildwunsch direkt aus dem Dokument beantworten.
+
+        Gemessen (Demo 24.08.): "Zeig mir Bild 2.1" - die Aehnlichkeitssuche
+        lieferte den Abschnitt zu Figure 2.2, das Modell schrieb "Bild 2.1
+        ist nicht enthalten", und der Proxy haengte darunter das RICHTIGE
+        Bild 2.1 an. Text und Bild kamen aus zwei Quellen. Hier kommt beides
+        aus einer: die Seite mit der Bildunterschrift.
+
+        True = beantwortet. False = normaler Weg (der haengt Abbildungen der
+        belegten Seiten ohnehin an).
+        """
+        if not BILD_ANTWORT or not _ist_bildwunsch(frage):
+            return False
+        if not bereich_sichtbar(self.path, self.headers):
+            self._json({"error": "Workspace does not exist."}, code=404)
+            return True
+        # Nur Dokumente, die dieser Nutzer sehen darf (A2/A3).
+        namen = titel_im_bereich(self.path, self.headers) or []
+        if not namen:
+            BESTAND.aktualisiere()
+            namen = nur_erlaubte(BESTAND.titel(), self.headers)
+        if not namen:
+            return False
+        try:
+            gewaehlt, _ = assistent.dokument_gemeint(frage, namen)
+        except Exception:
+            gewaehlt = None
+        reihe = ([gewaehlt] + [n for n in namen if n != gewaehlt]
+                 if gewaehlt else list(namen))
+        _pdfs_erneuern_wenn_faellig()
+        treffer = _abbildungs_seiten(frage, [], reihe)
+        try:
+            import abbildung
+        except Exception:
+            return False
+        gute = []
+        for doku, seite in treffer:
+            pfad = PDFS.get(_pdf_schluessel(doku) or "")
+            try:
+                if pfad and abbildung.hat_abbildung(pfad, seite):
+                    gute.append((doku, seite))
+            except Exception:
+                continue
+            if len(gute) >= 3:
+                break
+        if not gute:
+            return False
+        nummer = _BILDNUMMER.search(frage)
+        begonnen = time.time()
+        modell_benutzt = False
+        bloecke = []
+        for doku, seite in gute:
+            try:
+                seiten = pdfstelle.seitentexte(_pdf_schluessel(doku)) or []
+            except Exception:
+                seiten = []
+            seitentext = seiten[seite - 1] if 0 < seite <= len(seiten) else ""
+            unterschrift = _bildunterschrift(
+                seitentext, nummer.group(1) if nummer else None)
+            dq = quote(str(doku), safe="")
+            stelle = "/stelle?dok=%s&seite=%d" % (dq, seite)
+            name = (unterschrift.split(":", 1)[0].strip()
+                    if unterschrift and ":" in unterschrift[:20]
+                    else (unterschrift[:24].strip() if unterschrift else "Abbildung"))
+            kopf = "**%s** — %s, [Seite %d](%s)" % (
+                name, assistent._titel_saubern(doku), seite, stelle)
+            teile = [kopf]
+            if unterschrift:
+                teile.append("*%s*" % unterschrift.strip())
+            # Nur bei einem GEZIELTEN Bild das Modell bemuehen (kostet ~10 s);
+            # bei "irgendein Diagramm" reichen Unterschrift und Bild.
+            if nummer and seitentext.strip():
+                beschreibung = self._bild_beschreiben(unterschrift, seitentext)
+                if beschreibung:
+                    teile.append(beschreibung)
+                    modell_benutzt = True
+            teile.append("[![Abbildung aus %s, Seite %d](/abbildung?dok=%s&seite=%d)](%s)"
+                         % (doku, seite, dq, seite, stelle))
+            bloecke.append("\n\n".join(teile))
+        if nummer:
+            text = "\n\n".join(bloecke)
+        else:
+            text = ("Abbildungen mit Bildunterschrift im Dokument (die ersten %d):\n\n"
+                    % len(bloecke) + "\n\n---\n\n".join(bloecke)
+                    + "\n\n*Für ein bestimmtes Bild: „Zeig mir Bild 2.3“ — "
+                    "die Nummer steht in der Bildunterschrift.*")
+        text += "\n\n---\n*Direkt aus dem Dokument geholt — Klick auf ein Bild "
+        text += "oder die Seite öffnet das Original.*"
+        if modell_benutzt:
+            text += _modell_zeile(MODELL_NAME, time.time() - begonnen)
+        self._festhalten("bild", frage, text)
+        self._sende_strom([
+            {"uuid": _neue_marke("bild"), "type": "textResponseChunk",
+             "textResponse": text, "sources": [], "close": False, "error": False},
+            {"uuid": _neue_marke("bild"), "type": "textResponseChunk",
+             "textResponse": "", "sources": [], "close": True, "error": False},
+        ])
+        print("[Bild] %d Abbildung(en) zu %r" % (len(gute), (frage or "")[:50]),
+              file=sys.stderr, flush=True)
+        return True
+
+    def _bild_beschreiben(self, unterschrift, seitentext):
+        """Zwei, drei Saetze zur Abbildung - nur aus dem Seitentext. Wirft nie."""
+        auftrag = (
+            "Unten steht der Text einer Seite aus einem Fachdokument, darauf "
+            "die Bildunterschrift „%s“. Beschreibe in zwei bis drei Sätzen, "
+            "was diese Abbildung laut Unterschrift und Seitentext zeigt. Nur "
+            "aus dem Text, nichts erfinden, keine Einleitung, keine "
+            "Quellenangaben.\n\n%s" % ((unterschrift or "")[:200], seitentext[:3000]))
+        try:
+            roh = self._modell_fragen(auftrag, zeitgrenze=120)
+        except Exception:
+            return ""
+        roh = (roh or "").strip()
+        return roh if 20 < len(roh) < 1200 else ""
 
     def _e2b_antwort(self, frage):
         """B: Einfache 'Was ist X?'-Frage vom kleinen Modell (E2B) GROUNDED
@@ -5425,6 +5554,44 @@ _BILDNUMMER = re.compile(
 _BILDUNTERSCHRIFT = re.compile(
     r"^\s*(?:Bild|Abbildung|Abb\.|Figure|Fig\.)\s*\d{1,2}(?:[.\-]\d{1,3})?\b",
     re.I | re.M)
+
+
+# Ausdruecklicher Wunsch, ein Bild zu SEHEN - nicht eine Sachfrage, in der
+# ein Diagramm vorkommt ("Welche Mischertypen zeigt das Diagramm?" bleibt
+# eine Fachfrage). Deshalb am Satzanfang verankert; eine genannte Bildnummer
+# zaehlt immer.
+_BILD_ZEIGEN = re.compile(
+    r"^\s*(?:"
+    r"welche\s+(?:bilder|abbildungen|diagramme|grafiken|schaubilder)\b|"
+    r"(?:zeig\w*\b|kannst\s+du\b|könntest\s+du\b|koenntest\s+du\b|"
+    r"gibt\s+es\b|hast\s+du\b|habt\s+ihr\b|"
+    r"ich\s+(?:möchte|moechte|will|würde\s+gern\w*|wuerde\s+gern\w*)\b)"
+    r"[^?]*?\b(?:bild(?:er)?|abbildung(?:en)?|abb\.|diagramm\w*|grafik\w*|"
+    r"schaubild\w*|figure|fig\.)"
+    r")", re.I)
+
+
+def _ist_bildwunsch(frage):
+    f = frage or ""
+    return bool(_BILDNUMMER.search(f) or _BILD_ZEIGEN.search(f))
+
+
+def _bildunterschrift(seitentext, nummer=None):
+    """Die Bildunterschrift auf der Seite - zu einer Nummer oder die erste."""
+    muster = (r"(?m)^\s*((?:Bild|Abbildung|Abb\.?|Figure|Fig\.?)\s*%s(?![\d.])[^\n]*)"
+              % re.escape(nummer.replace("-", ".")) if nummer
+              else r"(?m)^\s*((?:Bild|Abbildung|Abb\.?|Figure|Fig\.?)\s*\d{1,2}(?:[.\-]\d{1,3})?\b[^\n]*)")
+    m = re.search(muster, seitentext or "", re.I)
+    if not m:
+        return ""
+    zeile = re.sub(r"\s+", " ", m.group(1)).strip()
+    # Umbrochene Unterschrift: die Folgezeile gehoert oft noch dazu.
+    rest = (seitentext or "")[m.end():].split("\n", 2)
+    if len(rest) > 1 and rest[1].strip() and not re.match(
+            r"^\s*(?:Bild|Abbildung|Abb\.?|Figure|Fig\.?|\d)", rest[1]) \
+            and not zeile.endswith((".", ":")) and len(zeile) < 90:
+        zeile += " " + re.sub(r"\s+", " ", rest[1]).strip()
+    return zeile[:300]
 
 
 def _abbildungs_seiten(anfrage, kandidaten, namen):
