@@ -17,6 +17,15 @@ git pull --ff-only
 echo "→ Belegpruefung und mkmd-Dienst neu bauen (falls Code geaendert) ..."
 docker compose build pruef-proxy mkmd-dienst
 
+# Gruppe des Server-Nutzers in die .env (falls die Anlage vor diesem Stand
+# installiert wurde): rechte-init gibt ./dokumente an 1000:<Gruppe> mit
+# setgid, damit Massenlaeufe per SFTP/scp moeglich sind.
+touch .env
+for kv in "KI4KI_UID=$(id -u)" "KI4KI_GID=$(id -g)"; do
+  k="${kv%%=*}"
+  if grep -q "^$k=" .env 2>/dev/null; then sed -i "s|^$k=.*|$kv|" .env; else echo "$kv" >> .env; fi
+done
+
 echo "→ Aktualisierte Dienste starten ..."
 docker compose up -d
 
