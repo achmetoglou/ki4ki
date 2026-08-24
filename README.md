@@ -80,9 +80,13 @@ Windows-Container funktionieren **nicht**.
 > ```bash
 > git clone <REPO-URL> ki4ki && cd ki4ki && ./start.sh
 > ```
-> Das **lädt herunter und installiert** in einem Rutsch. Danach nur noch die
-> zwei Konto-/Schlüssel-Schritte unten (3.2–3.5). **Späteres Aktualisieren** ist
-> ebenfalls ein Befehl: `./aktualisiere.sh`.
+> Das **lädt herunter und installiert alles** in einem Rutsch — inklusive
+> Admin-Konto, API-Schlüssel, erstem Arbeitsbereich und den aktivierten
+> Ablaufplänen. Der einzige menschliche Schritt: **einmal ein Admin-Passwort
+> festlegen** (start.sh fragt danach). Die Abschnitte 3.2–3.5 sind **nur
+> Rückfall-Anleitungen**, falls die Automatik im start.sh-Verlauf eine
+> ⚠-Meldung zeigt. **Späteres Aktualisieren** ist ebenfalls ein Befehl:
+> `./aktualisiere.sh`.
 >
 > Der Zugang zum privaten Repo wird **einmal pro Rechner** eingerichtet (ein
 > read-only Deploy-Key, ~3 Min — siehe unten „Zugang zum Repo einrichten"). Wer
@@ -138,9 +142,14 @@ weiter bei 3.1.
 ./start.sh
 ```
 
-Macht **alles Automatische** in einem Rutsch: prüft Docker, erzeugt **einmalig**
-die Zugangsschlüssel (`.secrets.env`), erkennt eine Grafikkarte, baut die
-Belegprüfung, startet alle Dienste, holt die Modelle (Gemma + bge-m3).
+Macht **alles** in einem Rutsch: prüft/installiert Docker und die GPU-Brücke,
+erzeugt **einmalig** die Zugangsschlüssel (`.secrets.env`), erkennt die
+Grafikkarte, baut die Belegprüfung, startet alle Dienste, holt die Modelle
+(gemma4:12b, gemma4:e2b, bge-m3, CodeFormulaV2), **legt das Admin-Konto an**
+(fragt einmal nach einem Passwort), erzeugt den API-Schlüssel, legt den ersten
+Arbeitsbereich „Wissensdatenbank" an und **importiert + aktiviert die drei
+Ablaufpläne**. Auch das n8n-Konto (`admin@ki4ki.local`, gleiches Passwort)
+entsteht automatisch.
 
 **Erfolg erkennst du daran:** am Ende erscheint eine Liste der Dienste, jeder mit
 Status `Up`/`running`. Die Oberfläche ist dann erreichbar (nächster Schritt).
@@ -158,11 +167,15 @@ Status `Up`/`running`. Die Oberfläche ist dann erreichbar (nächster Schritt).
   Oberfläche (das Konto legt `start.sh` automatisch an). Für den
   Alltag ist n8n nicht nötig — nur zum Nachschauen der Aufnahme-Läufe.
 
-### 3.2 · Konto anlegen (in der Oberfläche)
+### 3.2 · Anmelden (das Konto hat start.sh schon angelegt)
 
 1. Im Browser die Oberfläche (Port **3001**) öffnen.
-2. Beim ersten Start legst du das **Admin-Konto** an (E-Mail/Passwort). Merke dir
-   die Zugangsdaten — das ist der Verwalter der Anlage.
+2. Anmelden als **`admin`** mit dem Passwort aus start.sh (bzw. aus
+   `zugangsdaten.txt`, wenn du es hast erzeugen lassen).
+
+> **Rückfall** — nur wenn start.sh „⚠ Automatische Einrichtung nicht moeglich"
+> gemeldet hat: Dann fragt die Oberfläche beim ersten Öffnen selbst nach einem
+> Admin-Konto (E-Mail/Passwort). Zugangsdaten notieren.
 
 > ℹ️ **Zu Bereichen (Workspaces):** Am saubersten legt Schritt 3.4 den ersten
 > Bereich per Skript an (das bestätigt zugleich, dass der API-Schlüssel sitzt).
@@ -170,7 +183,10 @@ Status `Up`/`running`. Die Oberfläche ist dann erreichbar (nächster Schritt).
 > die Anlage bringt jeden **neu** angelegten Bereich automatisch auf die
 > geprüften Einstellungen (Prompt, Modus, Trefferzahl, Schwelle). Siehe §7.
 
-### 3.3 · API-Schlüssel erzeugen (damit die Aufnahme Dokumente ablegen darf)
+### 3.3 · API-Schlüssel erzeugen — **Rückfall, normalerweise schon erledigt**
+
+start.sh erzeugt den Schlüssel automatisch und trägt ihn in `.secrets.env` ein.
+Nur wenn das laut start.sh-Verlauf **nicht** geklappt hat, von Hand:
 
 1. In der Oberfläche als Admin anmelden.
 2. **Einstellungen** (Zahnrad) → **Werkzeuge** → **API-Schlüssel**
@@ -193,7 +209,9 @@ Status `Up`/`running`. Die Oberfläche ist dann erreichbar (nächster Schritt).
 
 > Ohne diesen Schritt läuft die Anlage, **nimmt aber keine Dokumente auf**.
 
-### 3.4 · Arbeitsbereich anlegen (mit den richtigen Einstellungen)
+### 3.4 · Arbeitsbereich anlegen — **Rückfall, normalerweise schon erledigt**
+
+start.sh legt den Bereich „Wissensdatenbank" automatisch an. Falls nicht:
 
 ```bash
 ./arbeitsbereich_anlegen.sh DEIN-KOPIERTER-SCHLUESSEL
@@ -202,34 +220,42 @@ Status `Up`/`running`. Die Oberfläche ist dann erreichbar (nächster Schritt).
 
 Legt den Arbeitsbereich mit der **geprüften Einstellung** an.
 
-### 3.5 · Ablaufpläne (n8n-Workflows) importieren
+### 3.5 · Ablaufpläne (n8n-Workflows) — **Rückfall, normalerweise schon erledigt**
 
-Ein frisches n8n ist leer — die drei mitgelieferten Ablaufpläne einmal importieren:
+start.sh importiert die drei Ablaufpläne und **aktiviert alle drei**. Nur falls
+der start.sh-Verlauf „⚠ Nicht alle Workflows aktiviert" gemeldet hat:
 
-1. Die n8n-Oberfläche (Port **5678**) öffnen und das **n8n-Konto** anlegen
-   *(getrennt vom AnythingLLM-Admin — Zugangsdaten separat notieren!)*.
+1. Die n8n-Oberfläche (Port **5678**) öffnen — Anmeldung `admin@ki4ki.local` mit
+   dem Admin-Passwort (das Konto legt start.sh an).
 2. **⋯**-Menü (oben rechts) → **Import from File** / „Aus Datei importieren".
 3. Die drei Dateien aus `n8n-workflows/` importieren:
    `1_KI4KI-Masse-Ingest.json`, `2_Dateien-in-JSON-umwandeln.json`,
-   `3_Markdown-Datei-erzeugen.json` — **alle drei** (der Haupt-Ablauf ruft die
-   anderen zwei auf).
-4. Nur **`KI4KI Masse-Ingest`** aktivieren (Schalter oben rechts auf **an**). Die
-   zwei Unter-Ablaufpläne bleiben **aus**.
+   `3_Markdown-Datei-erzeugen.json`.
+4. ⚠ **ALLE DREI aktivieren** (Schalter oben rechts auf **an**) — auch die zwei
+   Unter-Abläufe! n8n führt **inaktive** Unter-Abläufe nicht aus; bleiben sie
+   aus, landet jedes Dokument **ohne Fehlermeldung mit leerem Text im
+   Aussortiert-Ordner**. (Genau dieser Fehler hat bei einem Testaufbau einen
+   halben Tag Fehlersuche gekostet — deshalb macht start.sh es automatisch.)
 
-### ✅ Fertig-Checkliste — erst wenn alle 5 Haken sitzen, läuft es
+### ✅ Fertig-Checkliste — kurz prüfen, dass die Automatik alles erledigt hat
 
 - [ ] `./start.sh` durchgelaufen, alle Dienste `Up` (3.1)
-- [ ] Admin-Konto in der Oberfläche angelegt (3.2)
-- [ ] API-Schlüssel erzeugt, in `.secrets.env` eingetragen, `docker compose up -d` (3.3)
-- [ ] `./arbeitsbereich_anlegen.sh` gelaufen (3.4)
-- [ ] Alle 3 Ablaufpläne importiert, `KI4KI Masse-Ingest` **aktiv** (3.5)
+- [ ] Anmeldung an der Oberfläche funktioniert (`admin` + dein Passwort)
+- [ ] `curl -s http://localhost:3001/pruef-status` antwortet, z. B. `{"bestand": 0, "pdfs": 0}`
+- [ ] In n8n (Port 5678): alle **drei** Ablaufpläne vorhanden und **aktiv**
+- [ ] Probe-Upload: ein PDF über die Oberfläche hochladen → grüne Karte
+      „… wird jetzt aufbereitet"
 
 ---
 
 ## 4 · Erste Nutzung (Rundgang)
 
-1. **Dokumente hochladen:** PDFs in den Ordner `./dokumente` legen (oder über den
-   Hochladen-Knopf). Die Aufnahme startet automatisch (alle 5 Min wird geschaut).
+1. **Dokumente hochladen:** am einfachsten über den **Hochladen-Knopf** der
+   Oberfläche. Wer Dateien direkt auf den Server legt: in
+   **`./dokumente/<bereich>/input/`** (z. B.
+   `./dokumente/wissensdatenbank/input/`) — **nicht** in die `./dokumente`-Wurzel,
+   dort schaut niemand nach. Die Aufnahme startet automatisch (alle 5 Min wird
+   geschaut).
    **Fertig erkennst du daran**, dass das Dokument in der Oberfläche durchsuchbar
    ist bzw. in `dokumente/<bereich>/archiv/` gewandert ist. Bildreiche Scans
    dauern einige Minuten.
@@ -476,7 +502,9 @@ wer Air-Gap braucht, spiegelt Images + Modelle vorab):
 | Zweck | Ziel |
 |---|---|
 | Programm-Abbilder | Docker Hub, `ghcr.io` |
-| Sprachmodell Gemma + Embedder bge-m3 | Ollama-Registry (`ollama.com`) |
+| Sprachmodelle (gemma4:12b, gemma4:e2b) + Embedder bge-m3 | Ollama-Registry (`ollama.com`) |
+| Formelerkennungs-Modell CodeFormulaV2 | `huggingface.co` |
+| GPU-Brücke (nur bei NVIDIA, einmalig) | `nvidia.github.io`, Ubuntu/Debian-Paketquellen |
 
 ---
 
