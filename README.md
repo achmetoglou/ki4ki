@@ -103,8 +103,10 @@ Windows-Container funktionieren **nicht**.
    curl -fsSL https://get.docker.com | sh          # Docker installieren
    sudo usermod -aG docker $USER && newgrp docker  # ohne sudo nutzen dürfen
    ```
-   Für die **GPU** zusätzlich das *NVIDIA Container Toolkit* installieren (Anleitung
-   des Herstellers) — ohne das läuft alles auf dem Prozessor (langsamer).
+   Die **GPU-Brücke** (NVIDIA Container Toolkit) muss **nicht** von Hand
+   installiert werden — `start.sh` erkennt die Karte und richtet sie selbst ein.
+   Auch fehlendes Docker versucht `start.sh` selbst zu installieren; die Befehle
+   oben sind der manuelle Weg, falls das fehlschlägt.
 3. **Dieses Projekt holen und hineinwechseln:**
    ```bash
    git clone <REPO-URL> ki4ki && cd ki4ki
