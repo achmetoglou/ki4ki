@@ -11,8 +11,17 @@
 set -e
 cd "$(dirname "$0")"
 
-echo "→ Neueste Fassung holen ..."
-git pull --ff-only
+# ⚠ SELBST-UPDATE: git pull ersetzt auch DIESE Datei - waehrend sie laeuft.
+#   Die Shell liest ein Skript stueckweise; nach dem Pull liefe der Rest
+#   aus der ALTEN Fassung (oder an der falschen Stelle der neuen). Gemessen:
+#   Ein neu hinzugekommener Schritt (Gruppe in die .env) griff erst beim
+#   ZWEITEN Lauf. Deshalb: erst holen, dann die frische Fassung neu starten
+#   und alles Weitere dort erledigen.
+if [ "$1" != "--nach-pull" ]; then
+  echo "→ Neueste Fassung holen ..."
+  git pull --ff-only
+  exec "$0" --nach-pull
+fi
 
 echo "→ Belegpruefung und mkmd-Dienst neu bauen (falls Code geaendert) ..."
 docker compose build pruef-proxy mkmd-dienst
