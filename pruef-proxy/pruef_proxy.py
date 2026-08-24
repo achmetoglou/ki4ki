@@ -4152,6 +4152,9 @@ class Griff(BaseHTTPRequestHandler):
                 break
         if not gute:
             return False
+        # "das erste Diagramm" -> genau eines (das erste mit Unterschrift).
+        if re.search(r"\b(?:das|die|den)\s+erste[nsr]?\b", frage or "", re.I):
+            gute = gute[:1]
         nummer = _BILDNUMMER.search(frage)
         begonnen = time.time()
         modell_benutzt = False
@@ -5546,9 +5549,11 @@ def _abbildungen_zeigen(pruefungen, rohtext="", hoechstens=2):
     return ["", kopf, ""] + raus + [""]
 
 
-_BILDWUNSCH = re.compile(
-    r"\b(zeig\w*|bild(?:er)?|abbildung(?:en)?|abb\.|diagramm\w*|grafik\w*|"
-    r"schaubild\w*|figur\w*|figure)\b", re.I)
+# ⚠ Schreibvarianten tolerieren: Gemessen "Zeig mir das erste Diagram" (ein m)
+#   fiel durch und landete in der Bestandsliste.
+_BILDWORT = (r"(?:bild(?:er)?|abbildung(?:en)?|abb\.?|diagram\w*|gra(?:f|ph)ik\w*|"
+             r"schaubild\w*|figur\w*|figure|fig\.|skizze\w*|zeichnung\w*)")
+_BILDWUNSCH = re.compile(r"\b(?:zeig\w*|" + _BILDWORT + r")\b", re.I)
 _BILDNUMMER = re.compile(
     r"\b(?:bild|abbildung|abb\.?|figure|fig\.?)\s*(\d{1,2}(?:[.\-]\d{1,3})?)", re.I)
 _BILDUNTERSCHRIFT = re.compile(
@@ -5562,13 +5567,11 @@ _BILDUNTERSCHRIFT = re.compile(
 # zaehlt immer.
 _BILD_ZEIGEN = re.compile(
     r"^\s*(?:"
-    r"welche\s+(?:bilder|abbildungen|diagramme|grafiken|schaubilder)\b|"
+    r"welche\s+(?:bilder|abbildungen|diagramme|grafiken|graphiken|schaubilder|skizzen)\b|"
     r"(?:zeig\w*\b|kannst\s+du\b|könntest\s+du\b|koenntest\s+du\b|"
     r"gibt\s+es\b|hast\s+du\b|habt\s+ihr\b|"
     r"ich\s+(?:möchte|moechte|will|würde\s+gern\w*|wuerde\s+gern\w*)\b)"
-    r"[^?]*?\b(?:bild(?:er)?|abbildung(?:en)?|abb\.|diagramm\w*|grafik\w*|"
-    r"schaubild\w*|figure|fig\.)"
-    r")", re.I)
+    r"[^?]*?\b" + _BILDWORT + r")", re.I)
 
 
 def _ist_bildwunsch(frage):
