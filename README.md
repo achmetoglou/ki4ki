@@ -78,15 +78,19 @@ Windows-Container funktionieren **nicht**.
 
 > ### ⚡ In einem Befehl (wenn der Server-Zugang zum Repo eingerichtet ist)
 > ```bash
-> git clone <REPO-URL> ki4ki && cd ki4ki && ./start.sh
+> git clone git@github.com:achmetoglou/ki4ki.git ~/ki4ki && cd ~/ki4ki && ./start.sh
 > ```
 > Das **lädt herunter und installiert alles** in einem Rutsch — inklusive
 > Admin-Konto, API-Schlüssel, erstem Arbeitsbereich und den aktivierten
 > Ablaufplänen. Der einzige menschliche Schritt: **einmal ein Admin-Passwort
 > festlegen** (start.sh fragt danach). Die Abschnitte 3.2–3.5 sind **nur
 > Rückfall-Anleitungen**, falls die Automatik im start.sh-Verlauf eine
-> ⚠-Meldung zeigt. **Späteres Aktualisieren** ist ebenfalls ein Befehl:
-> `./aktualisiere.sh`.
+> ⚠-Meldung zeigt.
+>
+> **Später aktualisieren** — ebenfalls ein Befehl (Details §11):
+> ```bash
+> cd ~/ki4ki && ./aktualisiere.sh
+> ```
 >
 > Der Zugang zum privaten Repo wird **einmal pro Rechner** eingerichtet (ein
 > read-only Deploy-Key, ~3 Min — siehe unten „Zugang zum Repo einrichten"). Wer
@@ -113,7 +117,7 @@ Windows-Container funktionieren **nicht**.
    oben sind der manuelle Weg, falls das fehlschlägt.
 3. **Dieses Projekt holen und hineinwechseln:**
    ```bash
-   git clone <REPO-URL> ki4ki && cd ki4ki
+   git clone git@github.com:achmetoglou/ki4ki.git ~/ki4ki && cd ~/ki4ki
    ```
    (Oder das ZIP herunterladen, entpacken, und mit `cd` in den Ordner wechseln.)
 
@@ -442,7 +446,7 @@ dann `docker compose up -d`.
 
 **Der einfache Weg — ein Befehl:**
 ```bash
-./aktualisiere.sh
+cd ~/ki4ki && ./aktualisiere.sh
 ```
 Holt die neueste Paketfassung (`git pull`), baut die selbstgebauten Dienste neu
 und startet alles aktualisiert. Daten, Modelle und `.secrets.env` bleiben
