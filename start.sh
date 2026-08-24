@@ -162,6 +162,12 @@ for i in $(seq 1 30); do
 done
 docker exec ki4ki-ollama ollama pull gemma4:12b
 docker exec ki4ki-ollama ollama pull bge-m3
+# Das kleine Modell fuer Auffangnetz (Frage-Einordnung, wenn die Regeln
+# nichts erkennen) und Kurzantworten auf Definitionsfragen. Die Schalter
+# KI4KI_AUFFANGNETZ/KI4KI_E2B_ANTWORT stehen im Compose auf 1 - ohne
+# diesen Pull schlug jeder Aufruf fehl und fiel LAUTLOS aufs grosse
+# Modell zurueck: Das Netz war auf jeder Frischinstallation wirkungslos.
+docker exec ki4ki-ollama ollama pull gemma4:e2b
 
 # Docling-Formelmodell: Das Docling-Image bringt Layout/OCR/Tabellen/
 # Bild-Klassifikation mit, aber NICHT CodeFormulaV2 - der Aufnahme-Workflow
