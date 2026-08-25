@@ -281,6 +281,17 @@ class Verlauf:
             return None
         return eintrag["schritte"][-1]["art"]
 
+    def letzte_frage(self, kennung):
+        """(Frage, Art) des letzten inhaltlichen Schritts - fuer die
+        Reparatur nach einer Beschwerde. None, wenn es keinen gibt."""
+        eintrag = self._hol(kennung)
+        if not eintrag:
+            return None
+        for s in reversed(eintrag["schritte"]):
+            if s["art"] not in ("beschwerde", "bestand"):
+                return (s["frage"], s["art"])
+        return None
+
     def letzte_quellen(self, kennung):
         eintrag = self._hol(kennung)
         if not eintrag:
@@ -1359,6 +1370,25 @@ def beschwerde_antwort(letztes_dokument=None):
                  "Kennung (z. B. DS-24-005) oder den Verfasser — dann hole "
                  "ich es genau daraus.")
     return " ".join(teile)
+
+
+def dokument_zeile(name):
+    """Eine Zeile fuer Listen und Rueckfragen: Kennung — Verfasser (Jahr): Titel."""
+    kurz = _titel_saubern(name)
+    try:
+        import bestand as _b
+        ang = _b.angaben(name) or {}
+    except Exception:
+        ang = {}
+    zeile = kurz
+    wer = (ang.get("verfasser") or "").strip()
+    jahr = (ang.get("jahr") or "").strip()
+    if wer:
+        zeile += " — %s%s" % (wer, " (%s)" % jahr if jahr else "")
+    t = (ang.get("titel") or "").strip()
+    if t:
+        zeile += ": %s" % (t[:90] + ("…" if len(t) > 90 else ""))
+    return zeile
 
 
 def _aus_katalog(frage, titel):

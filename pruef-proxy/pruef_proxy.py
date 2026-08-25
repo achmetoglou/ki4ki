@@ -42,6 +42,7 @@ from urllib.parse import parse_qs, quote, unquote, urlparse
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import assistent
+import fadenfrage
 import mehrstufig
 import pdfstelle
 import pruefprotokoll
@@ -3370,6 +3371,30 @@ class Griff(BaseHTTPRequestHandler):
                 traceback.print_exc(file=sys.stderr)
 
         if art == "beschwerde":
+            # ⭐ REPARATUR statt nur Entschuldigung (GESPRAECH-ANFORDERUNGEN
+            #   §4.1): die letzte inhaltliche Frage noch einmal - diesmal
+            #   NUR aus dem Faden-Dokument.
+            try:
+                _dok = GESPRAECHE.letztes_dokument(gespraech)
+                _letzte = GESPRAECHE.letzte_frage(gespraech)
+                if _dok and _letzte:
+                    _lf, _la = _letzte
+                    _vor = ("Entschuldige — das war daneben. Noch einmal, "
+                            "diesmal nur aus **%s**:\n\n"
+                            % assistent._titel_saubern(_dok))
+                    GESPRAECHE.merken(gespraech, frage, "beschwerde", [])
+                    if _la == "bild" or _ist_bildwunsch(_lf):
+                        if self._bild_antwort(_lf, erzwinge=_dok, vorspann=_vor):
+                            return
+                    elif _la == "zusammenfassung" and \
+                            assistent.bezieht_sich_auf_vorheriges(_lf):
+                        if self._zusammenfassung(_lf):
+                            return
+                    else:
+                        if self._faden_antwort(_lf, _dok, vorspann=_vor):
+                            return
+            except Exception:
+                traceback.print_exc(file=sys.stderr)
             try:
                 _text = assistent.beschwerde_antwort(
                     GESPRAECHE.letztes_dokument(gespraech))
@@ -3386,6 +3411,41 @@ class Griff(BaseHTTPRequestHandler):
                 print("[Assistent] Beschwerde beantwortet", file=sys.stderr,
                       flush=True)
                 return
+            except Exception:
+                traceback.print_exc(file=sys.stderr)
+
+        # ---- Dokumentwechsel (Pivot) und Faden-Antwort ------------------
+        # ⭐ Nennt eine gewoehnliche Frage ein Dokument (Verfasser, Kennung,
+        #   Titelwoerter), wird DAS zum Faden-Dokument. Ohne Nennung gilt das
+        #   bisherige. Und in beiden Faellen wird NUR aus diesem Dokument
+        #   geantwortet - nicht aus dem Gesamtbestand (Quellenvermischung).
+        #   Heraus kommt man ausdruecklich: "im ganzen Bestand: ...".
+        if art in ("normal", "folgefrage", "verfahren") and gespraech:
+            try:
+                _gesamt, _frage_rein = fadenfrage.will_gesamtbestand(frage)
+                _dok = GESPRAECHE.letztes_dokument(gespraech)
+                _hit = None
+                if not _gesamt and not assistent.bezieht_sich_auf_vorheriges(frage):
+                    _namen = (titel_im_bereich(self.path, self.headers)
+                              or nur_erlaubte(BESTAND.titel(), self.headers))
+                    _hit, _ = assistent.dokument_gemeint(frage, _namen or [])
+                    if _hit and _hit != _dok:
+                        GESPRAECHE.dokument_merken(gespraech, _hit)
+                        print("[Assistent] Dokumentwechsel: %r" % _hit,
+                              file=sys.stderr, flush=True)
+                        _dok = _hit
+                if _gesamt and _frage_rein != frage:
+                    # Vorspann "im ganzen Bestand:" abstreifen, Rest normal.
+                    d = json.loads(koerper or b"{}") or {}
+                    d["message"] = _frage_rein
+                    koerper = json.dumps(d, ensure_ascii=False).encode()
+                    frage = _frage_rein
+                elif _dok and not _gesamt and (
+                        art == "folgefrage"
+                        or assistent.bezieht_sich_auf_vorheriges(frage)
+                        or (_hit is not None and _dok == _hit)):
+                    if self._faden_antwort(frage, _dok):
+                        return
             except Exception:
                 traceback.print_exc(file=sys.stderr)
 
@@ -4367,17 +4427,31 @@ class Griff(BaseHTTPRequestHandler):
                 print("[Assistent] Faden-Dokument: %r" % _faden_dok,
                       file=sys.stderr, flush=True)
 
+        # ⭐ KLAERFRAGE statt Schnipsel: "Fasse die Dissertation zusammen" bei
+        #   zehn Dokumenten und leerem Faden lief bisher still als gewoehnliche
+        #   Suche - mit "Konfidenz: Hoch" auf neun Schnipseln (25.08.). Modelle
+        #   fragen von sich aus fast nie nach; hier erzwingt es der Proxy, mit
+        #   Optionen (GESPRAECH-ANFORDERUNGEN §4.4).
+        _klaer = False
+        if not gewaehlt and not kandidaten and len(auswahl) > 1 and \
+                assistent.bezieht_sich_auf_vorheriges(frage):
+            kandidaten = list(auswahl)[:10]
+            _klaer = True
+
         if not gewaehlt and len(kandidaten) > 1:
-            liste = "\n".join("- %s" % assistent._titel_saubern(k)
+            liste = "\n".join("- %s" % assistent.dokument_zeile(k)
                                for k in kandidaten[:10])
+            _kopf = ("Welches Dokument meinst du? Nenn mir Kennung oder "
+                     "Verfasser — oder wähle:" if _klaer
+                     else "Dazu passen mehrere Dokumente. Welches meinst du?")
+            if _klaer and len(auswahl) > 10:
+                _kopf += " (die ersten 10 von %d)" % len(auswahl)
             GESPRAECHE.wahl_merken(gespraech, kandidaten[:10])
             GESPRAECHE.merken(gespraech, frage, "zusammenfassung", [])
-            self._festhalten("rueckfrage", frage,
-                             "Dazu passen mehrere Dokumente. " + liste)
+            self._festhalten("rueckfrage", frage, _kopf + " " + liste)
             self._sende_strom([
                 {"uuid": _neue_marke("zusammenfassung"), "type": "textResponseChunk",
-                 "textResponse": ("Dazu passen mehrere Dokumente. Welches "
-                                  "meinst du?\n\n" + liste),
+                 "textResponse": (_kopf + "\n\n" + liste),
                  "sources": [], "close": False, "error": False},
                 {"uuid": _neue_marke("zusammenfassung"), "type": "textResponseChunk",
                  "textResponse": "", "sources": [],
@@ -4453,7 +4527,7 @@ class Griff(BaseHTTPRequestHandler):
               file=sys.stderr, flush=True)
         return True
 
-    def _bild_antwort(self, frage):
+    def _bild_antwort(self, frage, erzwinge=None, vorspann=""):
         """KI4KI-BILD: Bildwunsch direkt aus dem Dokument beantworten.
 
         Gemessen (Demo 24.08.): "Zeig mir Bild 2.1" - die Aehnlichkeitssuche
@@ -4465,7 +4539,9 @@ class Griff(BaseHTTPRequestHandler):
         True = beantwortet. False = normaler Weg (der haengt Abbildungen der
         belegten Seiten ohnehin an).
         """
-        if not BILD_ANTWORT or not _ist_bildwunsch(frage):
+        if not BILD_ANTWORT or not (erzwinge or _ist_bildwunsch(frage)):
+            return False
+        if not erzwinge and assistent.ist_beschwerde(frage):
             return False
         if not bereich_sichtbar(self.path, self.headers):
             self._json({"error": "Workspace does not exist."}, code=404)
@@ -4486,6 +4562,8 @@ class Griff(BaseHTTPRequestHandler):
         #   um die es gerade geht - NUR die. Gemessen 25.08.: ohne das kamen
         #   die Diagramme aus dem ersten Dokument der Liste (fremde Arbeit).
         nur_faden = None
+        if erzwinge and erzwinge in namen:
+            gewaehlt = nur_faden = erzwinge
         if not gewaehlt:
             _faden_dok = GESPRAECHE.letztes_dokument(gespraech)
             if _faden_dok and _faden_dok in namen and \
@@ -4517,7 +4595,8 @@ class Griff(BaseHTTPRequestHandler):
                 break
         if not gute and nur_faden:
             # Ehrlich bleiben statt in fremde Dokumente auszuweichen.
-            _leer = ("In **%s** habe ich keine Abbildung mit Bildunterschrift "
+            _leer = vorspann + (
+                     "In **%s** habe ich keine Abbildung mit Bildunterschrift "
                      "gefunden. Falls du ein anderes Dokument meinst: nenn "
                      "mir Kennung oder Verfasser."
                      % assistent._titel_saubern(nur_faden))
@@ -4578,6 +4657,7 @@ class Griff(BaseHTTPRequestHandler):
                     "die Nummer steht in der Bildunterschrift.*")
         text += "\n\n---\n*Direkt aus dem Dokument geholt — Klick auf ein Bild "
         text += "oder die Seite öffnet das Original.*"
+        text = vorspann + text
         if modell_benutzt:
             text += _modell_zeile(MODELL_NAME, time.time() - begonnen)
         self._festhalten("bild", frage, text)
@@ -4593,6 +4673,70 @@ class Griff(BaseHTTPRequestHandler):
         _dokus = {d for d, _ in gute}
         if gewaehlt or len(_dokus) == 1:
             GESPRAECHE.dokument_merken(gespraech, gewaehlt or _dokus.pop())
+        return True
+
+    def _faden_antwort(self, frage, dok, vorspann=""):
+        """Eine Frage NUR aus dem Faden-Dokument beantworten (fadenfrage.py).
+        True = beantwortet (auch "steht nicht drin"). False = normaler Weg."""
+        schluessel = _pdf_schluessel(dok)
+        if not schluessel or not dokument_erlaubt(schluessel, self.headers):
+            return False
+        try:
+            seiten = pdfstelle.seitentexte(schluessel) or []
+        except Exception:
+            seiten = []
+        if not seiten:
+            return False
+        gespraech = GESPRAECHE.kennung(self.path, self.headers)
+        titel = assistent._titel_saubern(dok)
+        begonnen = time.time()
+        nummern, terme = fadenfrage.seiten_waehlen(frage, seiten)
+        if not nummern:
+            text = vorspann + fadenfrage.nichts_gefunden(titel, terme)
+            self._festhalten("faden", frage, text)
+            GESPRAECHE.merken(gespraech, frage, "normal", [{"title": dok}])
+            self._sende_strom([
+                {"uuid": _neue_marke("faden"), "type": "textResponseChunk",
+                 "textResponse": text, "sources": [], "close": False,
+                 "error": False},
+                {"uuid": _neue_marke("faden"), "type": "textResponseChunk",
+                 "textResponse": "", "sources": [], "close": True,
+                 "error": False},
+            ])
+            print("[Faden] nichts in %r zu %r" % (dok, frage[:50]),
+                  file=sys.stderr, flush=True)
+            return True
+        self._strom_beginnen()
+        stand = "faden-%d" % id(self)
+        self._stand(stand, "Lese in *%s* die Seiten %s …"
+                    % (titel, ", ".join(str(n) for n in nummern)))
+        try:
+            roh = self._modell_fragen(
+                fadenfrage.auftrag(frage, titel, nummern, seiten), zeitgrenze=300)
+        except Exception as e:
+            traceback.print_exc(file=sys.stderr)
+            roh = ""
+        self._stand_weg(stand)
+        if not (roh or "").strip():
+            text = vorspann + ("Die Antwort aus **%s** ist nicht zustande "
+                               "gekommen (Modell antwortete nicht). Bitte "
+                               "noch einmal fragen." % titel)
+            ok = nein = 0
+        else:
+            text, ok, nein = fadenfrage.verlinken(roh.strip(), schluessel,
+                                                  seiten, nummern)
+            text = vorspann + text
+        text += "\n\n---\n" + fadenfrage.fuss(titel, nummern, ok, nein)
+        text += _modell_zeile(MODELL_NAME, time.time() - begonnen)
+        self._festhalten("faden", frage, text)
+        GESPRAECHE.merken(gespraech, frage, "normal", [{"title": dok}])
+        self._strom_stueck(
+            {"uuid": _neue_marke("faden"), "type": "textResponseChunk",
+             "textResponse": text, "sources": [], "close": True,
+             "error": False})
+        self._strom_schliessen()
+        print("[Faden] %r aus %r, Seiten %s, Zitate %d ok / %d nicht"
+              % (frage[:40], dok, nummern, ok, nein), file=sys.stderr, flush=True)
         return True
 
     def _bild_beschreiben(self, unterschrift, seitentext):
