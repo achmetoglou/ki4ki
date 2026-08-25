@@ -52,6 +52,15 @@ KURZ = 90
 
 # ---------------------------------------------------------------- Verlauf
 
+# Wo das Faden-Gedaechtnis liegt. Im Container per Umgebungsvariable ins
+# Daten-Volume - sonst ist es beim naechsten Neubau weg.
+GEDAECHTNIS_DATEI = (os.environ.get("KI4KI_FADEN_GEDAECHTNIS")
+                     or os.path.join(os.path.dirname(os.path.abspath(__file__)),
+                                     ".faden-gedaechtnis.json"))
+# Mehr Faeden als das werden nicht aufgehoben - die aeltesten fallen weg.
+HOECHSTENS_FAEDEN = 5000
+
+
 class Verlauf:
     """Merkt sich je Unterhaltung, worum es gerade geht.
 
@@ -59,41 +68,110 @@ class Verlauf:
     ohnehin jede Frage und jede Antwort, und eine Abfrage an AnythingLLM
     waere ein zusaetzlicher Umweg mitten in der Antwortzeit. Ausserdem
     braucht es hier nur einen Bruchteil dessen, was dort gespeichert ist.
+
+    ⭐ DAUERHAFT JE GESPRAECHSFADEN (25.08.): Ein Faden, der naechste Woche
+      wieder geoeffnet wird, muss noch wissen, um welches Dokument es ging.
+      Deshalb liegt das Gedaechtnis auf der Platte (Daten-Volume), ohne
+      Verfallsdatum, und der Schluessel ist der Faden selbst - nicht die
+      Sitzung, die sich bei jeder Anmeldung aendert. Nur Gespraeche OHNE
+      Faden (Standard-Chat eines Bereichs, ueber die Sitzung erkannt)
+      verfallen wie bisher nach einer Stunde.
     """
 
-    def __init__(self):
+    def __init__(self, datei=None):
         self._gespraeche = {}
         self._sperre = threading.Lock()
+        self._datei = GEDAECHTNIS_DATEI if datei is None else datei
+        self._gemeckert = False
+        self._laden()
 
     @staticmethod
     def kennung(pfad, kopfzeilen=None):
         """Was eine Unterhaltung von einer anderen unterscheidet.
 
-        Der Pfad traegt Arbeitsbereich und - wenn vorhanden - den Thread.
-        Ohne Thread wuerden sich zwei Leute im selben Bereich denselben
-        Verlauf teilen; deshalb kommt die Sitzung dazu. Sonst bekaeme
-        ein Nutzer den Gegenstand aus der letzten Frage eines anderen
-        untergeschoben.
+        Mit Faden: "bereich|faden" - der Faden ist weltweit eindeutig und
+        bleibt es ueber Anmeldungen hinweg. Ohne Faden: "bereich|-|sitzung",
+        damit sich zwei Leute im selben Bereich nicht denselben Verlauf
+        teilen - sonst bekaeme ein Nutzer den Gegenstand aus der letzten
+        Frage eines anderen untergeschoben.
         """
         m = re.match(r"^/api/(?:v1/)?workspace/([^/]+)(?:/thread/([^/]+))?",
                      pfad or "")
         bereich = m.group(1) if m else "?"
-        faden = (m.group(2) if m else None) or "-"
+        faden = (m.group(2) if m else None) or ""
+        if faden:
+            return "%s|%s" % (bereich, faden)
         sitzung = ""
         if kopfzeilen:
             roh = (kopfzeilen.get("Authorization")
                    or kopfzeilen.get("Cookie") or "")
-            # Nur ein kurzer Fingerabdruck - der Token selbst hat hier
-            # nichts verloren.
             if roh:
                 import hashlib
                 sitzung = hashlib.sha1(roh.encode()).hexdigest()[:12]
-        return "%s|%s|%s" % (bereich, faden, sitzung)
+        return "%s|-|%s" % (bereich, sitzung)
+
+    @staticmethod
+    def _dauerhaft(kennung):
+        return len((kennung or "").split("|")) == 2
+
+    def _hol(self, kennung):
+        """Der Eintrag - oder None, wenn es ihn nicht gibt oder er (ohne
+        Faden) verfallen ist."""
+        eintrag = self._gespraeche.get(kennung)
+        if not eintrag:
+            return None
+        if not self._dauerhaft(kennung) and \
+                time.time() - eintrag.get("zuletzt", 0) > VERGESSEN:
+            return None
+        return eintrag
+
+    def _neu(self, kennung):
+        return self._gespraeche.setdefault(
+            kennung, {"schritte": [], "zuletzt": 0})
+
+    # ---- Platte ---------------------------------------------------------
+
+    def _laden(self):
+        try:
+            with open(self._datei, encoding="utf-8") as fh:
+                roh = json.load(fh) or {}
+        except Exception:
+            return
+        if isinstance(roh, dict):
+            for k, v in roh.items():
+                if self._dauerhaft(k) and isinstance(v, dict) and \
+                        isinstance(v.get("schritte"), list):
+                    v.setdefault("zuletzt", 0)
+                    self._gespraeche[k] = v
+
+    def _sichern(self):
+        """Nur die dauerhaften (Faden-)Eintraege - atomar. Mit gehaltener
+        Sperre aufrufen."""
+        if not self._datei:
+            return
+        try:
+            dauer = {k: v for k, v in self._gespraeche.items()
+                     if self._dauerhaft(k)}
+            ordner = os.path.dirname(self._datei)
+            if ordner:
+                os.makedirs(ordner, exist_ok=True)
+            tmp = self._datei + ".tmp"
+            with open(tmp, "w", encoding="utf-8") as fh:
+                json.dump(dauer, fh, ensure_ascii=False)
+            os.replace(tmp, self._datei)
+        except Exception as e:
+            if not self._gemeckert:
+                self._gemeckert = True
+                import sys
+                print("[Gedaechtnis] nicht speicherbar (%s): %s"
+                      % (self._datei, str(e)[:120]), file=sys.stderr,
+                      flush=True)
+
+    # ---- Schreiben ------------------------------------------------------
 
     def merken(self, kennung, frage, art, quellen=None):
         with self._sperre:
-            eintrag = self._gespraeche.setdefault(
-                kennung, {"schritte": [], "zuletzt": 0})
+            eintrag = self._neu(kennung)
             eintrag["schritte"].append({
                 "frage": frage,
                 "art": art,
@@ -103,6 +181,7 @@ class Verlauf:
             eintrag["schritte"] = eintrag["schritte"][-SCHRITTE:]
             eintrag["zuletzt"] = time.time()
             self._aufraeumen()
+            self._sichern()
 
     def wahl_merken(self, kennung, kandidaten):
         """Festhalten, welche Dokumente wir gerade zur Wahl gestellt haben.
@@ -110,71 +189,22 @@ class Verlauf:
         Ohne das ist die Rueckfrage eine Sackgasse: Fragt die Anlage
         "Dazu passen mehrere Dokumente. Welches meinst du?" und zaehlt
         fuenf auf, muss sie die Antwort ("DVS 2213-1_neu") auch verstehen -
-        sonst laeuft die naechste Frage als gewoehnliche Suche ins Leere,
-        weil der Rueckfrage-Zweig als einziger kein merken() aufrief.
-        Eine Anlage, die eine Frage stellt, muss die Antwort
-        darauf verstehen.
+        sonst laeuft die naechste Frage als gewoehnliche Suche ins Leere.
         """
         with self._sperre:
-            eintrag = self._gespraeche.setdefault(
-                kennung, {"schritte": [], "zuletzt": 0})
+            eintrag = self._neu(kennung)
             eintrag["wahl"] = list(kandidaten or [])
             eintrag["zuletzt"] = time.time()
             self._aufraeumen()
-
-    def offene_wahl(self, kennung):
-        """Die Dokumente aus der letzten Rueckfrage - oder []."""
-        eintrag = self._gespraeche.get(kennung)
-        if not eintrag:
-            return []
-        if time.time() - eintrag["zuletzt"] > VERGESSEN:
-            return []
-        return list(eintrag.get("wahl") or [])
+            self._sichern()
 
     def wahl_vergessen(self, kennung):
         """Die Wahl ist getroffen - sie darf die naechste Frage nicht mehr
         an sich ziehen."""
         with self._sperre:
             eintrag = self._gespraeche.get(kennung)
-            if eintrag:
-                eintrag.pop("wahl", None)
-
-    def _aufraeumen(self):
-        """Alte Unterhaltungen wegwerfen - sonst waechst das ewig."""
-        grenze = time.time() - VERGESSEN
-        for k in [k for k, v in self._gespraeche.items()
-                  if v["zuletzt"] < grenze]:
-            self._gespraeche.pop(k, None)
-
-    def letzter_gegenstand(self, kennung):
-        """Die letzte Frage, die einen eigenen Gegenstand hatte.
-
-        Wichtig ist das "eigene": Bei drei Folgefragen hintereinander
-        ("fasse zusammen" -> "kuerzer" -> "und die Quelle?") muss die
-        Ergaenzung immer auf die letzte INHALTLICHE Frage zurueckgreifen,
-        nicht auf die vorige Folgefrage. Sonst verduennt sich der
-        Gegenstand mit jedem Schritt, bis nichts mehr da ist.
-        """
-        eintrag = self._gespraeche.get(kennung)
-        if not eintrag:
-            return None
-        if time.time() - eintrag["zuletzt"] > VERGESSEN:
-            return None
-        for schritt in reversed(eintrag["schritte"]):
-            if schritt["art"] in ("normal", "zusammenfassung", "vergleich"):
-                return schritt["frage"]
-        return None
-
-    def letzte_bestand(self, kennung):
-        """Die letzte Bestandsfrage in diesem Faden - fuer Folgefrage-
-        Verfeinerungen (Thema von vorher erben)."""
-        eintrag = self._gespraeche.get(kennung)
-        if not eintrag or time.time() - eintrag["zuletzt"] > VERGESSEN:
-            return []
-        # ⭐ Liste der letzten Bestandsfragen (neueste zuerst), damit Art UND
-        #   Thema ueber MEHRERE Schritte getragen werden.
-        return [s["frage"] for s in reversed(eintrag["schritte"])
-                if s["art"] == "bestand"][:4]
+            if eintrag and eintrag.pop("wahl", None) is not None:
+                self._sichern()
 
     def dokument_merken(self, kennung, name):
         """Welches Dokument in diesem Faden gerade Thema ist.
@@ -189,28 +219,70 @@ class Verlauf:
         if not name:
             return
         with self._sperre:
-            eintrag = self._gespraeche.setdefault(
-                kennung, {"schritte": [], "zuletzt": 0})
+            eintrag = self._neu(kennung)
             eintrag["dokument"] = name
             eintrag["zuletzt"] = time.time()
+            self._sichern()
+
+    def _aufraeumen(self):
+        """Verfallene Sitzungs-Gespraeche wegwerfen; von den dauerhaften
+        Faeden hoechstens HOECHSTENS_FAEDEN behalten (die aeltesten gehen)."""
+        grenze = time.time() - VERGESSEN
+        for k in [k for k, v in self._gespraeche.items()
+                  if not self._dauerhaft(k) and v.get("zuletzt", 0) < grenze]:
+            self._gespraeche.pop(k, None)
+        dauer = [k for k in self._gespraeche if self._dauerhaft(k)]
+        if len(dauer) > HOECHSTENS_FAEDEN:
+            dauer.sort(key=lambda k: self._gespraeche[k].get("zuletzt", 0))
+            for k in dauer[:len(dauer) - HOECHSTENS_FAEDEN]:
+                self._gespraeche.pop(k, None)
+
+    # ---- Lesen ----------------------------------------------------------
+
+    def offene_wahl(self, kennung):
+        """Die Dokumente aus der letzten Rueckfrage - oder []."""
+        eintrag = self._hol(kennung)
+        return list(eintrag.get("wahl") or []) if eintrag else []
+
+    def letzter_gegenstand(self, kennung):
+        """Die letzte Frage, die einen eigenen Gegenstand hatte.
+
+        Wichtig ist das "eigene": Bei drei Folgefragen hintereinander
+        ("fasse zusammen" -> "kuerzer" -> "und die Quelle?") muss die
+        Ergaenzung immer auf die letzte INHALTLICHE Frage zurueckgreifen,
+        nicht auf die vorige Folgefrage. Sonst verduennt sich der
+        Gegenstand mit jedem Schritt, bis nichts mehr da ist.
+        """
+        eintrag = self._hol(kennung)
+        if not eintrag:
+            return None
+        for schritt in reversed(eintrag["schritte"]):
+            if schritt["art"] in ("normal", "zusammenfassung", "vergleich"):
+                return schritt["frage"]
+        return None
+
+    def letzte_bestand(self, kennung):
+        """Die letzten Bestandsfragen in diesem Faden (neueste zuerst) -
+        fuer Folgefrage-Verfeinerungen (Thema von vorher erben)."""
+        eintrag = self._hol(kennung)
+        if not eintrag:
+            return []
+        return [s["frage"] for s in reversed(eintrag["schritte"])
+                if s["art"] == "bestand"][:4]
 
     def letztes_dokument(self, kennung):
-        eintrag = self._gespraeche.get(kennung)
-        if not eintrag or time.time() - eintrag["zuletzt"] > VERGESSEN:
-            return None
-        return eintrag.get("dokument")
+        eintrag = self._hol(kennung)
+        return eintrag.get("dokument") if eintrag else None
 
     def letzte_art(self, kennung):
         """Die Art des UNMITTELBAR vorigen Schritts - oder None."""
-        eintrag = self._gespraeche.get(kennung)
+        eintrag = self._hol(kennung)
         if not eintrag or not eintrag["schritte"]:
-            return None
-        if time.time() - eintrag["zuletzt"] > VERGESSEN:
             return None
         return eintrag["schritte"][-1]["art"]
 
     def letzte_quellen(self, kennung):
-        eintrag = self._gespraeche.get(kennung)
+        eintrag = self._hol(kennung)
         if not eintrag:
             return []
         for schritt in reversed(eintrag["schritte"]):
