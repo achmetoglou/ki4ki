@@ -112,6 +112,143 @@ def bereich_setzen(slug):
         print("[Bereich] '%s' nicht gesetzt: %s" % (slug, str(e)[:150]),
               file=sys.stderr, flush=True)
         return False
+# ============================================================================
+#  KI4KI-LOESCHEN: Dokumente loeschen ohne zwei Handgriffe.
+#
+#  Ein Dokument lebt an mehreren Stellen (Textfassung + Vektoren in
+#  AnythingLLM, Original-PDF im Archiv, Katalogeintrag, Vormerkliste).
+#  Niemand raeumt vier Stellen von Hand auf. Deshalb: PDF nach
+#  <bereich>/loeschen/ legen (FileZilla, ein Handgriff) - die Wache holt es
+#  sich jede Minute, entfernt das Dokument ueberall und raeumt die PDF am
+#  Ende weg. Jeder Schritt steht in <bereich>/loeschen.log.
+#
+#  ⚠ Nur DIESER Ordner loest ein Loeschen aus. Eine aus dem Archiv
+#    verschwundene PDF loescht nie etwas - versehentlich verschieben darf
+#    keine Belege toeten. Abschaltbar: KI4KI_LOESCHEN=0.
+# ============================================================================
+LOESCH_WACHE = (os.environ.get("KI4KI_LOESCHEN", "1") != "0")
+
+
+def _api(methode, pfad, daten=None, timeout=60):
+    """AnythingLLM-Schnittstelle mit dem Anlagen-Schluessel - direkt an
+    AnythingLLM, nicht durch die eigene Positivliste."""
+    roh = json.dumps(daten).encode() if daten is not None else None
+    req = urllib.request.Request(ZIEL + pfad, data=roh, method=methode)
+    req.add_header("Authorization", "Bearer " + API_SCHLUESSEL)
+    req.add_header("Content-Type", "application/json")
+    with urllib.request.urlopen(req, timeout=timeout) as r:
+        antwort = r.read()
+    try:
+        return json.loads(antwort) if antwort else {}
+    except Exception:
+        return {}
+
+
+def _loesch_grund(name):
+    return re.sub(r"[^a-z0-9]", "", str(name).lower())
+
+
+def _loesch_protokoll(wurzel, text):
+    zeile = "%s %s" % (time.strftime("%Y-%m-%d %H:%M:%S"), text)
+    print("[Loeschen] " + text, file=sys.stderr, flush=True)
+    try:
+        with open(os.path.join(wurzel, "loeschen.log"), "a", encoding="utf-8") as fh:
+            fh.write(zeile + "\n")
+    except Exception:
+        pass
+
+
+def _dokument_loeschen(pdf):
+    """Ein PDF aus <bereich>/loeschen/ ueberall entfernen. True = fertig."""
+    wurzel = os.path.dirname(os.path.dirname(pdf))
+    name = os.path.basename(pdf)
+    stamm = name[:-4] if name.lower().endswith(".pdf") else name
+    ziel = _loesch_grund(stamm)
+
+    # 1) Textfassungen in AnythingLLM finden (ueber alle Ablageordner).
+    docpaths = []
+    for w, _, dateien in os.walk(BESTAND_ORDNER):
+        for d in dateien:
+            if d.endswith(".json") and _loesch_grund(d.split(".md-")[0]) == ziel:
+                docpaths.append(os.path.relpath(os.path.join(w, d), BESTAND_ORDNER))
+    # 2) Aus allen Arbeitsbereichen austragen (Vektoren weg), dann aus dem System.
+    if docpaths:
+        try:
+            ws = (_api("GET", "/api/v1/workspaces") or {}).get("workspaces") or []
+        except Exception as e:
+            _loesch_protokoll(wurzel, "%s: Arbeitsbereiche nicht abfragbar (%s) - naechster Versuch in einer Minute" % (name, str(e)[:80]))
+            return False
+        for w in ws:
+            slug = w.get("slug")
+            if not slug:
+                continue
+            try:
+                _api("POST", "/api/v1/workspace/%s/update-embeddings" % slug,
+                     {"adds": [], "deletes": docpaths}, timeout=120)
+            except Exception as e:
+                _loesch_protokoll(wurzel, "%s: aus Bereich '%s' nicht ausgetragen (%s)" % (name, slug, str(e)[:80]))
+        try:
+            _api("DELETE", "/api/v1/system/remove-documents", {"names": docpaths})
+            _loesch_protokoll(wurzel, "%s: Textfassung + Vektoren entfernt (%s)" % (name, ", ".join(docpaths)))
+        except Exception as e:
+            _loesch_protokoll(wurzel, "%s: Textfassung nicht entfernt (%s) - naechster Versuch in einer Minute" % (name, str(e)[:80]))
+            return False
+    else:
+        _loesch_protokoll(wurzel, "%s: keine Textfassung im Bestand (war nie aufgenommen oder schon weg)" % name)
+    # 3) Eigene Speicher: Katalog, Volltext-Vorrat, Vormerkliste.
+    try:
+        import bestand as _bst
+        _bst.entfernen(stamm)
+    except Exception:
+        pass
+    try:
+        for t in [t for t in list(BESTAND._pfade) if _loesch_grund(t[:-3] if t.endswith(".md") else t) == ziel]:
+            BESTAND._pfade.pop(t, None); BESTAND._geladen.pop(t, None)
+            if t in BESTAND._reihe:
+                BESTAND._reihe.remove(t)
+        BESTAND._roh = None
+    except Exception:
+        pass
+    vormerk = os.path.join(wurzel, "bilder-nachholen.txt")
+    try:
+        if os.path.exists(vormerk):
+            zeilen = [z for z in open(vormerk, encoding="utf-8").read().splitlines()
+                      if _loesch_grund(z.strip()[:-4] if z.strip().lower().endswith(".pdf") else z.strip()) != ziel]
+            with open(vormerk, "w", encoding="utf-8") as fh:
+                fh.write("\n".join(zeilen) + ("\n" if zeilen else ""))
+    except Exception:
+        pass
+    # 4) Original-PDFs: Archiv-Kopie und die Datei im Loesch-Ordner.
+    for kandidat in (os.path.join(wurzel, "archiv", name), pdf):
+        try:
+            if os.path.exists(kandidat):
+                os.remove(kandidat)
+        except Exception as e:
+            _loesch_protokoll(wurzel, "%s: %s nicht loeschbar (%s)" % (name, kandidat, str(e)[:80]))
+    _pdfs_erneuern_wenn_faellig()
+    _loesch_protokoll(wurzel, "%s: GELOESCHT (Bereich %s)" % (name, os.path.basename(wurzel)))
+    return True
+
+
+def _loesch_wache():
+    """Jede Minute nach <bereich>/loeschen/*.pdf sehen."""
+    while True:
+        try:
+            for bereich in sorted(os.listdir(EINGANG_ORDNER)):
+                lo = os.path.join(EINGANG_ORDNER, bereich, "loeschen")
+                if not os.path.isdir(lo):
+                    continue
+                for f in sorted(os.listdir(lo)):
+                    if f.lower().endswith(".pdf"):
+                        try:
+                            _dokument_loeschen(os.path.join(lo, f))
+                        except Exception:
+                            traceback.print_exc(file=sys.stderr)
+        except Exception:
+            traceback.print_exc(file=sys.stderr)
+        time.sleep(60)
+
+
 # Fuer Zusammenfassungen spricht der Proxy das Sprachmodell direkt an -
 # ueber den nothink-Proxy, damit Gemma nicht laut denkt. AnythingLLM waere
 # hier der falsche Weg: Es wuerde suchen, obwohl das ganze Dokument
@@ -4863,7 +5000,7 @@ class Griff(BaseHTTPRequestHandler):
             # Ordner anlegen - genau der Handgriff, den das Paket vermeiden
             # soll.
             wurzel = os.path.dirname(ziel)
-            for unter in ("input", "parkplatz", "archiv", "aussortiert"):
+            for unter in ("input", "parkplatz", "archiv", "aussortiert", "loeschen"):
                 os.makedirs(os.path.join(wurzel, unter), exist_ok=True)
             # ⭐ bereich.json anlegen, falls sie fehlt. Ohne sie bricht die
             #   Aufnahme im Node "Bereichskarte bauen" ab ("Keine bereich.json
@@ -4894,7 +5031,7 @@ class Griff(BaseHTTPRequestHandler):
                 _gid = 1000
             try:
                 for _p in [wurzel] + [os.path.join(wurzel, u) for u in
-                                      ("input", "parkplatz", "archiv", "aussortiert")]:
+                                      ("input", "parkplatz", "archiv", "aussortiert", "loeschen")]:
                     os.chown(_p, 1000, _gid)
                     os.chmod(_p, 0o2775)
                 os.chown(_konf, 1000, _gid)
@@ -5780,6 +5917,11 @@ def main():
                   "variable ins Daten-Volume legen." % (_name, _pfad),
                   file=sys.stderr, flush=True)
     BESTAND = veredeln.Bestand()
+    if LOESCH_WACHE and API_SCHLUESSEL:
+        threading.Thread(target=_loesch_wache, daemon=True).start()
+        print("Loesch-Wache: <bereich>/loeschen/ wird jede Minute geleert", flush=True)
+    elif LOESCH_WACHE:
+        print("Loesch-Wache AUS: kein KI4KI_API_KEY", flush=True)
     BESTAND._rohtext()
     print("  %d Dokumente, %d Quell-PDFs" % (len(BESTAND.titel()),
                                              pdfs_einlesen()), flush=True)

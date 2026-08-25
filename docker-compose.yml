@@ -262,6 +262,11 @@ services:
     - KI4KI_DOKZUGANG=/daten/pruefung/dokzugang.json
     - KI4KI_WORTVERZEICHNIS=/daten/pruefung/wortverzeichnis.json
     - KI4KI_ZUSAMMENFASSUNGEN=/daten/pruefung/zusammenfassungen
+    # Loesch-Wache: PDF nach <bereich>/loeschen/ legen -> Dokument wird
+    # ueberall entfernt (Arbeitsbereiche, System, Katalog, Vormerkliste,
+    # Archiv-PDF), Protokoll in <bereich>/loeschen.log. Nur dieser Ordner
+    # loest Loeschen aus. Abschaltbar mit 0.
+    - KI4KI_LOESCHEN=1
     - KI4KI_ZWISCHENSPEICHER=/daten/pruefung/vorauswahl.pickle
     # Der Katalog (Titel/Verfasser/Jahr je Dokument) - dauerhaft im
     # Daten-Volume, nicht im Abbild: Was das Modell vom Deckblatt liest,

@@ -276,6 +276,32 @@ def eintragen(name, angabe, quelle="modell", pfad=VERZEICHNIS):
     return eintrag
 
 
+def entfernen(name, pfad=VERZEICHNIS):
+    """Katalogeintrag eines geloeschten Dokuments entfernen (alle
+    Schreibvarianten des Namens). Liefert die Zahl der entfernten."""
+    global _GELADEN
+    ziel = _grund(str(name).rsplit(".", 1)[0] if str(name).lower().endswith((".pdf", ".md")) else name)
+    with _SPERRE:
+        try:
+            with open(pfad, encoding="utf-8") as f:
+                d = json.load(f)
+        except Exception:
+            return 0
+        weg = [k for k in d if _grund(k) == ziel]
+        for k in weg:
+            d.pop(k, None)
+        if weg:
+            try:
+                tmp = pfad + ".neu"
+                with open(tmp, "w", encoding="utf-8") as f:
+                    json.dump(d, f, ensure_ascii=False, indent=1)
+                os.replace(tmp, pfad)
+            except Exception:
+                pass
+            _GELADEN = None
+        return len(weg)
+
+
 def _einen_nachtragen(name):
     with _NACHTRAG_SPERRE:
         if name in _NACHTRAG_LAEUFT:
