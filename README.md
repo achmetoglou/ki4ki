@@ -398,6 +398,27 @@ topN/Schwelle/Temperatur/Modell je Bereich (Oberfläche).
 
 ---
 
+## 7a · Dokumente löschen
+
+Ein Dokument lebt an **zwei Stellen**: als aufbereitete Textfassung mit
+Suchvektoren in AnythingLLM und als Original-PDF in `dokumente/<bereich>/archiv/`
+(die Quelle für Beleg-Klicks, gelbe Markierungen und Abbildungen). Beides muss
+weg — sonst wird das Dokument entweder weiter gefunden (nur PDF gelöscht) oder
+die Belege dazu sind tot (nur in der Oberfläche gelöscht).
+
+1. **Oberfläche:** Arbeitsbereich → Zahnrad → **Dokumente** → das Dokument im
+   rechten Bereich abwählen/entfernen **und** links im Datei-Baum **löschen**
+   (Papierkorb-Symbol). „Entfernen" allein nimmt es nur aus dem Bereich, die
+   Datei bleibt im System.
+2. **Server:** die PDF aus `dokumente/<bereich>/archiv/` löschen (FileZilla oder
+   `rm`). Steht das Dokument in `bilder-nachholen.txt`, die Zeile dort entfernen.
+
+Die Reihenfolge ist egal. Ein Katalogeintrag bleibt harmlos liegen; die Anlage
+merkt das Verschwinden selbst. **Nichts wird je automatisch gelöscht** — auch
+eine versehentlich verschobene Archiv-PDF löst kein Löschen aus.
+
+---
+
 ## 8 · Verwaltung (was man wie einstellt)
 
 | Stellschraube | Wo | Neustart? |
