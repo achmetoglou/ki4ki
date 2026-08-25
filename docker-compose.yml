@@ -96,10 +96,17 @@ services:
       # (seine Gruppe kommt aus der .env, KI4KI_GID): Ordner 2775 mit
       # setgid, Dateien 664 - so kann er per SFTP/scp Massenlaeufe
       # einspielen, und n8n darf weiterhin verschieben.
+      # NUR anfassen, was wirklich falsch steht: chown/chmod auf eine schon
+      # richtige Datei schreibt trotzdem ihre ctime neu - und an der ctime
+      # haengen die Claim-Garantie (3 h) und das Einraeumen (1 h). Jedes
+      # Update haette sonst beide Uhren fuer alles in input/ auf null
+      # gestellt (gemessen 25.08.).
       mkdir -p /files/dokumente
-      chown -R 1000:${KI4KI_GID:-1000} /files/dokumente
-      find /files/dokumente -type d -exec chmod 2775 {} +
-      find /files/dokumente -type f -exec chmod 664 {} +
+      G=${KI4KI_GID:-1000}
+      find /files/dokumente ! -user 1000 -exec chown 1000 {} +
+      find /files/dokumente ! -group "$$G" -exec chgrp "$$G" {} +
+      find /files/dokumente -type d ! -perm 2775 -exec chmod 2775 {} +
+      find /files/dokumente -type f ! -perm 664 -exec chmod 664 {} +
       echo "Rechte gesetzt: n8n (1000) und Server-Nutzer (Gruppe ${KI4KI_GID:-1000}) duerfen schreiben."
     volumes:
     - ./dokumente:/files/dokumente
