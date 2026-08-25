@@ -494,6 +494,7 @@ def _netz_frageart(frage):
             "think": False,
             "stream": False,
             "options": {"temperature": 0},
+            "keep_alive": "24h",
         }).encode("utf-8")
         a = Request(NETZ_URL, data=leib,
                     headers={"Content-Type": "application/json"}, method="POST")

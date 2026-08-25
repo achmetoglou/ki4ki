@@ -13,7 +13,7 @@
         "url": "http://ollama:11434/api/chat",
         "sendBody": true,
         "specifyBody": "json",
-        "jsonBody": "={{\n(() => {\n  const text = ($json.parsed_text || '').slice(0, 4000);\n\n  return {\n    model: 'gemma4:12b',\n    stream: false,\n    options: {\n      temperature: 0\n    },\n    format: {\n      type: 'object',\n      properties: {\n        document_type: { type: 'string' },\n        language: { type: 'string' },\n        domain: { type: 'string' },\n        subdomain: { type: 'string' },\n        methods: {\n          type: 'array',\n          items: { type: 'string' }\n        },\n        keywords: {\n          type: 'array',\n          items: { type: 'string' }\n        },\n        tags: {\n          type: 'array',\n          items: { type: 'string' }\n        },\n        summary: { type: 'string' }\n      },\n      required: [\n        'document_type',\n        'language',\n        'domain',\n        'subdomain',\n        'methods',\n        'keywords',\n        'tags',\n        'summary'\n      ]\n    },\n    messages: [\n      {\n        role: 'system',\n        content: 'You are a document tagging assistant for heterogeneous production engineering documents. Return JSON only. Create document-dependent metadata and concise technical tags.'\n      },\n      {\n        role: 'user',\n        content:\n          'Analyze the following document and return structured metadata.\\n\\n' +\n          'Filename: ' + ($json.filename || '') + '\\n' +\n          'Mime-Type: ' + ($json.mime_type || '') + '\\n\\n' +\n          'Return these fields:\\n' +\n          '- document_type\\n' +\n          '- language\\n' +\n          '- domain\\n' +\n          '- subdomain\\n' +\n          '- methods\\n' +\n          '- keywords\\n' +\n          '- tags\\n' +\n          '- summary\\n\\n' +\n          'Document text:\\n' +\n          text\n      }\n    ]\n  };\n})()\n}}",
+        "jsonBody": "={{\n(() => {\n  const text = ($json.parsed_text || '').slice(0, 4000);\n\n  return {\n    // Kleines Modell: Verschlagwortung ist Metadaten-Arbeit, keine Fachantwort.\n    // Gemessen 25.08.: 50 s mit dem grossen Modell - und eine Chat-Antwort\n    // wartete solange in derselben Warteschlange.\n    model: 'gemma4:e2b',\n    keep_alive: '24h',\n    stream: false,\n    options: {\n      temperature: 0\n    },\n    format: {\n      type: 'object',\n      properties: {\n        document_type: { type: 'string' },\n        language: { type: 'string' },\n        domain: { type: 'string' },\n        subdomain: { type: 'string' },\n        methods: {\n          type: 'array',\n          items: { type: 'string' }\n        },\n        keywords: {\n          type: 'array',\n          items: { type: 'string' }\n        },\n        tags: {\n          type: 'array',\n          items: { type: 'string' }\n        },\n        summary: { type: 'string' }\n      },\n      required: [\n        'document_type',\n        'language',\n        'domain',\n        'subdomain',\n        'methods',\n        'keywords',\n        'tags',\n        'summary'\n      ]\n    },\n    messages: [\n      {\n        role: 'system',\n        content: 'You are a document tagging assistant for heterogeneous production engineering documents. Return JSON only. Create document-dependent metadata and concise technical tags.'\n      },\n      {\n        role: 'user',\n        content:\n          'Analyze the following document and return structured metadata.\\n\\n' +\n          'Filename: ' + ($json.filename || '') + '\\n' +\n          'Mime-Type: ' + ($json.mime_type || '') + '\\n\\n' +\n          'Return these fields:\\n' +\n          '- document_type\\n' +\n          '- language\\n' +\n          '- domain\\n' +\n          '- subdomain\\n' +\n          '- methods\\n' +\n          '- keywords\\n' +\n          '- tags\\n' +\n          '- summary\\n\\n' +\n          'Document text:\\n' +\n          text\n      }\n    ]\n  };\n})()\n}}",
         "options": {
           "response": {
             "response": {
@@ -425,13 +425,14 @@
         "rule": {
           "interval": [
             {
-              "field": "minutes"
+              "field": "minutes",
+              "minutesInterval": 1
             }
           ]
         }
       },
       "id": "2bf4a21b-148c-4076-b60b-15bb02688f00",
-      "name": "Alle 5 Minuten nachsehen",
+      "name": "Jede Minute nachsehen",
       "type": "n8n-nodes-base.scheduleTrigger",
       "typeVersion": 1.2,
       "position": [
@@ -844,17 +845,6 @@
         ]
       ]
     },
-    "Alle 5 Minuten nachsehen": {
-      "main": [
-        [
-          {
-            "node": "Bereiche einlesen",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
     "Von der Oberflaeche angestossen": {
       "main": [
         [
@@ -975,6 +965,17 @@
           }
         ]
       ]
+    },
+    "Jede Minute nachsehen": {
+      "main": [
+        [
+          {
+            "node": "Bereiche einlesen",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
     }
   },
   "settings": {
@@ -983,7 +984,7 @@
     "availableInMCP": false
   },
   "staticData": {
-    "node:Alle 5 Minuten nachsehen": {
+    "node:Jede Minute nachsehen": {
       "recurrenceRules": [
         null
       ],

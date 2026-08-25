@@ -354,12 +354,38 @@ def _liegengebliebene_einraeumen():
     _pdfs_erneuern_wenn_faellig()
 
 
+def _seiten_vorwaermen(hoechstens=3):
+    """Seitentexte neuer PDFs im Hintergrund lesen (pdftotext, 1-2 s je
+    Dokument). Gemessen 25.08.: Die Belegpruefung der ERSTEN Antwort dauerte
+    11 s, weil sechs Dokumente erst dann gelesen wurden - danach 0-2 s.
+    Hoechstens drei je Minute, damit die Anlage nebenbei antwortfaehig bleibt."""
+    getan = 0
+    try:
+        with pdfstelle._SPERRE:
+            fehlend = [k for k in list(PDFS) if k not in pdfstelle._SEITEN]
+    except Exception:
+        return
+    for k in fehlend[:hoechstens]:
+        try:
+            pdfstelle.seitentexte(k)
+            getan += 1
+        except Exception:
+            continue
+    if getan:
+        print("[Vorwaermen] %d Dokument(e) fuer die Belegpruefung gelesen, %d offen"
+              % (getan, max(0, len(fehlend) - getan)), file=sys.stderr, flush=True)
+
+
 def _loesch_wache():
     """Jede Minute nach <bereich>/loeschen/*.pdf sehen - und liegengebliebene
     Eingangsdateien einraeumen."""
     while True:
         try:
             _liegengebliebene_einraeumen()
+        except Exception:
+            traceback.print_exc(file=sys.stderr)
+        try:
+            _seiten_vorwaermen()
         except Exception:
             traceback.print_exc(file=sys.stderr)
         try:
@@ -4358,7 +4384,7 @@ class Griff(BaseHTTPRequestHandler):
             "stream": False,
             "think": False,
             "options": {"temperature": 0.2, "num_ctx": 65536},
-            "keep_alive": "1h",
+            "keep_alive": "24h",
         }).encode()
         req = urllib.request.Request(
             MODELL_ZIEL, data=daten, method="POST",

@@ -19,6 +19,24 @@ services:
     image: ollama/ollama@sha256:6345fbc18bd73a1e16404be681dbc6fd291a027cab43ed541abe78c4c81051b0
     container_name: ki4ki-ollama
     restart: unless-stopped
+    # ⭐ GESCHWINDIGKEIT (gemessen 25.08. an den Ollama-Zugriffszeiten):
+    #   - Modelle wurden nach 5 Minuten Ruhe ENTLADEN: das kleine Modell
+    #     (Auffangnetz) lud vor fast jeder Frage 3-5 s neu, das Suchmodell
+    #     (bge-m3) 2-7 s. KEEP_ALIVE=-1 haelt alle drei im Speicher
+    #     (zusammen ~12 GB; die Karte hat 48 GB).
+    #   - Eine Chat-Antwort wartete 61 s hinter der Dokument-Verschlagwortung
+    #     der Aufnahme (gleiches Modell, eine Warteschlange). NUM_PARALLEL=2
+    #     laesst zwei Anfragen gleichzeitig durch.
+    #   - CONTEXT_LENGTH setzt die Standard-Kontextgroesse fuer Aufrufe OHNE
+    #     eigene Angabe (Docling-Bildbeschreibung ueber die OpenAI-Schnitt-
+    #     stelle). Weicht sie von der der anderen Aufrufe ab, laedt Ollama
+    #     das Modell bei jedem Wechsel neu (~7 s). Alle Aufrufe: 65536.
+    #   - FLASH_ATTENTION beschleunigt das Einlesen langer Eingaben.
+    environment:
+    - OLLAMA_KEEP_ALIVE=-1
+    - OLLAMA_NUM_PARALLEL=2
+    - OLLAMA_CONTEXT_LENGTH=65536
+    - OLLAMA_FLASH_ATTENTION=1
     volumes:
     - modelle:/root/.ollama
     # kein veroeffentlichter Anschluss: nur die anderen Dienste sprechen mit ihm

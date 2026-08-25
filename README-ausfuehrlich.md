@@ -259,7 +259,7 @@ der start.sh-Verlauf „⚠ Nicht alle Workflows aktiviert" gemeldet hat:
    Oberfläche. Wer Dateien direkt auf den Server legt: in
    **`./dokumente/<bereich>/input/`** (z. B.
    `./dokumente/wissensdatenbank/input/`) — **nicht** in die `./dokumente`-Wurzel,
-   dort schaut niemand nach. Die Aufnahme startet automatisch (alle 5 Min wird
+   dort schaut niemand nach. Die Aufnahme startet automatisch (jede Minute wird
    geschaut). **Massenlauf per SFTP/FileZilla/scp:** mit dem Server-Nutzer, der
    `start.sh` ausgeführt hat, direkt nach `dokumente/<bereich>/input/`
    (oder `parkplatz/` zum Zwischenlagern) — die Ordner sind dafür für diesen
@@ -475,7 +475,7 @@ dann `docker compose up -d`.
   (z.B. `pruef-proxy`, `n8n`, `docling`, `ollama`).
 - **Startet nach Server-Neustart selbst** (`restart: unless-stopped`).
 - **Platte im Blick behalten** (häufigste Ausfallursache!): `df -h` und
-  `docker system df`. Die **n8n-Ausführungshistorie** wächst (alle 5 Min ein Lauf)
+  `docker system df`. Die **n8n-Ausführungshistorie** wächst (jede Minute ein Lauf)
   — beim n8n-Dienst begrenzen mit `EXECUTIONS_DATA_PRUNE=true` und
   `EXECUTIONS_DATA_MAX_AGE=336` (14 Tage), und Docker-Log-Rotation einrichten.
 
