@@ -31,7 +31,8 @@ den `.pub`-Inhalt bei GitHub als Deploy-Key (nur lesen) eintragen, dann
 | Was | Wie |
 |---|---|
 | **Dokument hochladen** | Hochladen-Knopf in der Oberfläche — oder per SFTP/FileZilla nach `dokumente/<bereich>/input/`. Aufnahme startet von selbst (jede Minute nachgesehen), fertig = liegt in `archiv/`. |
-| **Viele Dokumente (Massenlauf)** | Alle nach `input/` legen. Ab 6 Dateien läuft der Durchgang automatisch **ohne** Bildbeschreibung (Minuten statt Stunden); die Dokumente stehen dann in `bilder-nachholen.txt` fürs spätere Nachreichen der Bilder. `parkplatz/` = Zwischenlager, wird nie angefasst. |
+| **Viele Dokumente (Massenlauf)** | Alle nach `input/` legen. `parkplatz/` = Zwischenlager, wird nie angefasst. |
+| **Bilder/Diagramme** | Die Aufnahme liest Text, Tabellen und Formeln (eine Dissertation in 1–3 Minuten). Bildbeschreibungen kosten ~6 s je Bild und sind deshalb standardmäßig **aus**; die Dokumente stehen in `bilder-nachholen.txt` und bekommen ihre Bilder nachgelagert. Sofort mit Bildern: `KI4KI_BILDBESCHREIBUNG=an` in die `.env`. |
 | **Dokument löschen** | In der Oberfläche: Zahnrad → Dokumente → Papierkorb — die Anlage räumt Archiv-PDF, Katalog und Vormerkliste selbst nach. Oder per SFTP: PDF nach `dokumente/<bereich>/loeschen/` legen, alles Weitere passiert von selbst (Quittung in `loeschen.log`). |
 | **Fragen** | Fachfrage stellen → Antwort mit Belegen; Klick auf einen Beleg öffnet die Seite im Original, gelb markiert. Diagramme der belegten Seiten erscheinen im Chat. |
 | **Zusammenfassen / aufbereiten** | „Fasse die Dissertation zusammen", „Bereite mir daraus eine Präsentation vor", „Stichpunkte für ein Handout" → liest das ganze Dokument. |

@@ -184,8 +184,13 @@ services:
     #   "aus"            = nur Text + Bildunterschriften, keine VLM-Bild-
     #                      beschreibung -> deutlich schneller (fuer Massenlaeufe
     #                      oder textlastige Bestaende).
-    #   Partner setzen das per .env (KI4KI_BILDBESCHREIBUNG=aus); Standard "an".
-    - KI4KI_BILDBESCHREIBUNG=${KI4KI_BILDBESCHREIBUNG:-an}
+    #   Standard "aus" (Entscheidung 25.08.): Gemessen gingen 6 von 7 Minuten
+    #   einer Aufnahme in die Bildbeschreibung (jedes Bild ~6 s durch dasselbe
+    #   Modell, das auch antwortet). Text, Tabellen, Formeln sind nach ~1-2
+    #   Minuten durchsuchbar; die Dokumente stehen in bilder-nachholen.txt und
+    #   bekommen ihre Bilder nachgelagert. Wer Bilder sofort will: .env mit
+    #   KI4KI_BILDBESCHREIBUNG=an.
+    - KI4KI_BILDBESCHREIBUNG=${KI4KI_BILDBESCHREIBUNG:-aus}
     # Massenlauf-Automatik: Liegen mindestens so viele Dateien im Eingang,
     # laeuft der Durchgang OHNE Bildbeschreibung (Stunden statt Wochen) und
     # jedes Dokument kommt in <bereich>/bilder-nachholen.txt zum spaeteren
