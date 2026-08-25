@@ -400,7 +400,9 @@ topN/Schwelle/Temperatur/Modell je Bereich (Oberfläche).
 
 ## 7a · Dokumente löschen
 
-PDF nach **`dokumente/<bereich>/loeschen/`** legen (FileZilla oder `mv`) — mehr
+**Zwei Wege, beide vollständig:** In der Oberfläche (Zahnrad → Dokumente →
+Papierkorb) — die Anlage zieht Archiv-PDF, Katalog und Vormerkliste selbst nach.
+Oder per SFTP: PDF nach **`dokumente/<bereich>/loeschen/`** legen — mehr
 nicht. Die Anlage prüft den Ordner jede Minute und entfernt das Dokument
 überall: aus allen Arbeitsbereichen (Suchvektoren), die Textfassung aus dem
 System, den Katalogeintrag, die Zeile in `bilder-nachholen.txt`, die

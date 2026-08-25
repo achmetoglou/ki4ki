@@ -158,6 +158,77 @@ def _loesch_protokoll(wurzel, text):
         pass
 
 
+def _eigene_spuren_tilgen(stamm, grund_log="geloescht"):
+    """Alles, was DIE ANLAGE selbst ueber ein Dokument fuehrt, entfernen:
+    Katalogeintrag, Volltext-Vorrat, Vormerkliste, Archiv-PDF - in jedem
+    Bereich, in dem das Dokument liegt. Liefert die betroffenen Bereiche."""
+    ziel = _loesch_grund(stamm)
+    try:
+        import bestand as _bst
+        _bst.entfernen(stamm)
+    except Exception:
+        pass
+    try:
+        for t in [t for t in list(BESTAND._pfade)
+                  if _loesch_grund(t[:-3] if t.endswith(".md") else t) == ziel]:
+            BESTAND._pfade.pop(t, None)
+            BESTAND._geladen.pop(t, None)
+            if t in BESTAND._reihe:
+                BESTAND._reihe.remove(t)
+        BESTAND._roh = None
+    except Exception:
+        pass
+    betroffen = []
+    try:
+        bereiche = sorted(os.listdir(EINGANG_ORDNER))
+    except Exception:
+        bereiche = []
+    for bereich in bereiche:
+        wurzel = os.path.join(EINGANG_ORDNER, bereich)
+        if not os.path.isdir(os.path.join(wurzel, "archiv")):
+            continue
+        getan = False
+        vormerk = os.path.join(wurzel, "bilder-nachholen.txt")
+        try:
+            if os.path.exists(vormerk):
+                alt = open(vormerk, encoding="utf-8").read().splitlines()
+                neu = [z for z in alt if _loesch_grund(
+                    z.strip()[:-4] if z.strip().lower().endswith(".pdf") else z.strip()) != ziel]
+                if len(neu) != len(alt):
+                    with open(vormerk, "w", encoding="utf-8") as fh:
+                        fh.write("\n".join(neu) + ("\n" if neu else ""))
+                    getan = True
+        except Exception:
+            pass
+        try:
+            for d in os.listdir(os.path.join(wurzel, "archiv")):
+                if d.lower().endswith(".pdf") and _loesch_grund(d[:-4]) == ziel:
+                    os.remove(os.path.join(wurzel, "archiv", d))
+                    getan = True
+        except Exception as e:
+            _loesch_protokoll(wurzel, "%s: Archiv-PDF nicht loeschbar (%s)" % (stamm, str(e)[:80]))
+        if getan:
+            betroffen.append(wurzel)
+            _loesch_protokoll(wurzel, "%s: Archiv-PDF/Vormerkliste/Katalog bereinigt (%s)" % (stamm, grund_log))
+    _pdfs_erneuern_wenn_faellig()
+    return betroffen
+
+
+_LOESCH_UI = re.compile(r"^/api/(?:v1/)?system/remove-documents/?(?:\?.*)?$")
+
+
+def _nach_ui_loeschung(names):
+    """Nach einem Papierkorb-Klick in der Oberflaeche: AnythingLLM hat die
+    Textfassung entfernt - jetzt die eigenen Spuren nachziehen. Nur, wenn
+    die Textfassung wirklich weg ist (sonst hat AnythingLLM abgelehnt)."""
+    for docpath in names or []:
+        if os.path.exists(os.path.join(BESTAND_ORDNER, docpath)):
+            continue
+        stamm = os.path.basename(str(docpath)).split(".md-")[0]
+        if stamm:
+            _eigene_spuren_tilgen(stamm, "aus der Oberflaeche geloescht")
+
+
 def _dokument_loeschen(pdf):
     """Ein PDF aus <bereich>/loeschen/ ueberall entfernen. True = fertig."""
     wurzel = os.path.dirname(os.path.dirname(pdf))
@@ -195,36 +266,14 @@ def _dokument_loeschen(pdf):
             return False
     else:
         _loesch_protokoll(wurzel, "%s: keine Textfassung im Bestand (war nie aufgenommen oder schon weg)" % name)
-    # 3) Eigene Speicher: Katalog, Volltext-Vorrat, Vormerkliste.
+    # 3) Eigene Spuren ueberall tilgen (Katalog, Vorrat, Vormerkliste, Archiv-PDF).
+    _eigene_spuren_tilgen(stamm, "ueber loeschen/")
+    # 4) Zuletzt die Datei im Loesch-Ordner selbst.
     try:
-        import bestand as _bst
-        _bst.entfernen(stamm)
-    except Exception:
-        pass
-    try:
-        for t in [t for t in list(BESTAND._pfade) if _loesch_grund(t[:-3] if t.endswith(".md") else t) == ziel]:
-            BESTAND._pfade.pop(t, None); BESTAND._geladen.pop(t, None)
-            if t in BESTAND._reihe:
-                BESTAND._reihe.remove(t)
-        BESTAND._roh = None
-    except Exception:
-        pass
-    vormerk = os.path.join(wurzel, "bilder-nachholen.txt")
-    try:
-        if os.path.exists(vormerk):
-            zeilen = [z for z in open(vormerk, encoding="utf-8").read().splitlines()
-                      if _loesch_grund(z.strip()[:-4] if z.strip().lower().endswith(".pdf") else z.strip()) != ziel]
-            with open(vormerk, "w", encoding="utf-8") as fh:
-                fh.write("\n".join(zeilen) + ("\n" if zeilen else ""))
-    except Exception:
-        pass
-    # 4) Original-PDFs: Archiv-Kopie und die Datei im Loesch-Ordner.
-    for kandidat in (os.path.join(wurzel, "archiv", name), pdf):
-        try:
-            if os.path.exists(kandidat):
-                os.remove(kandidat)
-        except Exception as e:
-            _loesch_protokoll(wurzel, "%s: %s nicht loeschbar (%s)" % (name, kandidat, str(e)[:80]))
+        if os.path.exists(pdf):
+            os.remove(pdf)
+    except Exception as e:
+        _loesch_protokoll(wurzel, "%s: %s nicht loeschbar (%s)" % (name, pdf, str(e)[:80]))
     _pdfs_erneuern_wenn_faellig()
     _loesch_protokoll(wurzel, "%s: GELOESCHT (Bereich %s)" % (name, os.path.basename(wurzel)))
     return True
@@ -235,7 +284,21 @@ def _loesch_wache():
     while True:
         try:
             for bereich in sorted(os.listdir(EINGANG_ORDNER)):
-                lo = os.path.join(EINGANG_ORDNER, bereich, "loeschen")
+                wurzel = os.path.join(EINGANG_ORDNER, bereich)
+                lo = os.path.join(wurzel, "loeschen")
+                # Bestehende Bereiche (vor dieser Fassung angelegt) bekommen
+                # den Ordner hier nachgereicht - mit denselben Rechten wie
+                # die anderen, damit der Mensch per SFTP hineinlegen kann.
+                if os.path.isdir(os.path.join(wurzel, "archiv")) and not os.path.isdir(lo):
+                    try:
+                        os.makedirs(lo, exist_ok=True)
+                        try:
+                            os.chown(lo, 1000, int(os.environ.get("KI4KI_GID") or 1000))
+                            os.chmod(lo, 0o2775)
+                        except Exception:
+                            pass
+                    except Exception:
+                        continue
                 if not os.path.isdir(lo):
                     continue
                 for f in sorted(os.listdir(lo)):
@@ -2963,7 +3026,7 @@ class Griff(BaseHTTPRequestHandler):
         letztes = weg.rsplit("/", 1)[-1]
         return ("." not in letztes) or letztes.lower().endswith(".html")
 
-    def _weiterleiten(self, methode):
+    def _weiterleiten(self, methode, koerper=None):
         # KI4KI-POSITIVLISTE: destruktive Verwaltungsbefehle abfangen.
         if verwaltungsbefehl(methode, self.path):
             gesperrt = (POSITIVLISTE == "sperren")
@@ -2974,7 +3037,8 @@ class Griff(BaseHTTPRequestHandler):
             if gesperrt:
                 self._json({"error": "Not allowed."}, code=403)
                 return
-        koerper = self._koerper()
+        if koerper is None:
+            koerper = self._koerper()
         req = urllib.request.Request(ZIEL + self.path, data=koerper,
                                      method=methode)
         seite = self._ist_seite()
@@ -5523,6 +5587,19 @@ class Griff(BaseHTTPRequestHandler):
         self._weiterleiten("PUT")
 
     def do_DELETE(self):
+        # KI4KI-LOESCHEN aus der Oberflaeche: Der Papierkorb im Dokumente-
+        # Dialog loescht in AnythingLLM die Textfassung - die eigenen Spuren
+        # (Archiv-PDF, Katalog, Vormerkliste, Vorrat) zieht die Anlage danach
+        # selbst nach. Kein zweiter Handgriff mehr.
+        if LOESCH_WACHE and _LOESCH_UI.match(self.path or ""):
+            koerper = self._koerper()
+            self._weiterleiten("DELETE", koerper=koerper)
+            try:
+                names = (json.loads(koerper or b"{}") or {}).get("names") or []
+                _nach_ui_loeschung(names)
+            except Exception:
+                traceback.print_exc(file=sys.stderr)
+            return
         self._weiterleiten("DELETE")
 
     def do_PATCH(self):

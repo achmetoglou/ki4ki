@@ -32,7 +32,7 @@ den `.pub`-Inhalt bei GitHub als Deploy-Key (nur lesen) eintragen, dann
 |---|---|
 | **Dokument hochladen** | Hochladen-Knopf in der Oberfläche — oder per SFTP/FileZilla nach `dokumente/<bereich>/input/`. Aufnahme startet von selbst (alle 5 Min), fertig = liegt in `archiv/`. |
 | **Viele Dokumente (Massenlauf)** | Alle nach `input/` legen. Ab 6 Dateien läuft der Durchgang automatisch **ohne** Bildbeschreibung (Minuten statt Stunden); die Dokumente stehen dann in `bilder-nachholen.txt` fürs spätere Nachreichen der Bilder. `parkplatz/` = Zwischenlager, wird nie angefasst. |
-| **Dokument löschen** | PDF nach `dokumente/<bereich>/loeschen/` legen. Die Anlage entfernt es überall (Suche, Textfassung, Katalog, Archiv) und räumt die PDF weg — Protokoll in `loeschen.log`. Nur dieser Ordner löscht. |
+| **Dokument löschen** | In der Oberfläche: Zahnrad → Dokumente → Papierkorb — die Anlage räumt Archiv-PDF, Katalog und Vormerkliste selbst nach. Oder per SFTP: PDF nach `dokumente/<bereich>/loeschen/` legen, alles Weitere passiert von selbst (Quittung in `loeschen.log`). |
 | **Fragen** | Fachfrage stellen → Antwort mit Belegen; Klick auf einen Beleg öffnet die Seite im Original, gelb markiert. Diagramme der belegten Seiten erscheinen im Chat. |
 | **Zusammenfassen / aufbereiten** | „Fasse die Dissertation zusammen", „Bereite mir daraus eine Präsentation vor", „Stichpunkte für ein Handout" → liest das ganze Dokument. |
 | **Bilder** | „Zeig mir Bild 2.1" / „Zeig mir ein Diagramm" → Bildunterschrift, Seite, Bild. |
