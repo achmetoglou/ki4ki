@@ -59,6 +59,14 @@ erklaeren erkläre erklären nenne nennen gib gibt sag sage sagen zeige
 zeigen wichtigsten wichtige wichtig sachen dinge punkte thema themen
 information informationen unterlagen dokument dokumente arbeit arbeiten
 steht stehen ueber über
+bestand frage fragen antwort antworten schreib schreibe schreiben zeig
+kannst koenntest könntest meinst gefragt gemeint mache machen mach erstelle
+erstellen erstell diagramm diagramme diagram bild bilder abbildung
+abbildungen grafik grafiken tabelle tabellen dissertation dissertationen
+doktorarbeit masterarbeit bachelorarbeit datenbank kernfakten kernaussagen
+kernaussage ergebnis ergebnisse fazit gesamt gesamte komplett komplette ganze
+kurze lange nochmal praesentation präsentation handout stichpunkte gliederung
+vortrag folien ueberblick überblick inhalt methodik funktioniert funktionieren
 """.split())
 
 # Zu kurze Woerter sind fast nie Fachbegriffe - und ein kurzes Wort kommt
@@ -187,13 +195,24 @@ def auffaellige_woerter(frage, hoechstens=4):
     if not frage:
         return []
     # Bindestrichwoerter zusammenhalten: "Laser-Durchstrahlschweissen"
-    roh = re.findall(r"[A-Za-zÄÖÜäöüß][A-Za-zÄÖÜäöüß0-9\-]{2,}", frage)
     kandidaten = []
-    for w in roh:
+    for m in re.finditer(r"[A-Za-zÄÖÜäöüß][A-Za-zÄÖÜäöüß0-9\-]{2,}", frage):
+        w = m.group(0)
         k = w.strip("-")
         if len(k) < MINDESTLAENGE:
             continue
         if _falte(k) in HAEUFIG:
+            continue
+        # ⚠ SATZANFANG: Dort ist Grossschreibung kein Signal - "Schreib mir
+        #   eine Zusammenfassung" machte "Schreib" zum Fachwort (gemessen
+        #   25.08.: Fundstellen zu "beschreiben" beigelegt). Am Satzanfang
+        #   zaehlt nur, was auch klein geschrieben auffiele.
+        davor = frage[:m.start()].rstrip()
+        satzanfang = (not davor) or davor[-1] in ".!?:;\n"
+        if satzanfang:
+            if len(k) >= 9 or "-" in k or any(c.isdigit() for c in k) \
+                    or (k.isupper() and len(k) >= 3):
+                kandidaten.append(k)
             continue
         # Gross geschrieben ODER auffaellig lang
         if k[:1].isupper() or len(k) >= 9:

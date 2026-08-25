@@ -36,6 +36,7 @@ den `.pub`-Inhalt bei GitHub als Deploy-Key (nur lesen) eintragen, dann
 | **Fragen** | Fachfrage stellen → Antwort mit Belegen; Klick auf einen Beleg öffnet die Seite im Original, gelb markiert. Diagramme der belegten Seiten erscheinen im Chat. |
 | **Zusammenfassen / aufbereiten** | „Fasse die Dissertation zusammen", „Bereite mir daraus eine Präsentation vor", „Stichpunkte für ein Handout" → liest das ganze Dokument. |
 | **Bilder** | „Zeig mir Bild 2.1" / „Zeig mir ein Diagramm" → Bildunterschrift, Seite, Bild. |
+| **Folgefragen** | Ein Dokument benennen — per Kennung (DS-24-005), Verfasser („die Arbeit von Becker") oder Titelwörtern. Danach meinen „die Arbeit", „daraus", „gesamte Zusammenfassung", „ein Diagramm aus der Arbeit" genau dieses Dokument (eine Stunde lang, je Gesprächsfaden). |
 | **Bestand** | „Welche Dokumente haben wir?" → Tabelle aus dem Katalog (Titel/Autor/Jahr liest die Anlage selbst vom Deckblatt). |
 | **Neuer Arbeitsbereich** | Per Klick in der Oberfläche anlegen — bekommt automatisch die geprüften Einstellungen. Ordner `dokumente/<bereich>/` entsteht beim ersten Upload. |
 | **Nutzer** | Oberfläche → Einstellungen → Benutzer. Ein Nutzer sieht nur zugewiesene Bereiche. |

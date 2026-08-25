@@ -176,6 +176,39 @@ class Verlauf:
         return [s["frage"] for s in reversed(eintrag["schritte"])
                 if s["art"] == "bestand"][:4]
 
+    def dokument_merken(self, kennung, name):
+        """Welches Dokument in diesem Faden gerade Thema ist.
+
+        Gemessen 25.08.: "Dissertation von Fabian Becker zusammenfassen" ->
+        "Schreib mir eine gesamte Zusammenfassung" -> "ein Diagramm aus der
+        Arbeit": Die zweite und dritte Frage nennen das Dokument nicht mehr,
+        meinen aber offensichtlich dasselbe. Ohne dieses Gedaechtnis fiel
+        die Anlage auf Schnipsel aus dem ganzen Bestand zurueck und zeigte
+        Diagramme aus einer fremden Arbeit.
+        """
+        if not name:
+            return
+        with self._sperre:
+            eintrag = self._gespraeche.setdefault(
+                kennung, {"schritte": [], "zuletzt": 0})
+            eintrag["dokument"] = name
+            eintrag["zuletzt"] = time.time()
+
+    def letztes_dokument(self, kennung):
+        eintrag = self._gespraeche.get(kennung)
+        if not eintrag or time.time() - eintrag["zuletzt"] > VERGESSEN:
+            return None
+        return eintrag.get("dokument")
+
+    def letzte_art(self, kennung):
+        """Die Art des UNMITTELBAR vorigen Schritts - oder None."""
+        eintrag = self._gespraeche.get(kennung)
+        if not eintrag or not eintrag["schritte"]:
+            return None
+        if time.time() - eintrag["zuletzt"] > VERGESSEN:
+            return None
+        return eintrag["schritte"][-1]["art"]
+
     def letzte_quellen(self, kennung):
         eintrag = self._gespraeche.get(kennung)
         if not eintrag:
@@ -1055,6 +1088,12 @@ def ist_bestand_verfeinerung(frage):
     f = (frage or "").strip()
     if not f or len(f) > 80:
         return False
+    # Eine Rueckmeldung oder Feststellung ("Das ist ein Diagramm aus einer
+    # anderen Dissertation!!!!!") ist keine Verfeinerung - gemessen 25.08.:
+    # sie wurde zur Bestandsliste "Dissertationen".
+    if ist_beschwerde(f) or "!!" in f or \
+            re.match(r"^\s*(?:das|dies|es)\s+(?:ist|war)\b", f, re.I):
+        return False
     if _b.gefragte_art(f)[0]:
         return True
     if _stichwort_aus(f):
@@ -1165,6 +1204,147 @@ def _generisch_gemeint(frage, titel):
     return None
 
 
+# Woerter, die kein Dokument benennen - Fragewoerter, Auftraege, Gattungen,
+# Bausteine eines Dokuments. Alles andere Grossgeschriebene gilt als
+# eigener Gegenstand (Name, Fachbegriff, Titelwort).
+_UNSPEZIFISCH = set("""
+kannst koenntest könntest kann koennen können bitte danke mach mache machen
+erstelle erstell erstellen gib gibt zeig zeige zeigen schreib schreibe
+schreiben fasse fass fasst fassen erklaer erklär erklaere erkläre nenne nenn
+was wie welche welcher welches welchen warum wieso weshalb wo wann wer und
+aber okay ok ja nein nochmal noch dann jetzt hier auch nur sehr mehr alle
+alles ich du mir mich dir ihr sie wir uns der die das ein eine einen einem
+einer dieser diese dieses diesem gesamt gesamte gesamten komplett komplette
+ganz ganze ganzen kurz kurze kurzen lang lange langen ausfuehrlich
+ausführlich ausfuehrliche ausführliche deutsch englisch
+dokument dokumente arbeit arbeiten dissertation dissertationen doktorarbeit
+masterarbeit bachelorarbeit studie paper text werk quelle quellen pdf datei
+dateien unterlagen datenbank bestand thema themen
+zusammenfassung zusammenfassungen kernaussage kernaussagen kernfakten
+ergebnis ergebnisse fazit methodik methode ziel ziele aufbau gliederung
+praesentation präsentation handout stichpunkte stichworte vortrag folien
+ueberblick überblick inhalt inhalte einleitung schluss abstract kurzfassung
+kapitel abschnitt seite seiten tabelle tabellen bild bilder abbildung
+abbildungen grafik grafiken diagramm diagramme diagram figur figure
+saetze sätze satz woerter wörter wort punkte punkt antwort frage
+""".split())
+
+
+def bezieht_sich_auf_vorheriges(frage):
+    """Nennt die Frage KEIN eigenes Dokument (keinen Namen, kein Titelwort)?
+
+    "Schreib mir eine gesamte Zusammenfassung", "ein Diagramm aus der
+    Arbeit", "und die Kernaussagen?" - alles ohne Gegenstand; gemeint ist,
+    worueber gerade gesprochen wird. "Fasse die Dissertation von Mueller
+    zusammen" dagegen traegt einen Namen und darf NICHT auf das vorige
+    Dokument umgebogen werden - lieber ehrlich nachfragen.
+    """
+    f = (frage or "").strip()
+    if not f:
+        return False
+    woerter = re.findall(r"\b[A-ZÄÖÜ][A-Za-zäöüßÄÖÜ]{2,}", f)
+    eigene = [w for w in woerter
+              if w.lower() not in _UNSPEZIFISCH
+              and w.lower() not in _ART_WORTE
+              and w.lower() not in _FUELLWORT]
+    return not eigene
+
+
+_BESCHWERDE = re.compile(
+    r"^\s*(?:h[äa]+h?\b|was\s+soll\s+das|nein\b|falsch\b|quatsch\b|"
+    r"unsinn\b|bl[oö]dsinn\b)|"
+    r"\b(?:das|dies|es)\s+(?:ist|war)\s+(?:nicht|kein|keine|falsch|"
+    r"ein(?:e|em|en)?\s+ander)|"
+    r"\bich\s+hab(?:e|te)?\s+(?:doch\s+)?nicht\s+(?:nach|danach|das|so|"
+    r"gefragt|gemeint|gewollt|verlangt)|"
+    r"\bnicht\s+(?:danach\s+)?gefragt\b|"
+    r"\baus\s+einer\s+anderen\b|"
+    r"\bfalsche[nsmr]?\s+(?:dokument|arbeit|dissertation|datei|quelle|"
+    r"antwort|bild|diagramm|tabelle)|"
+    r"\b(?:nicht|kein)\s+(?:das|die|der)\s+(?:richtige|gesuchte|gemeinte)|"
+    r"\bstimmt\s+(?:so\s+)?nicht\b|"
+    r"\b(?:schei(?:ss|ß)e?|mist|kacke)\b", re.I)
+
+
+def ist_beschwerde(frage):
+    """Eine Rueckmeldung, keine Frage: "Das ist ein Diagramm aus einer
+    anderen Dissertation!!!!!", "hä? ich habe nicht nach einem Bestand
+    gefragt!". Gemessen 25.08.: Beide gingen als Frage durch - die erste
+    wurde zur Bestandsliste, die zweite zur Wortsuche nach "Bestand"."""
+    f = (frage or "").strip()
+    if not f or len(f) > 160:
+        return False
+    return bool(_BESCHWERDE.search(f))
+
+
+def beschwerde_antwort(letztes_dokument=None):
+    teile = ["Entschuldige — das war daneben."]
+    if letztes_dokument:
+        teile.append("In diesem Gespräch ging es zuletzt um **%s**; die "
+                     "nächste Frage beziehe ich darauf."
+                     % _titel_saubern(letztes_dokument))
+    teile.append("Wenn du ein bestimmtes Dokument meinst, nenn mir die "
+                 "Kennung (z. B. DS-24-005) oder den Verfasser — dann hole "
+                 "ich es genau daraus.")
+    return " ".join(teile)
+
+
+def _aus_katalog(frage, titel):
+    """Dokument ueber den Katalog finden: Verfasser oder Titelwoerter.
+
+    Gemessen 25.08.: "Dissertation von Fabian Becker" fand nichts - der
+    Abgleich kannte nur Dateinamen (DS-24-005), den Verfasser kennt
+    allein der Katalog. Rueckgabe (gewaehlt, kandidaten) wie
+    dokument_gemeint. Nur ein Verfasser-Treffer oder zwei gehaltvolle
+    Titelwoerter zaehlen; ein einzelnes Titelwort waehlt nichts.
+    """
+    try:
+        import bestand as _b
+    except Exception:
+        return None, []
+    f = frage or ""
+    namen = [w for w in re.findall(r"\b[A-ZÄÖÜ][A-Za-zäöüßÄÖÜ\-]{2,}", f)
+             if w.lower() not in _UNSPEZIFISCH
+             and w.lower() not in _ART_WORTE
+             and w.lower() not in _FUELLWORT]
+    titelwoerter = [w for w in re.findall(r"[A-Za-zÄÖÜäöüß0-9\-]{5,}", f)
+                    if w.lower() not in _UNSPEZIFISCH
+                    and w.lower() not in _FUELLWORT
+                    and w.lower() not in _ART_WORTE]
+    if not namen and not titelwoerter:
+        return None, []
+    punkte = {}
+    for t in titel:
+        try:
+            ang = _b.angaben(t)
+        except Exception:
+            ang = None
+        if not ang:
+            continue
+        p = 0
+        verfasser = {_flach(x) for x in
+                     re.findall(r"[A-Za-zÄÖÜäöüß\-]{2,}", ang.get("verfasser") or "")}
+        for n in namen:
+            if _flach(n) in verfasser:
+                p += 10
+        ft = _flach(ang.get("titel") or "")
+        if ft:
+            getroffen = [w for w in titelwoerter if _flach(w) in ft]
+            if len(getroffen) >= 2:
+                p += sum(len(_flach(w)) for w in getroffen)
+        if p:
+            punkte[t] = p
+    if not punkte:
+        return None, []
+    sortiert = sorted(punkte.items(), key=lambda x: -x[1])
+    beste = [t for t, p in sortiert if p == sortiert[0][1]]
+    if sortiert[0][1] < 10:
+        return None, []
+    if len(beste) == 1:
+        return beste[0], beste
+    return None, beste
+
+
 def dokument_gemeint(frage, titel):
     """Welches Dokument meint "Worum geht es in DVS 2213-1"?
 
@@ -1175,6 +1355,15 @@ def dokument_gemeint(frage, titel):
     """
     if not titel:
         return None, []
+    # Erst der Katalog (Verfasser, Titel) - der weiss mehr als Dateinamen.
+    try:
+        k_hit, k_kand = _aus_katalog(frage, titel)
+    except Exception:
+        k_hit, k_kand = None, []
+    if k_hit:
+        return k_hit, [k_hit]
+    if len(k_kand) > 1:
+        return None, k_kand
     kern = re.sub(r"^.*?(?:in|von|zu|ueber|über|des|der)\s+", "",
                   frage.strip(), flags=re.I)
     kern = kern.strip(" ?.,;:\"'„“")

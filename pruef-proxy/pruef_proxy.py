@@ -3323,10 +3323,21 @@ class Griff(BaseHTTPRequestHandler):
                 _arbeitet_setzen(_sch, frage)
                 self._besitzt_sperre = _sch
             gegenstand = GESPRAECHE.letzter_gegenstand(gespraech)
-            art = assistent.einordnen(frage, hat_verlauf=bool(gegenstand))
-            art = _wahl_beantwortet(gespraech, frage, art)
+            # ⭐ BESCHWERDE zuerst: "Das ist ein Diagramm aus einer anderen
+            #   Dissertation!!!!!" ist keine Frage. Gemessen 25.08.: ging als
+            #   Bestands-Verfeinerung durch -> Bestandstabelle; die naechste
+            #   ("ich habe nicht nach einem Bestand gefragt!") wurde zur
+            #   Wortsuche nach "Bestand".
+            if assistent.ist_beschwerde(frage):
+                art = "beschwerde"
+            else:
+                art = assistent.einordnen(frage, hat_verlauf=bool(gegenstand))
+                art = _wahl_beantwortet(gespraech, frage, art)
             _vorher_best = GESPRAECHE.letzte_bestand(gespraech)
-            if art != "bestand" and _vorher_best and \
+            # Verfeinerung nur, wenn der UNMITTELBAR vorige Schritt eine
+            # Bestandsfrage war - nicht irgendeine im Faden davor.
+            if art not in ("bestand", "beschwerde") and _vorher_best and \
+                    GESPRAECHE.letzte_art(gespraech) == "bestand" and \
                     assistent.ist_bestand_verfeinerung(frage):
                 art = "bestand"
             if art != "normal":
@@ -3356,6 +3367,26 @@ class Griff(BaseHTTPRequestHandler):
                     return
             except Exception:
                 # Kein Abbruch - die Frage geht dann eben den normalen Weg.
+                traceback.print_exc(file=sys.stderr)
+
+        if art == "beschwerde":
+            try:
+                _text = assistent.beschwerde_antwort(
+                    GESPRAECHE.letztes_dokument(gespraech))
+                self._festhalten("beschwerde", frage, _text)
+                GESPRAECHE.merken(gespraech, frage, "beschwerde", [])
+                self._sende_strom([
+                    {"uuid": _neue_marke("beschwerde"),
+                     "type": "textResponseChunk", "textResponse": _text,
+                     "sources": [], "close": False, "error": False},
+                    {"uuid": _neue_marke("beschwerde"),
+                     "type": "textResponseChunk", "textResponse": "",
+                     "sources": [], "close": True, "error": False},
+                ])
+                print("[Assistent] Beschwerde beantwortet", file=sys.stderr,
+                      flush=True)
+                return
+            except Exception:
                 traceback.print_exc(file=sys.stderr)
 
         # ---- Zusammenfassungen brauchen das ganze Dokument --------------
@@ -3976,6 +4007,11 @@ class Griff(BaseHTTPRequestHandler):
                     return
                 if gewaehlt:
                     GESPRAECHE.wahl_vergessen(gespraech)
+                if not gewaehlt and not kandidaten:
+                    _faden_dok = GESPRAECHE.letztes_dokument(gespraech)
+                    if _faden_dok and _faden_dok in auswahl and \
+                            assistent.bezieht_sich_auf_vorheriges(frage_roh):
+                        gewaehlt = _faden_dok
                 if gewaehlt:
                     schluessel = bestandsschluessel(gewaehlt)
                     dok = BESTAND.hol(schluessel) if schluessel else None
@@ -3987,6 +4023,7 @@ class Griff(BaseHTTPRequestHandler):
                                 gewaehlt, _ganz, _gelesen)
                             GESPRAECHE.merken(gespraech, frage_roh,
                                               "zusammenfassung", [])
+                            GESPRAECHE.dokument_merken(gespraech, gewaehlt)
                             self._json_antwort(text, "zusammenfassung", frage_roh)
                             return
             except Exception:
@@ -4319,6 +4356,16 @@ class Griff(BaseHTTPRequestHandler):
             frage, vorwahl or auswahl)
         if gewaehlt:
             GESPRAECHE.wahl_vergessen(gespraech)
+        # ⭐ FADEN-DOKUMENT: Nennt die Frage kein Dokument ("Schreib mir eine
+        #   gesamte Zusammenfassung"), ist das gemeint, worum es in diesem
+        #   Faden zuletzt ging.
+        if not gewaehlt and not kandidaten:
+            _faden_dok = GESPRAECHE.letztes_dokument(gespraech)
+            if _faden_dok and _faden_dok in auswahl and \
+                    assistent.bezieht_sich_auf_vorheriges(frage):
+                gewaehlt = _faden_dok
+                print("[Assistent] Faden-Dokument: %r" % _faden_dok,
+                      file=sys.stderr, flush=True)
 
         if not gewaehlt and len(kandidaten) > 1:
             liste = "\n".join("- %s" % assistent._titel_saubern(k)
@@ -4390,6 +4437,7 @@ class Griff(BaseHTTPRequestHandler):
                                                  auftrag=bool(_auftrag))])
 
         self._festhalten("zusammenfassung", frage, text)
+        GESPRAECHE.dokument_merken(gespraech, gewaehlt)
         self._stand_weg(stand)
         self._strom_stueck(
             {"uuid": _neue_marke("zusammenfassung"), "type": "textResponseChunk",
@@ -4433,8 +4481,24 @@ class Griff(BaseHTTPRequestHandler):
             gewaehlt, _ = assistent.dokument_gemeint(frage, namen)
         except Exception:
             gewaehlt = None
-        reihe = ([gewaehlt] + [n for n in namen if n != gewaehlt]
-                 if gewaehlt else list(namen))
+        gespraech = GESPRAECHE.kennung(self.path, self.headers)
+        # ⭐ FADEN-DOKUMENT: "ein Diagramm aus der Arbeit" meint die Arbeit,
+        #   um die es gerade geht - NUR die. Gemessen 25.08.: ohne das kamen
+        #   die Diagramme aus dem ersten Dokument der Liste (fremde Arbeit).
+        nur_faden = None
+        if not gewaehlt:
+            _faden_dok = GESPRAECHE.letztes_dokument(gespraech)
+            if _faden_dok and _faden_dok in namen and \
+                    assistent.bezieht_sich_auf_vorheriges(frage):
+                gewaehlt = nur_faden = _faden_dok
+                print("[Bild] Faden-Dokument: %r" % _faden_dok,
+                      file=sys.stderr, flush=True)
+        if nur_faden:
+            reihe = [nur_faden]
+        elif gewaehlt:
+            reihe = [gewaehlt] + [n for n in namen if n != gewaehlt]
+        else:
+            reihe = list(namen)
         _pdfs_erneuern_wenn_faellig()
         treffer = _abbildungs_seiten(frage, [], reihe)
         try:
@@ -4451,6 +4515,23 @@ class Griff(BaseHTTPRequestHandler):
                 continue
             if len(gute) >= 3:
                 break
+        if not gute and nur_faden:
+            # Ehrlich bleiben statt in fremde Dokumente auszuweichen.
+            _leer = ("In **%s** habe ich keine Abbildung mit Bildunterschrift "
+                     "gefunden. Falls du ein anderes Dokument meinst: nenn "
+                     "mir Kennung oder Verfasser."
+                     % assistent._titel_saubern(nur_faden))
+            self._festhalten("bild", frage, _leer)
+            GESPRAECHE.merken(gespraech, frage, "bild", [])
+            self._sende_strom([
+                {"uuid": _neue_marke("bild"), "type": "textResponseChunk",
+                 "textResponse": _leer, "sources": [], "close": False,
+                 "error": False},
+                {"uuid": _neue_marke("bild"), "type": "textResponseChunk",
+                 "textResponse": "", "sources": [], "close": True,
+                 "error": False},
+            ])
+            return True
         if not gute:
             return False
         # "das erste Diagramm" -> genau eines (das erste mit Unterschrift).
@@ -4508,6 +4589,10 @@ class Griff(BaseHTTPRequestHandler):
         ])
         print("[Bild] %d Abbildung(en) zu %r" % (len(gute), (frage or "")[:50]),
               file=sys.stderr, flush=True)
+        GESPRAECHE.merken(gespraech, frage, "bild", [])
+        _dokus = {d for d, _ in gute}
+        if gewaehlt or len(_dokus) == 1:
+            GESPRAECHE.dokument_merken(gespraech, gewaehlt or _dokus.pop())
         return True
 
     def _bild_beschreiben(self, unterschrift, seitentext):
