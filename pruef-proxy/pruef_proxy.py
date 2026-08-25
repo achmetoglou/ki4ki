@@ -595,8 +595,9 @@ _DOKZUGANG = {}
 #   Marke (ZUGANG_DAUER). Die return-True-Sicherung in dokument_erlaubt
 #   bleibt als Uebergangsnetz fuer Marken, die vor diesem Fix ausgestellt
 #   wurden - so stirbt in der Umstellung kein Beleg.
-_DOKZUGANG_DATEI = os.path.join(
-    os.path.dirname(os.path.abspath(__file__)), ".dokzugang.json")
+_DOKZUGANG_DATEI = (os.environ.get("KI4KI_DOKZUGANG")
+                    or os.path.join(os.path.dirname(os.path.abspath(__file__)),
+                                    ".dokzugang.json"))
 
 
 def _dokzugang_speichern():
@@ -5760,6 +5761,23 @@ def main():
     veredeln.SEITENPRUEFER = seite_pruefen
     print("gemerkte gepruefte Antworten: %d" % gedaechtnis_laden(), flush=True)
     print("lade Quellbestand ...", flush=True)
+    # ⚠ ZUSTANDS-WACHE: Alles, was der Proxy sich merkt (Gespraechs-
+    #   Nachtraege, Beleg-Marken, Dokumentzugaenge, Wortverzeichnis,
+    #   Protokoll), muss im Daten-Volume liegen. Liegt eine dieser Dateien
+    #   im Programmordner, ist sie beim naechsten Neubau des Containers
+    #   weg - gemessen 25.08.: ganze Gespraechsfaeden verschwunden. Lieber
+    #   laut beim Start als still beim Update.
+    _hier = os.path.dirname(os.path.abspath(__file__))
+    for _name, _pfad in (("Gespraechs-Nachtraege", NACHTRAG_DATEI),
+                         ("Beleg-Marken", ZUGANG_DATEI),
+                         ("Dokumentzugaenge", _DOKZUGANG_DATEI),
+                         ("Protokoll", pruefprotokoll.ORDNER),
+                         ("Wortverzeichnis", os.environ.get("KI4KI_WORTVERZEICHNIS") or "")):
+        if _pfad and os.path.abspath(_pfad).startswith(_hier + os.sep):
+            print("⚠ ZUSTAND IM CONTAINER: %s liegt unter %s - geht beim "
+                  "naechsten Neubau verloren. Im Compose per Umgebungs-"
+                  "variable ins Daten-Volume legen." % (_name, _pfad),
+                  file=sys.stderr, flush=True)
     BESTAND = veredeln.Bestand()
     BESTAND._rohtext()
     print("  %d Dokumente, %d Quell-PDFs" % (len(BESTAND.titel()),

@@ -251,6 +251,16 @@ services:
     # Neubau des Proxys (jedes aktualisiere.sh) WEG - fuer einen Nachweis
     # untragbar. Schluessel liegen mit im Ordner und ueberleben so ebenfalls.
     - KI4KI_PROTOKOLL=/daten/pruefung/protokoll
+    # ⚠ ALLES, was der Proxy sich merkt, ins Daten-Volume - sonst ist es beim
+    #   naechsten aktualisiere.sh (Container-Neubau) weg. Gemessen 25.08.:
+    #   Gespraechsfaeden mit Bestandslisten/Bildern/Zusammenfassungen leer,
+    #   weil der Nachtrag-Speicher im Container lag. Auf dem Testserver fiel
+    #   das nie auf (dort ist /app von der Platte eingehaengt).
+    - KI4KI_THREAD_NACHTRAG=/daten/pruefung/thread-nachtrag.json
+    - KI4KI_THREAD_ARBEITET=/daten/pruefung/thread-arbeitet.json
+    - KI4KI_ZUGANG_SCHLUESSEL=/daten/pruefung/zugang-schluessel
+    - KI4KI_DOKZUGANG=/daten/pruefung/dokzugang.json
+    - KI4KI_WORTVERZEICHNIS=/daten/pruefung/wortverzeichnis.json
     - KI4KI_ZWISCHENSPEICHER=/daten/pruefung/vorauswahl.pickle
     # Der Katalog (Titel/Verfasser/Jahr je Dokument) - dauerhaft im
     # Daten-Volume, nicht im Abbild: Was das Modell vom Deckblatt liest,

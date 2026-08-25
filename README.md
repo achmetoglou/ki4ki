@@ -491,8 +491,9 @@ dann `docker compose up -d`.
 cd ~/ki4ki && ./aktualisiere.sh
 ```
 Holt die neueste Paketfassung (`git pull`), baut die selbstgebauten Dienste neu
-und startet alles aktualisiert. Daten, Modelle und `.secrets.env` bleiben
-unangetastet. (Wer das Paket als ZIP geholt hat: neue ZIP über den Ordner legen
+und startet alles aktualisiert. Daten, Modelle, `.secrets.env`, Gesprächsverläufe,
+Beleg-Marken und das Antwort-Protokoll bleiben unangetastet (alles liegt im
+Daten-Volume `pruefdaten`, nicht im Container). (Wer das Paket als ZIP geholt hat: neue ZIP über den Ordner legen
 und `docker compose up -d --build` ausführen.)
 
 **Warum das sicher ist:** Alle fremden Abbilder sind auf den **Fingerabdruck
