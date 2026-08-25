@@ -340,7 +340,7 @@
     },
     {
       "parameters": {
-        "jsCode": "// Docling liefert JSON; der restliche Workflow erwartet den Text in $json.data\nreturn $input.all().map(item => {\n  const doc = item.json?.document || {};\n  const md  = doc.md_content || doc.text_content || '';\n  return { json: { data: md, docling_filename: doc.filename || null,\n                   seiten: (md.match(/\\[\\[SEITE\\]\\]/g) || []).length + 1 },\n           binary: item.binary };\n});"
+        "jsCode": "// Docling liefert JSON; der restliche Workflow erwartet den Text in $json.data.\n//\n// ⚠ STATUS PRUEFEN (gemessen 25.08., DS-25-001): Docling meldete\n//   status \"failure\" (\"pipeline terminated early\", S. 33 und 96 - kaputte\n//   Zeichenkodierung in der PDF) und lieferte LEEREN Text. Der Workflow\n//   lief mit leerem Text weiter, bis ganz hinten \"im Arbeitsbereich nicht\n//   wiedergefunden\" im Protokoll stand - der wahre Grund war unsichtbar.\n//   Deshalb hier: Fehler benennen und (bei leerem Text) den Zweitversuch\n//   mit anderem PDF-Backend anstossen.\nreturn $input.all().map(item => {\n  const j = item.json || {};\n  const doc = j.document || {};\n  const md = doc.md_content || doc.text_content || '';\n  const kaputt = (j.status && j.status !== 'success') || !md.trim();\n  const gruende = (j.errors || []).slice(0, 3).map(e =>\n    (e.error_message || JSON.stringify(e)) + (e.page_no ? ' (S. ' + e.page_no + ')' : '')\n  ).join('; ');\n  const fehler = kaputt\n    ? ('Docling ' + (j.status || 'ohne Status') + ': ' + (gruende || 'kein Text geliefert'))\n    : '';\n  return { json: { data: md.trim() ? md : '', docling_filename: doc.filename || null,\n                   seiten: (md.match(/\\[\\[SEITE\\]\\]/g) || []).length + 1,\n                   fehler: fehler, versuch: 1, ohne_bilder: false },\n           binary: item.binary };\n});\n"
       },
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
@@ -350,6 +350,114 @@
       ],
       "id": "7d5d62af-b106-4b90-a182-9a70c6164fea",
       "name": "Docling-Antwort auspacken"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose",
+            "version": 3
+          },
+          "conditions": [
+            {
+              "id": "1cce20c0-b364-4f4c-8609-1a98cef08f72",
+              "leftValue": "={{ $json.data }}",
+              "rightValue": "",
+              "operator": {
+                "type": "string",
+                "operation": "empty",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "or"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        352,
+        0
+      ],
+      "id": "fbe85017-c072-43e9-94b7-d8f344bf79d0",
+      "name": "Text leer?"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "http://docling:5001/v1/convert/file",
+        "sendBody": true,
+        "contentType": "multipart-form-data",
+        "bodyParameters": {
+          "parameters": [
+            {
+              "parameterType": "formBinaryData",
+              "name": "files",
+              "inputDataFieldName": "data"
+            },
+            {
+              "name": "to_formats",
+              "value": "md"
+            },
+            {
+              "name": "do_formula_enrichment",
+              "value": "false"
+            },
+            {
+              "name": "do_table_structure",
+              "value": "true"
+            },
+            {
+              "name": "table_mode",
+              "value": "accurate"
+            },
+            {
+              "name": "md_page_break_placeholder",
+              "value": "[[SEITE]]"
+            },
+            {
+              "name": "do_picture_description",
+              "value": "false"
+            },
+            {
+              "name": "do_picture_classification",
+              "value": "false"
+            },
+            {
+              "name": "pdf_backend",
+              "value": "pypdfium2"
+            }
+          ]
+        },
+        "options": {
+          "timeout": 3600000
+        }
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        528,
+        -160
+      ],
+      "id": "5ba51270-2743-4048-b5e7-d96a331c0d64",
+      "name": "Docling Zweitversuch (pypdfium2)",
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "jsCode": "\n// Zweitversuch: Ergebnis mit dem Grund des Erstversuchs verknuepfen, damit\n// das Protokoll beide Anlaeufe nennt, falls auch dieser scheitert.\n// Docling liefert JSON; der restliche Workflow erwartet den Text in $json.data.\n//\n// ⚠ STATUS PRUEFEN (gemessen 25.08., DS-25-001): Docling meldete\n//   status \"failure\" (\"pipeline terminated early\", S. 33 und 96 - kaputte\n//   Zeichenkodierung in der PDF) und lieferte LEEREN Text. Der Workflow\n//   lief mit leerem Text weiter, bis ganz hinten \"im Arbeitsbereich nicht\n//   wiedergefunden\" im Protokoll stand - der wahre Grund war unsichtbar.\n//   Deshalb hier: Fehler benennen und (bei leerem Text) den Zweitversuch\n//   mit anderem PDF-Backend anstossen.\nreturn $input.all().map(item => {\n  const j = item.json || {};\n  const doc = j.document || {};\n  const md = doc.md_content || doc.text_content || '';\n  const kaputt = (j.status && j.status !== 'success') || !md.trim();\n  const gruende = (j.errors || []).slice(0, 3).map(e =>\n    (e.error_message || JSON.stringify(e)) + (e.page_no ? ' (S. ' + e.page_no + ')' : '')\n  ).join('; ');\n  const fehler = kaputt\n    ? ('Docling ' + (j.status || 'ohne Status') + ': ' + (gruende || 'kein Text geliefert'))\n    : '';\n  const vorher = (() => { try { return $('Docling-Antwort auspacken').first().json.fehler || ''; } catch (e) { return ''; } })();\n  const fehlerGesamt = kaputt ? (vorher + ' | Zweitversuch pypdfium2: ' + fehler) : '';\n  return { json: { data: md.trim() ? md : '', docling_filename: doc.filename || null,\n                   seiten: (md.match(/\\[\\[SEITE\\]\\]/g) || []).length + 1,\n                   fehler: fehlerGesamt, versuch: 2, ohne_bilder: true },\n           binary: item.binary };\n});\n"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        704,
+        -160
+      ],
+      "id": "89385085-8e12-485b-8f4f-43bd8d830ad2",
+      "name": "Docling-Antwort auspacken 2"
     }
   ],
   "connections": {
@@ -503,6 +611,46 @@
       ]
     },
     "Docling-Antwort auspacken": {
+      "main": [
+        [
+          {
+            "node": "Text leer?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Text leer?": {
+      "main": [
+        [
+          {
+            "node": "Docling Zweitversuch (pypdfium2)",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Merge",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Docling Zweitversuch (pypdfium2)": {
+      "main": [
+        [
+          {
+            "node": "Docling-Antwort auspacken 2",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Docling-Antwort auspacken 2": {
       "main": [
         [
           {
