@@ -261,6 +261,7 @@ services:
     - KI4KI_ZUGANG_SCHLUESSEL=/daten/pruefung/zugang-schluessel
     - KI4KI_DOKZUGANG=/daten/pruefung/dokzugang.json
     - KI4KI_WORTVERZEICHNIS=/daten/pruefung/wortverzeichnis.json
+    - KI4KI_ZUSAMMENFASSUNGEN=/daten/pruefung/zusammenfassungen
     - KI4KI_ZWISCHENSPEICHER=/daten/pruefung/vorauswahl.pickle
     # Der Katalog (Titel/Verfasser/Jahr je Dokument) - dauerhaft im
     # Daten-Volume, nicht im Abbild: Was das Modell vom Deckblatt liest,

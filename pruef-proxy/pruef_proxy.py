@@ -5772,7 +5772,8 @@ def main():
                          ("Beleg-Marken", ZUGANG_DATEI),
                          ("Dokumentzugaenge", _DOKZUGANG_DATEI),
                          ("Protokoll", pruefprotokoll.ORDNER),
-                         ("Wortverzeichnis", os.environ.get("KI4KI_WORTVERZEICHNIS") or "")):
+                         ("Wortverzeichnis", os.environ.get("KI4KI_WORTVERZEICHNIS") or ""),
+                         ("Zusammenfassungs-Speicher", getattr(mehrstufig, "SPEICHER", ""))):
         if _pfad and os.path.abspath(_pfad).startswith(_hier + os.sep):
             print("⚠ ZUSTAND IM CONTAINER: %s liegt unter %s - geht beim "
                   "naechsten Neubau verloren. Im Compose per Umgebungs-"
