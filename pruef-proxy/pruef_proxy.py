@@ -279,9 +279,88 @@ def _dokument_loeschen(pdf):
     return True
 
 
+def _liegengebliebene_einraeumen():
+    """PDFs, die laenger als eine Stunde in input/ liegen, obwohl ihre
+    Textfassung laengst im Bestand ist, an ihren Platz bringen.
+
+    Der Aufnahme-Filter ueberspringt Dateien, deren Dokument schon im
+    Bestand liegt - STUMM. Sie blieben in input/ liegen, bis die
+    Claim-Garantie sie nach drei Stunden aussortierte (gemessen 25.08.:
+    DS-24-004, eingebettet, nie abgelegt). Zwei Faelle:
+      - archiv/ hat noch keine Datei dieses Namens -> dorthin (das Dokument
+        IST im Bestand, die PDF gehoert ins Archiv).
+      - archiv/ hat sie schon -> das ist eine ZWEITE Fassung gleichen
+        Namens; die Aufnahme nimmt sie nie -> aussortiert/ mit Hinweis,
+        wie man eine neue Fassung wirklich einspielt.
+    Eine Stunde Karenz, damit ein laufender Durchgang nicht gestoert wird
+    (dessen Ablage kommt binnen Minuten nach der Einbettung)."""
+    try:
+        bereiche = sorted(os.listdir(EINGANG_ORDNER))
+    except Exception:
+        return
+    jetzt = time.time()
+    for bereich in bereiche:
+        wurzel = os.path.join(EINGANG_ORDNER, bereich)
+        eingang = os.path.join(wurzel, "input")
+        if not os.path.isdir(eingang):
+            continue
+        ablage = bereich
+        try:
+            with open(os.path.join(wurzel, "bereich.json"), encoding="utf-8") as fh:
+                ablage = (json.load(fh).get("ablage") or bereich)
+        except Exception:
+            pass
+        try:
+            im_bestand = {_loesch_grund(d.split(".md-")[0])
+                          for d in os.listdir(os.path.join(BESTAND_ORDNER, ablage))
+                          if d.endswith(".json")}
+        except Exception:
+            continue
+        for d in sorted(os.listdir(eingang)):
+            if not d.lower().endswith(".pdf"):
+                continue
+            pfad = os.path.join(eingang, d)
+            try:
+                if jetzt - os.stat(pfad).st_ctime < 3600:
+                    continue
+            except OSError:
+                continue
+            if _loesch_grund(d[:-4]) not in im_bestand:
+                continue
+            zeit = time.strftime("%Y-%m-%d %H:%M:%S")
+            ziel_archiv = os.path.join(wurzel, "archiv", d)
+            log = os.path.join(wurzel, "aussortiert", "aussortiert.log")
+            try:
+                os.makedirs(os.path.dirname(log), exist_ok=True)
+                if not os.path.exists(ziel_archiv):
+                    os.makedirs(os.path.dirname(ziel_archiv), exist_ok=True)
+                    os.replace(pfad, ziel_archiv)
+                    zeile = ("[%s] %s | war schon im Bestand (eingebettet, aber nie abgelegt) - "
+                             "PDF ins Archiv gelegt, Belege funktionieren" % (zeit, d))
+                else:
+                    ziel_aus = os.path.join(wurzel, "aussortiert", d)
+                    os.replace(pfad, ziel_aus)
+                    zeile = ("[%s] %s | Dokument gleichen Namens ist schon im Bestand und im "
+                             "Archiv - eine zweite Fassung nimmt die Aufnahme nicht. Neue "
+                             "Fassung einspielen: erst das alte Dokument loeschen "
+                             "(Papierkorb oder loeschen/), dann erneut hochladen." % (zeit, d))
+                with open(log, "a", encoding="utf-8") as fh:
+                    fh.write(zeile + "\n")
+                print("[Eingang] " + zeile, file=sys.stderr, flush=True)
+            except Exception as e:
+                print("[Eingang] %s nicht einraeumbar: %s" % (d, str(e)[:100]),
+                      file=sys.stderr, flush=True)
+    _pdfs_erneuern_wenn_faellig()
+
+
 def _loesch_wache():
-    """Jede Minute nach <bereich>/loeschen/*.pdf sehen."""
+    """Jede Minute nach <bereich>/loeschen/*.pdf sehen - und liegengebliebene
+    Eingangsdateien einraeumen."""
     while True:
+        try:
+            _liegengebliebene_einraeumen()
+        except Exception:
+            traceback.print_exc(file=sys.stderr)
         try:
             for bereich in sorted(os.listdir(EINGANG_ORDNER)):
                 wurzel = os.path.join(EINGANG_ORDNER, bereich)
