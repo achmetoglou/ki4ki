@@ -191,6 +191,10 @@ services:
     #   bekommen ihre Bilder nachgelagert. Wer Bilder sofort will: .env mit
     #   KI4KI_BILDBESCHREIBUNG=an.
     - KI4KI_BILDBESCHREIBUNG=${KI4KI_BILDBESCHREIBUNG:-aus}
+    # Formeln als LaTeX (CodeFormula-Modell): gemessen 26.08. ~6 Minuten je
+    # Dissertation (130 Formelbilder), auch ohne Bildbeschreibung. Standard
+    # aus - kommt mit der nachgelagerten Anreicherung. Sofort: KI4KI_FORMELN=an.
+    - KI4KI_FORMELN=${KI4KI_FORMELN:-aus}
     # Massenlauf-Automatik: Liegen mindestens so viele Dateien im Eingang,
     # laeuft der Durchgang OHNE Bildbeschreibung (Stunden statt Wochen) und
     # jedes Dokument kommt in <bereich>/bilder-nachholen.txt zum spaeteren
