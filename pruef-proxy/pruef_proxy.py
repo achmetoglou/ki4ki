@@ -397,6 +397,45 @@ def bereich_ordner_anlegen(slug):
 
 
 _BEREICHE_ABGLEICH = [0.0]
+VERWAISTE_BEREICHE = []
+BEREICH_LOESCHEN = re.compile(r"^/api/(?:v1/)?workspace/([^/]+)/?$")
+
+
+def bereich_ordner_aufraeumen(slug):
+    """Nach dem Loeschen eines Arbeitsbereichs: Ordner weg, wenn LEER
+    (Emrach 26.08.: 'wenn ich mich vertippte und es loesche, dann geht das
+    ja nicht weg in FileZilla'). Liegt irgendeine Datei mit Inhalt darin
+    (PDF im Archiv, Eingang, Parkplatz, Logs mit Zeilen), bleibt er - und
+    wird als verwaist gemeldet. Rueckgabe: 'geloescht' | 'behalten' | None."""
+    if not slug:
+        return None
+    wurzel = os.path.join(EINGANG_ORDNER, _ordnername(slug))
+    if not os.path.isdir(wurzel):
+        return None
+    inhalt = []
+    for w, _dirs, dateien in os.walk(wurzel):
+        for d in dateien:
+            if d == "bereich.json":
+                continue
+            try:
+                if os.path.getsize(os.path.join(w, d)) > 0:
+                    inhalt.append(os.path.relpath(os.path.join(w, d), wurzel))
+            except OSError:
+                inhalt.append(d)
+    if inhalt:
+        print("[Bereich] dokumente/%s behalten - Bereich geloescht, aber %d Datei(en) darin (z.B. %s)"
+              % (_ordnername(slug), len(inhalt), inhalt[0]), file=sys.stderr, flush=True)
+        return "behalten"
+    try:
+        import shutil
+        shutil.rmtree(wurzel)
+        print("[Bereich] dokumente/%s geloescht (Bereich entfernt, Ordner war leer)" % _ordnername(slug),
+              file=sys.stderr, flush=True)
+        return "geloescht"
+    except Exception as e:
+        print("[Bereich] dokumente/%s nicht loeschbar: %s" % (_ordnername(slug), str(e)[:80]),
+              file=sys.stderr, flush=True)
+        return "behalten"
 
 
 def _bereiche_abgleichen():
@@ -411,9 +450,24 @@ def _bereiche_abgleichen():
                                      headers={"Authorization": "Bearer " + API_SCHLUESSEL})
         with urllib.request.urlopen(req, timeout=20) as r:
             ws = (json.load(r) or {}).get("workspaces") or []
+        slugs = set()
         for w in ws:
             if w.get("slug"):
                 bereich_ordner_anlegen(w["slug"])
+                slugs.add(_ordnername(w["slug"]))
+        # Verwaiste Ordner (Bereich geloescht oder neu angelegt): leer -> weg,
+        # sonst nur melden - darin koennen Archiv-PDFs liegen.
+        verwaist = []
+        for d in sorted(os.listdir(EINGANG_ORDNER)):
+            if os.path.isdir(os.path.join(EINGANG_ORDNER, d)) and d not in slugs and \
+                    os.path.exists(os.path.join(EINGANG_ORDNER, d, "bereich.json")):
+                if bereich_ordner_aufraeumen(d) == "behalten":
+                    verwaist.append(d)
+        VERWAISTE_BEREICHE[:] = verwaist
+        if verwaist:
+            print("[Bereich] verwaist (kein Arbeitsbereich mehr dazu): %s - belassen; "
+                  "bei Bedarf von Hand verschieben" % ", ".join("dokumente/" + v for v in verwaist),
+                  file=sys.stderr, flush=True)
     except Exception as e:
         print("[Bereich] Abgleich nicht moeglich: %s" % str(e)[:100], file=sys.stderr, flush=True)
 
@@ -7262,6 +7316,17 @@ class Griff(BaseHTTPRequestHandler):
             try:
                 names = (json.loads(koerper or b"{}") or {}).get("names") or []
                 _nach_ui_loeschung(names)
+            except Exception:
+                traceback.print_exc(file=sys.stderr)
+            return
+        _wl = BEREICH_LOESCHEN.match((self.path or "").split("?")[0])
+        if _wl:
+            self._weiterleiten("DELETE")
+            try:
+                # Kurz warten, bis AnythingLLM den Bereich wirklich entfernt hat,
+                # dann den Ordner pruefen - leer weg, sonst melden.
+                threading.Timer(3.0, bereich_ordner_aufraeumen, args=(_wl.group(1),)).start()
+                _BEREICHE_ABGLEICH[0] = 0.0
             except Exception:
                 traceback.print_exc(file=sys.stderr)
             return
