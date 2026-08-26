@@ -3368,9 +3368,9 @@ class Griff(BaseHTTPRequestHandler):
                 # ⭐ VETO: "... hat diese Arbeit?" bei gesetztem Faden-Dokument ist
                 #   eine Frage an DIESES Dokument, keine Bestandsfrage - auch wenn
                 #   das Auffangnetz "bestand" sagt (gemessen 26.08.).
-                if art == "bestand" and _faden_dok_jetzt and \
-                        assistent.meint_dieses_dokument(frage) and \
-                        not assistent.ist_thema_bezug(frage):
+                if art == "bestand" and not assistent.ist_thema_bezug(frage) and (
+                        (_faden_dok_jetzt and assistent.meint_dieses_dokument(frage))
+                        or assistent.dokument_fakten_frage(frage)):
                     print("[Assistent] Veto: meint das Faden-Dokument, nicht den Bestand",
                           file=sys.stderr, flush=True)
                     art = "normal"
@@ -3564,10 +3564,11 @@ class Griff(BaseHTTPRequestHandler):
                         _dok = _hit
                 # Zaehlbares (Seiten, Abbildungen, Tabellen, Verfasser, Jahr)
                 # braucht kein Modell - PDF und Katalog wissen es.
-                if _dok and not _gesamt and assistent.dokument_fakten_frage(frage) and (
+                if assistent.dokument_fakten_frage(frage) and (
                         assistent.bezieht_sich_auf_vorheriges(frage)
                         or (_hit is not None and _dok == _hit)):
-                    if self._fakten_antwort(frage, _dok):
+                    # Mit Faden-/genanntem Dokument: dieses. Ohne: alle im Bereich.
+                    if self._fakten_antwort(frage, None if (_gesamt or not _dok) else _dok):
                         return
                 if _gesamt and _frage_rein != frage:
                     # Vorspann "im ganzen Bestand:" abstreifen, Rest normal.
@@ -4829,12 +4830,72 @@ class Griff(BaseHTTPRequestHandler):
             GESPRAECHE.dokument_merken(gespraech, gewaehlt or _dokus.pop())
         return True
 
-    def _fakten_antwort(self, frage, dok):
-        """Seiten, Abbildungen, Tabellen, Verfasser, Jahr, Titel eines
-        Dokuments - gezaehlt aus dem PDF-Text und dem Katalog, ohne Modell."""
-        was = assistent.dokument_fakten_frage(frage)
+    def _fakten_zaehlen(self, dok, was):
+        """(Seiten, Anzahl/Wert, Zusatz) fuer ein Dokument - oder None."""
         schluessel = _pdf_schluessel(dok)
-        if not was or not schluessel or not dokument_erlaubt(schluessel, self.headers):
+        if not schluessel or not dokument_erlaubt(schluessel, self.headers):
+            return None
+        try:
+            seiten = pdfstelle.seitentexte(schluessel) or []
+        except Exception:
+            seiten = []
+        if was == "seiten":
+            return len(seiten)
+        if was in ("abbildungen", "tabellen"):
+            muster = (r"(?m)^\s*(?:Bild|Abbildung|Abb\.?|Figure|Fig\.?)\s*(\d{1,2}[.\-]\d{1,3})\b"
+                      if was == "abbildungen" else
+                      r"(?m)^\s*(?:Tabelle|Tab\.?|Table)\s*(\d{1,2}[.\-]\d{1,3})\b")
+            nummern = set()
+            for s in seiten:
+                for m in re.finditer(muster, s or "", re.I):
+                    nummern.add(m.group(1).replace("-", "."))
+            return len(nummern)
+        try:
+            import bestand as _b
+            ang = _b.angaben(dok) or {}
+        except Exception:
+            ang = {}
+        return ang.get(was) or ""
+
+    def _fakten_antwort(self, frage, dok):
+        """Seiten, Abbildungen, Tabellen, Verfasser, Jahr, Titel - gezaehlt
+        aus dem PDF-Text und dem Katalog, ohne Modell. dok=None: Tabelle
+        ueber alle Dokumente des Bereichs (allgemeine Funktion, kein
+        Sonderfall fuer ein bestimmtes Dokument)."""
+        was = assistent.dokument_fakten_frage(frage)
+        if not was:
+            return False
+        if dok is None:
+            namen = (titel_im_bereich(self.path, self.headers)
+                     or nur_erlaubte(BESTAND.titel(), self.headers) or [])
+            if not namen:
+                return False
+            spalte = {"seiten": "Seiten", "abbildungen": "Abbildungen (mit Unterschrift)",
+                      "tabellen": "Tabellen", "verfasser": "Verfasser", "jahr": "Jahr",
+                      "titel": "Titel"}[was]
+            zeilen = []
+            for n in sorted(namen)[:40]:
+                w = self._fakten_zaehlen(n, was)
+                zeilen.append("| %s | %s |" % (assistent._titel_saubern(n),
+                                              "–" if w in (None, "") else w))
+            text = ("**%s je Dokument** (%d im Bereich)\n\n| Kennung | %s |\n|---|---|\n%s"
+                    % (spalte, len(namen), spalte, "\n".join(zeilen)))
+            if len(namen) > 40:
+                text += "\n\n*Die ersten 40 von %d.*" % len(namen)
+            text += "\n\n📇 *Direkt aus PDF und Katalog — ohne Sprachmodell. Ein bestimmtes Dokument: Kennung oder Verfasser nennen.*"
+            gespraech = GESPRAECHE.kennung(self.path, self.headers)
+            self._festhalten("fakten", frage, text)
+            GESPRAECHE.merken(gespraech, frage, "bestand", [])
+            self._sende_strom([
+                {"uuid": _neue_marke("fakten"), "type": "textResponseChunk",
+                 "textResponse": text, "sources": [], "close": False, "error": False},
+                {"uuid": _neue_marke("fakten"), "type": "textResponseChunk",
+                 "textResponse": "", "sources": [], "close": True, "error": False},
+            ])
+            print("[Fakten] %s fuer %d Dokumente" % (was, len(namen)), file=sys.stderr, flush=True)
+            return True
+        schluessel = _pdf_schluessel(dok)
+        if not schluessel or not dokument_erlaubt(schluessel, self.headers):
             return False
         try:
             seiten = pdfstelle.seitentexte(schluessel) or []
