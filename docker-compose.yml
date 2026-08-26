@@ -311,6 +311,9 @@ services:
     # Verantwortlichen, erscheint bei "steht nicht drin" und Anlage-Fragen.
     # Leer = kein Hinweis. Beispiel in .env: KI4KI_KONTAKT=Max Mustermann, m.mustermann@institut.de
     - KI4KI_KONTAKT=${KI4KI_KONTAKT:-}
+    # K2/K5: Wer /kpi und /rueckmeldungen sehen darf (Kontonamen, kommagetrennt).
+    # Bewusst NICHT an die Adminrolle gekoppelt (siehe Protokollkonzept).
+    - KI4KI_PROTOKOLL_EINSICHT=${KI4KI_PROTOKOLL_EINSICHT:-admin}
     # ⭐ STUFE 1 (ARCHITEKTUR-GESPRAECH.md): Das Modell erkennt die Absicht
     # jeder Eingabe im Gespraechszusammenhang; Regeln bleiben Waechter und
     # Rueckfall. Abnahme 26.08.: 31/32 Zuege (97 %) mit gemma4:12b, 3,0 s je

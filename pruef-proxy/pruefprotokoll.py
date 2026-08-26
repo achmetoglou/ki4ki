@@ -38,6 +38,7 @@ einen getrennt verwahrten Schluessel.
 import hashlib
 import hmac
 import json
+import re
 import os
 import re
 import threading
@@ -439,9 +440,11 @@ def kennzahlen(seit=None, bis=None):
     nur als Anzahl unterschiedlicher Kennungen ausgewiesen, ohne sie zu
     benennen.
     """
-    fragen = [e for e in alle_eintraege(seit, bis) if e.get("art") == "frage"]
+    alle = alle_eintraege(seit, bis)
+    fragen = [e for e in alle if e.get("art") == "frage"]
+    rueck = [e for e in alle if e.get("art") == "rueckmeldung"]
     if not fragen:
-        return {"vorgaenge": 0}
+        return {"vorgaenge": 0, "rueckmeldungen": len(rueck)}
     verdikte, regeln, bereiche, wege = {}, {}, {}, {}
     dauern, koepfe, quellen = [], set(), {}
     for e in fragen:
@@ -459,11 +462,42 @@ def kennzahlen(seit=None, bis=None):
             if d:
                 quellen[d] = quellen.get(d, 0) + 1
     dauern.sort()
-    belegt = verdikte.get("belegt", 0) + verdikte.get("teilweise", 0)
+    # ⭐ K5 (Leitfaden S. 101, 105, 127): belegt = woertlich/geglaettet/teilweise
+    #   (die echten Urteile von veredeln) ODER direkte Antworten aus dem
+    #   Katalog/Dokument (eigen). Eskaliert = die Anlage hat ehrlich "nicht
+    #   gefunden" gesagt statt zu raten. Zeit bis zur ersten verwertbaren
+    #   Quelle = Dauer der ersten belegten Antwort je Faden.
+    belegt = sum(verdikte.get(k, 0) for k in ("belegt", "woertlich", "geglaettet", "teilweise"))
+    eskaliert, stoerfaelle, erste = 0, 0, {}
+    tage = {}
+    for e in fragen:
+        a = (e.get("antwort") or "")
+        if re.search(r"nicht gefunden|steht .{0,40}nichts|keine (?:passende )?seite|nicht belegt|Ansprechpartner|"
+                     r"keine belastbare Information|nicht auf den gepr", a, re.I):
+            eskaliert += 1
+        if e.get("kontext"):
+            stoerfaelle += 1
+        tag = (e.get("ts") or "")[:10]
+        if tag:
+            tage.setdefault(tag, set()).add(e.get("konto"))
+        f = e.get("faden") or "-"
+        if f not in erste and e.get("verdikt") in ("belegt", "woertlich", "geglaettet", "teilweise") and e.get("dauer_ms"):
+            erste[f] = e["dauer_ms"]
+    erste_dauern = sorted(erste.values())
+    rueck_pos = sum(1 for e in rueck if e.get("bewertung") == "hilfreich")
+    rueck_neg = sum(1 for e in rueck if e.get("bewertung") in ("nicht hilfreich", "falsche Quelle"))
     return {
         "vorgaenge": len(fragen),
         "fragende": len(koepfe),
         "belegt_anteil": round(100.0 * belegt / len(fragen), 1),
+        "eskaliert": eskaliert,
+        "eskalationsquote": round(100.0 * eskaliert / len(fragen), 1),
+        "stoerfaelle": stoerfaelle,
+        "zeit_bis_erste_quelle_median_ms": erste_dauern[len(erste_dauern) // 2] if erste_dauern else None,
+        "faeden": len({e.get("faden") or "-" for e in fragen}),
+        "nutzung_je_tag": {t: len(k) for t, k in sorted(tage.items())},
+        "rueckmeldungen": {"hilfreich": rueck_pos, "nicht_hilfreich": rueck_neg, "gesamt": len(rueck)},
+        "trefferquote": round(100.0 * (len(fragen) - eskaliert) / len(fragen), 1),
         "verdikte": verdikte,
         "regeln": regeln,
         "bereiche": bereiche,

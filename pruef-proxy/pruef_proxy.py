@@ -45,6 +45,8 @@ import assistent
 import absicht
 import fadenfrage
 import gespraech as gespraechsmodus   # nicht 'gespraech': so heisst die Faden-Kennung in _chat
+import metadaten
+import stoerfall
 import mehrstufig
 import pdfstelle
 import pruefprotokoll
@@ -471,6 +473,10 @@ def chat_gemeldet():
 # Beide bekommen dieselbe Pruefung, damit die Belege ueberall gleich sind.
 CHAT = re.compile(r"^/api/workspace/[^/]+(?:/thread/[^/]+)?/stream-chat/?$")
 CHAT_JSON = re.compile(r"^/api/v1/workspace/[^/]+/chat/?$")
+FEEDBACK = re.compile(r"^/api/workspace/([^/]+)/chat-feedback/(\d+)/?$")
+_RUECKMELDUNG_CHAT = re.compile(
+    r"^\s*(?:feedback|r(?:ü|ue)ckmeldung|falsche\s+quelle|falscher\s+beleg|quelle\s+falsch)\s*[:\-–]\s*(.+)$",
+    re.I | re.S)
 
 # KI4KI-BEREICH-HEILEN: das Anlegen eines neuen Arbeitsbereichs abfangen,
 # um ihn direkt danach auf die gepruef-ten Werte zu bringen.
@@ -1020,6 +1026,50 @@ def erlaubte_dokumente(kopfzeilen):
     return erlaubt
 
 
+def _wurzel_von(schluessel):
+    """Der Bereichsordner (dokumente/<bereich>) zu einem PDF-Schluessel - oder None."""
+    pfad = PDFS.get(schluessel or "")
+    if not pfad:
+        return None
+    b = metadaten.bereich_von_pfad(pfad, PDF_ORDNER)
+    return os.path.join(PDF_ORDNER, b) if b else None
+
+
+def fuer_ki_freigegeben(name):
+    """K3: Sperrt die Metadaten dieses Dokument fuer die KI? True = darf."""
+    s = _pdf_schluessel_roh(name) or name
+    w = _wurzel_von(s)
+    if not w:
+        return True
+    try:
+        return metadaten.fuer_ki(s, w)
+    except Exception:
+        return True
+
+
+def dokument_status(name):
+    """Kurzer Metadaten-Status fuer Listen ('freigegeben · v3 · gültig bis …') oder ''."""
+    s = _pdf_schluessel_roh(name) or name
+    w = _wurzel_von(s)
+    if not w:
+        return ""
+    try:
+        return metadaten.status_zeile(s, w)
+    except Exception:
+        return ""
+
+
+def dokument_warnung(name):
+    s = _pdf_schluessel_roh(name) or name
+    w = _wurzel_von(s)
+    if not w:
+        return ""
+    try:
+        return metadaten.warnung(s, w)
+    except Exception:
+        return ""
+
+
 def dokument_erlaubt(stamm, kopfzeilen):
     """Darf diese Anmeldung dieses Dokument sehen?
 
@@ -1033,6 +1083,10 @@ def dokument_erlaubt(stamm, kopfzeilen):
     diese Sitzung sehen darf. Ohne diesen Weg war jeder
     Fundstellen-Link tot.
     """
+    # ⭐ K3: "fuer KI ausschliessen" / nicht freigegeben gilt fuer alle Wege,
+    #   auch fuer den Fundstellen-Link.
+    if not fuer_ki_freigegeben(stamm):
+        return False
     erlaubt = None
     marke = marke_aus_kopf(kopfzeilen)
     if marke_gilt(marke):
@@ -1073,6 +1127,14 @@ def _flach_stamm(text):
     for alt, neu in (("ä", "ae"), ("ö", "oe"), ("ü", "ue"), ("ß", "ss")):
         t = t.replace(alt, neu)
     return re.sub(r"[^a-z0-9]", "", t)
+
+
+def _ohne_ki_sperre(namen):
+    """K3: Dokumente ohne KI-Freigabe aus jeder Liste sieben."""
+    try:
+        return [n for n in (namen or []) if fuer_ki_freigegeben(n)]
+    except Exception:
+        return list(namen or [])
 
 
 def nur_erlaubte(titel, kopfzeilen):
@@ -1258,6 +1320,10 @@ def dokumente_im_bereich(pfad, kopfzeilen):
 
 
 def titel_im_bereich(pfad, kopfzeilen):
+    return _ohne_ki_sperre(_titel_im_bereich_roh(pfad, kopfzeilen))
+
+
+def _titel_im_bereich_roh(pfad, kopfzeilen):
     """Die Dokumenttitel eines Arbeitsbereichs - oder None.
 
     Fast dieselbe Abfrage wie dokumente_im_bereich, aber mit den Titeln
@@ -3317,6 +3383,29 @@ class Griff(BaseHTTPRequestHandler):
                 return
         except Exception:
             traceback.print_exc(file=sys.stderr)
+        # ⭐ K2: "Falsche Quelle: ..." / "Feedback: ..." als Chatzeile - landet im
+        #   Protokoll und in /rueckmeldungen, nicht beim Modell.
+        _rm = _RUECKMELDUNG_CHAT.match(frage or "")
+        if _rm:
+            try:
+                gespraech_k = GESPRAECHE.kennung(self.path, self.headers)
+                lf = GESPRAECHE.letzte_frage(gespraech_k)
+                pruefprotokoll.schreibe(
+                    art="rueckmeldung",
+                    konto=pruefprotokoll.pseudonym(pruefprotokoll.konto_aus(self.headers)),
+                    bereich=(re.match(r"^/api/(?:v1/)?workspace/([^/]+)", self.path or "") or [None, None])[1]
+                    if re.match(r"^/api/(?:v1/)?workspace/([^/]+)", self.path or "") else None,
+                    bewertung="falsche Quelle" if re.search(r"quelle|beleg", frage, re.I) else "nicht hilfreich",
+                    text=_rm.group(1).strip()[:600], faden=gespraech_k.split("|")[1] if "|" in gespraech_k else None,
+                    frage_original=lf[0] if lf else None)
+                _text = ("Danke — notiert%s. Das landet in der Rückmeldungsliste, die der Betreiber sieht. "
+                         "Wenn du magst, sag mir gleich, was richtig wäre, dann suche ich noch einmal gezielt."
+                         % (" als „falsche Quelle“" if re.search(r"quelle|beleg", frage, re.I) else ""))
+                self._direkt_senden("meta", frage, _text)
+                print("[Rueckmeldung] Chat: %s" % _rm.group(1)[:60], file=sys.stderr, flush=True)
+                return
+            except Exception:
+                traceback.print_exc(file=sys.stderr)
         # ⭐ STUFE 2 (ARCHITEKTUR-GESPRAECH §4): Das Modell fuehrt das Gespraech
         #   selbst - mit Werkzeugen und dem ganzen Faden. Faellt es aus, laeuft
         #   der bisherige Weg (Absicht/Regeln) weiter.
@@ -4047,6 +4136,73 @@ class Griff(BaseHTTPRequestHandler):
                  "close": True, "error": False},
             ])
 
+    def _kennzahlen_seite(self, pfad, felder):
+        """K2: /rueckmeldungen - alle Daumen und 'falsche Quelle'-Meldungen.
+        K5: /kpi - die eine Seite Auswertung (Leitfaden S. 101, 105, 127).
+        Beide nur mit Einsichtsrecht (KI4KI_PROTOKOLL_EINSICHT)."""
+        if not darf_sehen(self.headers):
+            self._fehler(401, "Nicht angemeldet. Bitte zuerst in der Oberflaeche anmelden.")
+            return
+        konto = pruefprotokoll.pseudonym(pruefprotokoll.konto_aus(self.headers))
+        if not pruefprotokoll.darf_einsehen(konto):
+            self._fehler(404, "Nicht gefunden.")
+            return
+        seit = (felder.get("seit") or [None])[0]
+        bis = (felder.get("bis") or [None])[0]
+        if pfad == "/rueckmeldungen":
+            eintraege = [e for e in pruefprotokoll.alle_eintraege(seit, bis) if e.get("art") == "rueckmeldung"]
+            if (felder.get("format") or [""])[0] == "json":
+                self._json({"rueckmeldungen": eintraege})
+                return
+            zeilen = []
+            for e in reversed(eintraege):
+                zeilen.append("<tr><td>%s</td><td>%s</td><td><b>%s</b></td><td>%s</td><td>%s</td><td>%s</td></tr>" % (
+                    html.escape(str(e.get("ts", ""))[:16].replace("T", " ")), html.escape(str(e.get("bereich") or "")),
+                    html.escape(str(e.get("bewertung") or "")), html.escape(str(e.get("frage_original") or "")[:160]),
+                    html.escape(str(e.get("text") or "")[:300]),
+                    html.escape(", ".join("%s S.%s" % (f.get("dok"), f.get("seiten")) for f in (e.get("fundstellen") or [])[:4]))))
+            seite = ("<h1>Rückmeldungen</h1><p>%d Einträge. <a href='/kpi'>Kennzahlen</a> · <a href='/protokoll'>Protokoll</a></p>"
+                     "<table border=1 cellpadding=6 style='border-collapse:collapse;font-family:sans-serif;font-size:14px'>"
+                     "<tr><th>Zeit</th><th>Bereich</th><th>Bewertung</th><th>Frage</th><th>Hinweis</th><th>Fundstellen</th></tr>%s</table>"
+                     % (len(eintraege), "".join(zeilen) or "<tr><td colspan=6>noch keine</td></tr>"))
+            self._sende_html(seite)
+            return
+        z = pruefprotokoll.kennzahlen(seit, bis)
+        if (felder.get("format") or [""])[0] == "json":
+            self._json({"kennzahlen": z})
+            return
+
+        def zeile(k, v, hinweis=""):
+            return "<tr><td>%s</td><td><b>%s</b></td><td style='color:#666'>%s</td></tr>" % (
+                html.escape(k), html.escape(str(v)), html.escape(hinweis))
+        if not z.get("vorgaenge"):
+            self._sende_html("<h1>Kennzahlen</h1><p>Noch keine Vorgänge im Zeitraum.</p>")
+            return
+        ms = z.get("zeit_bis_erste_quelle_median_ms")
+        r = z.get("rueckmeldungen") or {}
+        zeilen = "".join([
+            zeile("Vorgänge (Fragen)", z["vorgaenge"], "Zeitraum: %s – %s" % (seit or "Anfang", bis or "heute")),
+            zeile("Gesprächsfäden", z.get("faeden", "-")),
+            zeile("Fragende (Kennungen, pseudonym)", z.get("fragende", "-")),
+            zeile("Anteil quellenbasierter Antworten", "%s %%" % z["belegt_anteil"], "Leitfaden-KPI: Antwort mit Quellenbezug"),
+            zeile("Trefferquote", "%s %%" % z.get("trefferquote", "-"), "Anteil der Fragen mit einer Antwort aus dem Bestand"),
+            zeile("Eskalationsquote", "%s %% (%d)" % (z.get("eskalationsquote", "-"), z.get("eskaliert", 0)), "ehrlich „nicht gefunden“ statt Schein-Sicherheit"),
+            zeile("Zeit bis zur ersten verwertbaren Quelle (Median)", ("%.0f s" % (ms / 1000.0)) if ms else "-", "je Faden die erste belegte Antwort"),
+            zeile("Antwortzeit Median / langsamste", "%s s / %s s" % (
+                round((z.get("dauer_median_ms") or 0) / 1000.0), round((z.get("dauer_langsamste_ms") or 0) / 1000.0))),
+            zeile("Störfall-Anfragen (mit Kontext)", z.get("stoerfaelle", 0), "Anlage / Fehlercode / Symptom erkannt"),
+            zeile("Rückmeldungen", "%d hilfreich · %d nicht hilfreich / falsche Quelle" % (r.get("hilfreich", 0), r.get("nicht_hilfreich", 0)),
+                  "<a href='/rueckmeldungen'>Liste</a>"),
+            zeile("Nutzung je Tag (Kennungen)", ", ".join("%s: %d" % (t, n) for t, n in list((z.get("nutzung_je_tag") or {}).items())[-14:]) or "-"),
+            zeile("Wege", ", ".join("%s: %d" % kv for kv in (z.get("regeln") or {}).items())),
+            zeile("Meistgenutzte Quellen", ", ".join("%s (%d)" % kv for kv in (z.get("meistgenutzte_quellen") or [])[:8])),
+        ])
+        seite = ("<h1>KI4KI — Kennzahlen</h1><p>Ohne Personenbezug (Kennungen pseudonym). "
+                 "<a href='/rueckmeldungen'>Rückmeldungen</a> · <a href='/protokoll'>Protokoll (JSON)</a> · "
+                 "<a href='/kpi?format=json'>JSON</a> · Zeitraum: <code>/kpi?seit=2026-08-01&bis=2026-08-31</code></p>"
+                 "<table border=1 cellpadding=6 style='border-collapse:collapse;font-family:sans-serif;font-size:14px'>%s</table>" % zeilen)
+        self._sende_html(seite)
+
     def _protokoll(self, pfad, felder):
         """Die Protokoll-Ansicht: Kennzahlen, Ausfuhr, eigene Auskunft.
 
@@ -4214,6 +4370,7 @@ class Griff(BaseHTTPRequestHandler):
                 weg="browser" if "/v1/" not in (self.path or "") else "dienst",
                 regel=art,
                 absicht=getattr(self, "_absicht_protokoll", None),
+                kontext=(lambda k: {a: b for a, b in k.items() if b} or None)(stoerfall.erkennen(frage or "")),
                 frage_original=frage,
                 # Beide Fassungen, immer: Ohne die umgeschriebene Suche
                 # laesst sich spaeter nicht nachvollziehen, warum eine
@@ -4781,8 +4938,9 @@ class Griff(BaseHTTPRequestHandler):
 
         text += "\n".join(["", "---",
                            zusammenfassungs_fuss(gewaehlt, _ganz, _gelesen,
-                                                 auftrag=bool(_auftrag)),
-                           assistent.naechste_schritte("zusammenfassung", gewaehlt)])
+                                                 auftrag=bool(_auftrag))])
+        if len(GESPRAECHE.verlauf_kurz(gespraech, 10)) < 2:
+            text += "\n" + assistent.naechste_schritte("zusammenfassung", gewaehlt)
 
         self._festhalten("zusammenfassung", frage, text)
         GESPRAECHE.dokument_merken(gespraech, gewaehlt)
@@ -4955,15 +5113,13 @@ class Griff(BaseHTTPRequestHandler):
         if nummer:
             text = "\n\n".join(bloecke)
         else:
-            text = ("Abbildungen mit Bildunterschrift im Dokument (%d ausgewählt%s):\n\n"
+            text = ("Abbildungen (%d ausgewählt%s):\n\n"
                     % (len(bloecke), (" ab Position %d" % (ab + 1)) if ab else "")
-                    + "\n\n---\n\n".join(bloecke)
-                    + "\n\n*Für ein bestimmtes Bild: „Zeig mir Bild 2.3“ — "
-                    "die Nummer steht in der Bildunterschrift.*")
-        text += "\n\n---\n*Direkt aus dem Dokument geholt — Klick auf ein Bild "
-        text += "oder die Seite öffnet das Original.*"
-        if gewaehlt:
-            text += "\n" + assistent.naechste_schritte("bild", gewaehlt)
+                    + "\n\n---\n\n".join(bloecke))
+        if len(GESPRAECHE.verlauf_kurz(gespraech, 10)) < 2:
+            text += "\n\n<sub>Klick auf Bild oder Seite öffnet das Original.</sub>"
+            if gewaehlt:
+                text += "\n" + assistent.naechste_schritte("bild", gewaehlt)
         text = vorspann + text
         if modell_benutzt:
             text += _modell_zeile(MODELL_NAME, time.time() - begonnen)
@@ -5072,7 +5228,34 @@ class Griff(BaseHTTPRequestHandler):
             thema = str(args.get("thema") or "").strip()
             frage = ("Welche Dokumente haben wir zum Thema %s?" % thema) if thema else "Welche Dokumente haben wir?"
             t = assistent.bestandsauskunft(frage, namen, bereich=True)
-            return t or "\n".join(assistent.dokument_zeile(n) for n in sorted(namen))
+            if not t:
+                t = "\n".join(assistent.dokument_zeile(n) for n in sorted(namen))
+            _stati = [(assistent._titel_saubern(n), dokument_status(n)) for n in sorted(namen)]
+            _stati = [(k, st) for k, st in _stati if st]
+            if _stati:
+                t += "\n\nStatus (Metadaten): " + "; ".join("%s: %s" % kv for kv in _stati[:40])
+            return t
+        if name in ("bestand_durchsuchen", "stoerfall_suchen"):
+            if name == "stoerfall_suchen":
+                kontext = {"anlage": str(args.get("anlage") or ""), "fehlercode": str(args.get("fehlercode") or ""),
+                           "symptom": str(args.get("symptom") or "")}
+                begriffe = " ".join(stoerfall.suchbegriffe(kontext))
+            else:
+                begriffe = str(args.get("begriffe") or "")
+            treffer = self._bestand_durchsuchen(begriffe, namen)
+            if not treffer:
+                return ("Zu '%s' keine belegte Stelle in den %d Dokumenten des Bereichs. Sag das ehrlich; "
+                        "Ansprechpartner: %s" % (begriffe, len(namen), assistent.kontakt_zeile() or "nicht hinterlegt"))
+            aus = []
+            for dok, seite, text in treffer:
+                st = dokument_status(dok)
+                warn = dokument_warnung(dok)
+                aus.append("=== %s, Seite %d%s ===\n%s" % (
+                    assistent._titel_saubern(dok), seite,
+                    (" [%s]" % (warn or st)) if (warn or st) else "", text[:2500]))
+                if dok not in zustand["dokumente"]:
+                    zustand["dokumente"].append(dok)
+            return "\n\n".join(aus)
         if name == "exportieren":
             if args.get("format") == "bibtex":
                 return assistent.bibtex_eintraege(sorted(namen)) or "kein Katalog"
@@ -5159,6 +5342,45 @@ class Griff(BaseHTTPRequestHandler):
             return "; ".join("%s = %s (S. %d)" % (args.get("kurz"), lang, s) for s, lang, _ in t[:3])
         return "Unbekanntes Werkzeug " + name
 
+    def _bestand_durchsuchen(self, begriffe, namen, hoechstens=6):
+        """Seiten ueber ALLE erlaubten Dokumente: erst das Wortverzeichnis
+        (welche Arbeiten tragen die Begriffe), dann Seitenwahl je Dokument.
+        [(dok, seite, text)] - bestes zuerst. Ohne Verzeichnis: hoechstens
+        40 Dokumente direkt (Seitentexte sind vorgewaermt)."""
+        terme = fadenfrage.suchwoerter(begriffe) or [fadenfrage._falte(w) for w in begriffe.split() if len(w) >= 3]
+        if not terme:
+            return []
+        kandidaten = []
+        try:
+            import wortsuche as _ws
+            for w in [x for x in re.findall(r"[A-Za-zÄÖÜäöüß0-9][\w\-]{2,}", begriffe)][:4]:
+                gef, _n = _ws.ueber_verzeichnis(BESTAND, w, hoechstens_arbeiten=12, je_arbeit=1,
+                                                erlaubt=(lambda t, _namen=set(namen): t in _namen))
+                for g in gef or []:
+                    t = g.get("titel")
+                    if t and t not in kandidaten:
+                        kandidaten.append(t)
+        except Exception:
+            pass
+        if not kandidaten:
+            kandidaten = list(namen)[:40]
+        punkte = []
+        for dok in kandidaten[:40]:
+            sch = _pdf_schluessel(dok)
+            if not sch or not dokument_erlaubt(sch, self.headers):
+                continue
+            try:
+                seiten = pdfstelle.seitentexte(sch) or []
+            except Exception:
+                continue
+            nummern, _t = fadenfrage.seiten_waehlen(begriffe, seiten, hoechstens=2)
+            for n in nummern:
+                g = fadenfrage._falte(seiten[n - 1])
+                gewicht = sum(g.count(t) for t in terme)
+                punkte.append((gewicht, dok, n, seiten[n - 1]))
+        punkte.sort(key=lambda x: -x[0])
+        return [(d, n, t) for _, d, n, t in punkte[:hoechstens]]
+
     def _gespraech_antwort(self, frage):
         """Stufe 2: Das Modell fuehrt den Zug - mit Werkzeugen und Faden.
         True = beantwortet. False = alter Weg."""
@@ -5183,14 +5405,19 @@ class Griff(BaseHTTPRequestHandler):
                   "abbildung_zeigen": "Hole Bild aus %s …", "zusammenfassen": "Lese %s vollständig …",
                   "zaehlen": "Zähle in %s …", "bestand": "Sehe im Katalog nach …",
                   "dokument_finden": "Suche das Dokument …", "abkuerzung": "Suche die Abkürzung in %s …",
-                  "exportieren": "Stelle den Export zusammen …", "seite_zeigen": "Hole Seite aus %s …"}
+                  "exportieren": "Stelle den Export zusammen …", "seite_zeigen": "Hole Seite aus %s …",
+                  "bestand_durchsuchen": "Durchsuche alle Dokumente …", "stoerfall_suchen": "Suche in Fehlerkatalogen und Handbüchern …"}
 
         def melden(name, args):
             t = _melde.get(name, name)
             self._stand(stand, t % args.get("dokument") if "%s" in t else t)
 
+        _kx = {k: v for k, v in stoerfall.erkennen(frage).items() if v}
+        _frage_modell = frage
+        if _kx and stoerfall.ist_stoerfall(frage):
+            _frage_modell = frage + "\n[Erkannter Störfall-Kontext: %s]" % stoerfall.kontext_zeile(_kx)
         e = gespraechsmodus.fuehren(
-            frage, GESPRAECHE.verlauf_kurz(gespraech_k), assistent._titel_saubern(faden_dok) if faden_dok else None,
+            _frage_modell, GESPRAECHE.verlauf_kurz(gespraech_k), assistent._titel_saubern(faden_dok) if faden_dok else None,
             zeilen, lambda n, a: self._werkzeug(n, a, zustand), kontakt=assistent.kontakt_zeile(),
             melden=melden)
         self._stand_weg(stand)
@@ -5299,16 +5526,31 @@ class Griff(BaseHTTPRequestHandler):
         if beruehrt:
             text, ok, nein = fadenfrage.verlinken_mehrfach(text, beruehrt)
         # ---- Fuss --------------------------------------------------------
-        werk = ", ".join("%s(%s)" % (n, a.get("dokument") or a.get("suche") or a.get("format") or "")
-                         for n, a, _ in e["aufrufe"] if n != "waechter")
-        fuss = ["*Gespräch mit Werkzeugen%s." % ((": " + werk) if werk else " — ohne Nachschlagen (nur aus dem Verlauf)")]
+        # ⭐ Fuss: EINE kurze Zeile, nur mit Inhalt, der sich aendert (Emrach 26.08.:
+        #   "die Fussnoten nerven, da steht eh immer das selbe").
+        _kurz = {"seiten_lesen": "gelesen", "abbildungen_auflisten": "Bilder gelistet", "abbildung_zeigen": "Bild",
+                 "zusammenfassen": "zusammengefasst", "zaehlen": "gezählt", "bestand": "Katalog", "dokument_finden": "gesucht",
+                 "abkuerzung": "Abkürzung", "exportieren": "Export", "seite_zeigen": "Seite", "bestand_durchsuchen": "Bestand durchsucht",
+                 "stoerfall_suchen": "Störfallsuche"}
+        _doks = ", ".join(assistent._titel_saubern(d) for d in zustand["dokumente"][:3])
+        _was = sorted({_kurz.get(n, n) for n, _, _ in e["aufrufe"] if n != "waechter"})
+        fuss = []
+        if _doks:
+            fuss.append("Quelle: %s" % _doks)
+        if _was:
+            fuss.append(", ".join(_was))
         if ok or nein:
-            fuss.append("%d Zitat(e) wörtlich im Original geprüft%s." % (ok, (", %d nicht gefunden" % nein) if nein else ""))
+            fuss.append("%d Zitat%s geprüft%s" % (ok + nein, "" if ok + nein == 1 else "e", (", %d nicht gefunden" % nein) if nein else ""))
         if gestrichen:
-            fuss.append("Erfundene Abbildungsnummern gestrichen: %s." % ", ".join(gestrichen))
+            fuss.append("⚠ erfundene Bildnummern gestrichen: %s" % ", ".join(gestrichen))
         if unbelegt:
-            fuss.append("%d Aussage(n) ließen sich auf der genannten Seite nicht belegen — als „nicht belegt“ markiert." % unbelegt)
-        text += "\n\n---\n" + " ".join(fuss) + _modell_zeile(gespraechsmodus.MODELL, time.time() - begonnen)
+            fuss.append("⚠ %d Aussage(n) nicht belegt" % unbelegt)
+        _warn = [dokument_warnung(d) for d in zustand["dokumente"][:3]]
+        _warn = [w for w in _warn if w]
+        if _warn:
+            fuss.append("⚠ " + "; ".join(_warn))
+        if fuss:
+            text += "\n\n<sub>" + " · ".join(fuss) + "</sub>"
         # ---- Merken und senden -------------------------------------------
         if zustand["dokumente"]:
             GESPRAECHE.dokument_merken(gespraech_k, zustand["dokumente"][-1])
@@ -5705,9 +5947,13 @@ class Griff(BaseHTTPRequestHandler):
             text, ok, nein = fadenfrage.verlinken(roh.strip(), schluessel,
                                                   seiten, nummern)
             text = vorspann + text
-        text += "\n\n---\n" + fadenfrage.fuss(titel, nummern, ok, nein)
-        text += "\n" + assistent.naechste_schritte("faden", dok)
-        text += _modell_zeile(MODELL_NAME, time.time() - begonnen)
+        _schritte = len(GESPRAECHE.verlauf_kurz(gespraech, 10))
+        text += "\n\n<sub>Quelle: %s · S. %s%s%s</sub>" % (
+            titel, ", ".join(str(n) for n in nummern),
+            (" · %d Zitat%s geprüft" % (ok + nein, "" if ok + nein == 1 else "e")) if (ok or nein) else "",
+            (" · ⚠ %d nicht gefunden" % nein) if nein else "")
+        if _schritte < 2:
+            text += "\n" + assistent.naechste_schritte("faden", dok)
         self._festhalten("faden", frage, text)
         GESPRAECHE.merken(gespraech, frage, "normal", [{"title": dok}])
         self._strom_stueck(
@@ -6242,6 +6488,9 @@ class Griff(BaseHTTPRequestHandler):
             return
         if pfad == "/protokoll" or pfad.startswith("/protokoll/"):
             self._protokoll(pfad, felder)
+            return
+        if pfad in ("/rueckmeldungen", "/kpi"):
+            self._kennzahlen_seite(pfad, felder)
             return
         if pfad in ("/stelle", "/seitenbild", "/abbildung") or pfad.startswith("/pdf/"):
             # Diese Routen beantwortet der Proxy selbst - AnythingLLM sieht sie
@@ -6843,6 +7092,44 @@ class Griff(BaseHTTPRequestHandler):
             print("[Anstoss] %s (%s)" % (meldung, grund[:60]),
                   file=sys.stderr, flush=True)
             self._json({"ok": ok, "meldung": meldung}, code=200 if ok else 500)
+            return
+
+        # ⭐ K2 (Leitfaden S. 123, 128): Daumen hoch/runter der Oberflaeche
+        #   laeuft hier durch - mitschreiben, dann weiterreichen.
+        _fb = FEEDBACK.match(pfad)
+        if _fb:
+            try:
+                laenge = int(self.headers.get("Content-Length") or 0)
+                koerper = self.rfile.read(laenge) if laenge else b""
+            except Exception:
+                koerper = b""
+            try:
+                wert = (json.loads(koerper or b"{}") or {}).get("feedback")
+                bewertung = ("hilfreich" if wert in (1, True, "1", "true") else
+                             "nicht hilfreich" if wert in (-1, False, "-1", "false", 0, "0") else
+                             "zurueckgenommen")
+                letzte = None
+                try:
+                    for e in reversed(pruefprotokoll.alle_eintraege()):
+                        if e.get("art") == "frage" and e.get("bereich") == _fb.group(1) and \
+                                e.get("konto") == pruefprotokoll.pseudonym(pruefprotokoll.konto_aus(self.headers)):
+                            letzte = e
+                            break
+                except Exception:
+                    letzte = None
+                pruefprotokoll.schreibe(
+                    art="rueckmeldung",
+                    konto=pruefprotokoll.pseudonym(pruefprotokoll.konto_aus(self.headers)),
+                    bereich=_fb.group(1), chat_id=_fb.group(2), bewertung=bewertung,
+                    faden=(letzte or {}).get("faden"),
+                    frage_original=(letzte or {}).get("frage_original"),
+                    regel=(letzte or {}).get("regel"),
+                    fundstellen=(letzte or {}).get("fundstellen"))
+                print("[Rueckmeldung] %s in %s (Chat %s)" % (bewertung, _fb.group(1), _fb.group(2)),
+                      file=sys.stderr, flush=True)
+            except Exception:
+                traceback.print_exc(file=sys.stderr)
+            self._weiterleiten("POST", koerper)
             return
 
         if CHAT.match(pfad):

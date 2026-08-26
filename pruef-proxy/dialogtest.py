@@ -452,6 +452,61 @@ def szenario_20_proxy_statisch():
             pruefe(False, "kompiliert NICHT: %s (%s)" % (f, e))
 
 
+def szenario_21_metadaten():
+    print("\n[21] K3 Metadaten: Freigabe, Gueltigkeit, 'fuer KI ausschliessen'")
+    import metadaten, datetime
+    w = os.path.join(_tmp, "bereichX"); os.makedirs(w, exist_ok=True)
+    json.dump({"HW14-Handbuch": {"freigabe": "freigegeben", "version": "3", "gueltig_bis": "2027-06-30", "owner": "MS", "anlage": "SGM-3", "fehlercodes": "E42, E43"},
+               "Bericht-117": {"freigabe": "entwurf", "ki": "nein"},
+               "Alt-2019": {"freigabe": "freigegeben", "gueltig_bis": "2020-01-01"}},
+              open(os.path.join(w, "metadaten.json"), "w", encoding="utf-8"))
+    pruefe(metadaten.fuer_ki("HW14-Handbuch.pdf", w), "freigegeben -> fuer KI")
+    pruefe(not metadaten.fuer_ki("bericht 117", w) and metadaten.grund_ausschluss("Bericht-117", w) == "für KI ausgeschlossen", "ki=nein -> ausgeschlossen (Schreibweise egal)")
+    pruefe(metadaten.fuer_ki("Unbekannt", w), "ohne Eintrag -> erlaubt")
+    pruefe("freigegeben" in metadaten.status_zeile("HW14-Handbuch", w) and "v3" in metadaten.status_zeile("HW14-Handbuch", w), "Statuszeile: %s" % metadaten.status_zeile("HW14-Handbuch", w))
+    pruefe("abgelaufen" in metadaten.warnung("Alt-2019", w), "abgelaufene Gueltigkeit gewarnt")
+    json.dump({"nur_freigegebene": True}, open(os.path.join(w, "bereich.json"), "w"))
+    pruefe(not metadaten.fuer_ki("Neu-ohne-Eintrag", w) and metadaten.fuer_ki("HW14-Handbuch", w), "Bereich verlangt Freigabe -> nur freigegebene")
+    json.dump({"nur_freigegebene": True, "abgelaufene_ausschliessen": True}, open(os.path.join(w, "bereich.json"), "w"))
+    pruefe(not metadaten.fuer_ki("Alt-2019", w), "abgelaufen ausgeschlossen, wenn der Bereich es verlangt")
+    pruefe(metadaten.stoerfall_felder("HW14-Handbuch", w)["fehlercodes"] == ["E42", "E43"], "Fehlercodes als Liste")
+    pruefe(metadaten.bereich_von_pfad("/daten/pdfs/kap/archiv/X.pdf", "/daten/pdfs") == "kap", "Bereich aus Pfad")
+
+
+def szenario_22_stoerfall():
+    print("\n[22] K4 Stoerfall-Kontext aus Feldern und aus dem Satz")
+    import stoerfall
+    k = stoerfall.erkennen("Anlage: SGM-3 · Fehlercode: E42 · Symptom: Düse tropft")
+    pruefe(k["anlage"] == "SGM-3" and k["fehlercode"] == "E42" and k["symptom"].startswith("Düse tropft"), "Felder erkannt: %r" % k)
+    k2 = stoerfall.erkennen("an der SGM-3 kommt Fehler E42 und die Düse tropft, was tun?")
+    pruefe(k2["fehlercode"] == "E42" and "SGM-3" in k2["anlage"], "aus dem Satz: %r" % k2)
+    pruefe(stoerfall.ist_stoerfall("Störung an der Extruderlinie 2: Schmelzedruck schwankt") and not stoerfall.ist_stoerfall("Was ist das Ziel der Arbeit?"), "Stoerfall vs. Fachfrage")
+    pruefe(stoerfall.suchbegriffe(k) == ["E42", "SGM-3", "Düse tropft"], "Suchbegriffe: %r" % stoerfall.suchbegriffe(k))
+    pruefe("Fehlercode: E42" in stoerfall.kontext_zeile(k), "Kontextzeile")
+
+
+def szenario_23_kennzahlen():
+    print("\n[23] K5 Kennzahlen aus dem Protokoll (Eskalation, erste Quelle, Rueckmeldungen)")
+    import pruefprotokoll
+    eintr = [
+        {"art": "frage", "ts": "2026-08-26T10:00:00Z", "konto": "a", "faden": "f1", "verdikt": "woertlich", "dauer_ms": 9000, "regel": "gespraech", "antwort": "Die Lebensdauer sinkt (DS-24-005, S. 141)."},
+        {"art": "frage", "ts": "2026-08-26T10:01:00Z", "konto": "a", "faden": "f1", "verdikt": "eigen", "dauer_ms": 4000, "regel": "faden", "antwort": "In DS-24-005 finde ich dazu keine Seite. Dazu steht in diesem Dokument nichts."},
+        {"art": "frage", "ts": "2026-08-27T10:00:00Z", "konto": "b", "faden": "f2", "verdikt": "ungedeckt", "dauer_ms": 12000, "regel": "normal", "antwort": "...", "kontext": {"fehlercode": "E42"}},
+        {"art": "rueckmeldung", "ts": "2026-08-27T10:02:00Z", "konto": "b", "bewertung": "nicht hilfreich"},
+        {"art": "rueckmeldung", "ts": "2026-08-27T10:03:00Z", "konto": "a", "bewertung": "hilfreich"},
+    ]
+    alt = pruefprotokoll.alle_eintraege
+    pruefprotokoll.alle_eintraege = lambda seit=None, bis=None: eintr
+    try:
+        z = pruefprotokoll.kennzahlen()
+    finally:
+        pruefprotokoll.alle_eintraege = alt
+    pruefe(z["vorgaenge"] == 3 and z["eskaliert"] == 1 and z["stoerfaelle"] == 1, "gezaehlt: %s" % {k: z[k] for k in ("vorgaenge", "eskaliert", "stoerfaelle")})
+    pruefe(z["zeit_bis_erste_quelle_median_ms"] == 9000 and z["faeden"] == 2, "erste Quelle je Faden: %s ms, %d Faeden" % (z["zeit_bis_erste_quelle_median_ms"], z["faeden"]))
+    pruefe(z["rueckmeldungen"] == {"hilfreich": 1, "nicht_hilfreich": 1, "gesamt": 2}, "Rueckmeldungen: %s" % z["rueckmeldungen"])
+    pruefe(z["nutzung_je_tag"] == {"2026-08-26": 1, "2026-08-27": 1} and z["belegt_anteil"] == round(100.0 / 3, 1), "Nutzung je Tag + belegt-Anteil")
+
+
 if __name__ == "__main__":
     for s in (szenario_1_verfasser_und_folgefragen, szenario_2_beschwerde_reparatur,
               szenario_3_themenwechsel, szenario_4_rueckkehr, szenario_5_nicht_im_dokument,
@@ -460,7 +515,8 @@ if __name__ == "__main__":
               szenario_11_dieses_dokument_kein_bestand, szenario_12_zielfrage_und_reparatur,
               szenario_13_zweifel_und_anlage, szenario_14_selbes_thema,
               szenario_15_vergleich, szenario_16_kennwerte_abkuerzung, szenario_17_export_kontakt_tippfehler,
-              szenario_18_absichts_modell, szenario_19_gespraechsmodus, szenario_20_proxy_statisch):
+              szenario_18_absichts_modell, szenario_19_gespraechsmodus, szenario_20_proxy_statisch,
+              szenario_21_metadaten, szenario_22_stoerfall, szenario_23_kennzahlen):
         try:
             s()
         except Exception as e:

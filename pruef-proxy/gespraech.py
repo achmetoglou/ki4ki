@@ -58,6 +58,18 @@ WERKZEUGE = [
             "nummer": {"type": "string", "description": "Bildnummer aus der Unterschrift, z.B. 6.12"}},
             "required": ["dokument", "nummer"]}}},
     {"type": "function", "function": {
+        "name": "bestand_durchsuchen",
+        "description": "Durchsucht ALLE Dokumente des Bereichs nach Begriffen und liefert die passendsten Seiten mit Text (Kennung, Seite). Fuer Fragen ohne bestimmtes Dokument, Pruefungsfragen, 'welche Norm/Arbeit sagt etwas zu X', Vergleiche ueber viele Dokumente.",
+        "parameters": {"type": "object", "properties": {
+            "begriffe": {"type": "string", "description": "Fachbegriffe, Fehlercode, Anlagenname - keine Fuellwoerter"}},
+            "required": ["begriffe"]}}},
+    {"type": "function", "function": {
+        "name": "stoerfall_suchen",
+        "description": "Stoerfallassistenz: sucht in Fehlerkatalogen, Handbuechern, Pruef- und Fehlerberichten nach Anlage, Fehlercode und Symptom und liefert die passenden Stellen mit Seite und Gueltigkeitsstatus. Danach antwortest du als Tabelle Ursache | Massnahme | Quelle (Kennung, S.) | Gueltigkeit.",
+        "parameters": {"type": "object", "properties": {
+            "anlage": {"type": "string"}, "fehlercode": {"type": "string"}, "symptom": {"type": "string"}},
+            "required": []}}},
+    {"type": "function", "function": {
         "name": "seite_zeigen",
         "description": "Zeigt eine ganze Seite eines Dokuments als Bild im Chat (z.B. eine Seite mit Formeln, einer Tabelle oder Herleitung). Gibt einen Platzhalter zurueck, den du in die Antwort setzt.",
         "parameters": {"type": "object", "properties": {
@@ -137,7 +149,15 @@ def system_text(faden_dok=None, dokumente=None, kontakt=""):
         "11. Liefert ein Werkzeug eine Markdown-Tabelle oder eine Liste (Bestand, Abbildungen), uebernimm "
         "sie UNVERAENDERT und vollstaendig - keine Kuerzung, keine Umformung in Fliesstext, keine "
         "eigenen Seitenzahlen. Fehlt dir eine Seitenzahl, lass sie weg.\n"
-        "12. 'Zeig mir die Seite / eine Seite mit Formeln' -> seite_zeigen mit der Seitenzahl aus seiten_lesen.",
+        "12. 'Zeig mir die Seite / eine Seite mit Formeln' -> seite_zeigen mit der Seitenzahl aus seiten_lesen.\n"
+        "13. STOERFALL (Anlage, Fehlercode, Symptom, 'was tun bei', 'Ursache', 'Abhilfe'): stoerfall_suchen, dann "
+        "Tabelle | Ursache | Massnahme | Quelle (Kennung, S. n) | Gueltigkeit |. Nur Massnahmen, die auf den "
+        "Seiten stehen. Findet sich nichts Belegtes: KEINE eigene Vermutung - sag 'nicht im Bestand belegt' und "
+        "nenne den Ansprechpartner. Steht bei einer Quelle 'nicht freigegeben' oder 'abgelaufen', sag das dazu.\n"
+        "14. PRUEFUNGSFRAGEN (Optionen A-D, 'welche Aussage ist falsch/richtig', 'was ist keine Aufgabe von'): "
+        "bestand_durchsuchen mit den Fachbegriffen jeder Option; urteile je Option mit Beleg; bei Negativfragen "
+        "belege die zutreffenden Optionen und verneine nur, was keine Seite stuetzt.\n"
+        "15. Ohne Faden-Dokument und ohne genanntes Dokument: bestand_durchsuchen statt raten oder nachfragen.",
         "GESPRAECHSZUSTAND:\nFaden-Dokument: %s" % (faden_dok or "keins (frag nach oder nutze dokument_finden/bestand)"),
     ]
     if dokumente:
