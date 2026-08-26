@@ -55,6 +55,21 @@ Wo etwas nicht ankam, steht der Grund in `dokumente/<bereich>/aussortiert/aussor
 | **Kennzahlen & Liste** | `http://<server>:3001/kpi` (eine Seite: quellenbasierte Antworten, Trefferquote, Eskalationsquote, Zeit bis zur ersten Quelle, Störfälle, Rückmeldungen, Nutzung je Tag) · `/rueckmeldungen` (alle Rückmeldungen) · `/protokoll` (Rohdaten, CSV-Export). Sichtbar für die Konten in `KI4KI_PROTOKOLL_EINSICHT` (Standard `admin`), nach Anmeldung in der Oberfläche. |
 | **Audit-Trail** | Jede Frage, Quelle, Antwort, Konto (pseudonym), Bereich, Dauer, Störfall-Kontext — manipulationssicher verkettet, Aufbewahrung `KI4KI_PROTOKOLL_TAGE` (90). |
 
+**Prüfungskatalog (Fragen abfragen).** Liegt im Bereich eine Datei mit Fragen und Antwortoptionen
+(Excel mit Spalten `Frage | Antwort richtig | Antwort falsch | … | Bereich | LE`, oder ein Katalog mit
+a)/b)/c)-Optionen), stellt die Anlage auf „stell mir eine Prüfungsfrage", „frag mich ab", „Frage 7",
+„zum Thema Kleben" die **exakte Frage aus der Datei** mit gemischten Optionen — und prüft die Antwort
+(„b", „Antwort: c", oder der Optionstext) **gegen den Katalog**: ✅/❌ mit der Katalog-Lösung und
+Fundstelle (Frage-Nr., Thema, LE). „weiter" = nächste noch nicht gestellte Frage; „warum?" erklärt aus den
+Dokumenten. Enthält der Katalog keine Lösungen (gescannte Testbögen), sagt die Anlage das statt zu urteilen.
+Das läuft ohne Sprachmodell — Fragen und Optionen kommen wörtlich aus der Datei.
+
+**Andere Dateiformate.** PDF geht durch Docling (Layout, OCR, Tabellen). Excel/CSV werden zu einer Tabelle
+mit Kopfzeile plus Klartext je Zeile, HTML/Text direkt, **alles andere (Word, PowerPoint, ODT …) über Tika**.
+Jede Datei kommt als genau ein Eintrag in den Bestand; die Zuordnung Datei ↔ Text läuft über den Dateinamen.
+Dokumente ohne PDF haben keine Seitenbilder — Lesen, Suchen und Zitieren funktionieren trotzdem
+(Seitenmarken aus der Aufnahme, sonst „S. 1").
+
 ## 3 · Aktualisieren
 
 ```bash

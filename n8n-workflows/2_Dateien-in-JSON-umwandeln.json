@@ -311,7 +311,7 @@
     },
     {
       "parameters": {
-        "numberInputs": 5
+        "numberInputs": 2
       },
       "type": "n8n-nodes-base.merge",
       "typeVersion": 3.2,
@@ -474,6 +474,54 @@
       ],
       "id": "89385085-8e12-485b-8f4f-43bd8d830ad2",
       "name": "Docling-Antwort auspacken 2"
+    },
+    {
+      "id": "7c1f0b7e-2a55-4a1e-9c6a-vereinheitlich",
+      "name": "Nicht-PDF vereinheitlichen",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        192,
+        672
+      ],
+      "parameters": {
+        "jsCode": "// Jede Nicht-PDF-Datei wird zu GENAU EINEM Element wie aus Docling:\n//   { data, docling_filename, seiten, fehler, ohne_bilder }\n// Excel/CSV liefern je Zeile ein Element (n8n 'Extract from File') - die\n// werden hier zu einer Markdown-Tabelle MIT Kopfzeile zusammengesetzt\n// (so erkennt der Proxy Pruefungskataloge: Frage | Antwort richtig | ...),\n// darunter je Zeile ein Klartext-Satz fuer die Wortsuche. HTML/Text/Tika\n// liefern ein Element mit Text.\nconst items = $input.all();\nconst start = $('Start').first();\nconst name = (start.binary && start.binary.data && start.binary.data.fileName) || (start.json && start.json.fileName) || 'dokument';\nconst clean = v => String(v == null ? '' : v).replace(/\\s+/g, ' ').trim();\nlet text = '';\nif (items.length === 1 && typeof items[0].json.data === 'string') {\n  text = items[0].json.data;\n} else if (items.length === 1 && typeof items[0].json.text === 'string') {\n  text = items[0].json.text;\n} else {\n  const rows = items.map(i => i.json).filter(r => r && typeof r === 'object' && !Array.isArray(r));\n  const keys = [];\n  rows.forEach(r => Object.keys(r).forEach(k => { if (!keys.includes(k)) keys.push(k); }));\n  const belegt = keys.filter(k => rows.some(r => clean(r[k])));\n  if (belegt.length) {\n    text = '| ' + belegt.map(clean).join(' | ') + ' |\\n| ' + belegt.map(() => '---').join(' | ') + ' |\\n'\n      + rows.map(r => '| ' + belegt.map(k => clean(r[k])).join(' | ') + ' |').join('\\n');\n    text += '\\n\\n' + rows.map((r, i) => 'Zeile ' + (i + 1) + ': ' + belegt.map(k => clean(r[k]) ? (clean(k) + ': ' + clean(r[k])) : '').filter(Boolean).join(' · ')).join('\\n');\n  }\n}\nreturn [{ json: {\n  data: text,\n  docling_filename: name,\n  seiten: 1,\n  fehler: text.trim() ? '' : 'Aus der Datei liess sich kein Text gewinnen',\n  ohne_bilder: false,\n  versuch: 1\n} }];\n"
+      }
+    },
+    {
+      "id": "5d2e9f31-8c44-4f0b-b6d1-tika-rueckfall",
+      "name": "Tika-Text (Word, PowerPoint, sonstige)",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        0,
+        960
+      ],
+      "parameters": {
+        "method": "PUT",
+        "url": "http://tika:9998/tika",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Accept",
+              "value": "text/plain"
+            }
+          ]
+        },
+        "sendBody": true,
+        "contentType": "binaryData",
+        "inputDataFieldName": "data",
+        "options": {
+          "response": {
+            "response": {
+              "responseFormat": "text",
+              "outputPropertyName": "data"
+            }
+          },
+          "timeout": 300000
+        }
+      }
     }
   ],
   "connections": {
@@ -481,9 +529,9 @@
       "main": [
         [
           {
-            "node": "Merge",
+            "node": "Nicht-PDF vereinheitlichen",
             "type": "main",
-            "index": 2
+            "index": 0
           }
         ]
       ]
@@ -492,9 +540,9 @@
       "main": [
         [
           {
-            "node": "Merge",
+            "node": "Nicht-PDF vereinheitlichen",
             "type": "main",
-            "index": 3
+            "index": 0
           }
         ]
       ]
@@ -503,9 +551,9 @@
       "main": [
         [
           {
-            "node": "Merge",
+            "node": "Nicht-PDF vereinheitlichen",
             "type": "main",
-            "index": 4
+            "index": 0
           }
         ]
       ]
@@ -514,9 +562,9 @@
       "main": [
         [
           {
-            "node": "Merge",
+            "node": "Nicht-PDF vereinheitlichen",
             "type": "main",
-            "index": 1
+            "index": 0
           }
         ]
       ]
@@ -601,6 +649,13 @@
             "type": "main",
             "index": 0
           }
+        ],
+        [
+          {
+            "node": "Tika-Text (Word, PowerPoint, sonstige)",
+            "type": "main",
+            "index": 0
+          }
         ]
       ]
     },
@@ -673,6 +728,28 @@
             "node": "Merge",
             "type": "main",
             "index": 0
+          }
+        ]
+      ]
+    },
+    "Tika-Text (Word, PowerPoint, sonstige)": {
+      "main": [
+        [
+          {
+            "node": "Nicht-PDF vereinheitlichen",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Nicht-PDF vereinheitlichen": {
+      "main": [
+        [
+          {
+            "node": "Merge",
+            "type": "main",
+            "index": 1
           }
         ]
       ]

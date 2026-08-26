@@ -201,3 +201,33 @@ dem Bau — nicht danach.**
 **Prüfungsfragen (AuW):** Optionen A–D (auch inline, auch Kleinbuchstaben) werden erkannt; je Option wird der Bestand **vorab** durchsucht, das Modell urteilt mit Denken und wörtlichem Vergleich. Replay: „Welche Aussage ist falsch? A) Mitteneinspannung erhöht die Lebensdauer …" → „A ist falsch — der Beleg sagt *verkürzt*" mit Zitaten, 4,7 s. Vorher (ohne Vorab-Belege) riet das Modell ein Dokument und erfand Zitate.
 
 **Fußnoten:** eine `<sub>`-Zeile mit Quelle, Werkzeugen, geprüften Zitaten und Warnungen; Hinweise „Weiter: …" nur in den ersten zwei Zügen eines Fadens.
+
+## Stand 26.08.2026 (nachts) — Prüfungskatalog, Nicht-PDF, Aufnahme-Zuordnung
+
+**Befund (Bereich AuW, echter Faden):** „Kannst du mir Prüfungsfragen stellen?" → das Modell erfand
+Fragen, Optionen und Zitate. Drei Ursachen, alle behoben:
+
+1. **Die Excel kam nie in den Bestand.** Der Eintrag „Pruefungsfragen zu DVS 2291" trug den Text des
+   Testfragen-PDFs (gleicher Hash). Ursache: Die Unterkette gibt je Datei ein Element zurück, die
+   Hauptkette paarte **nach Position**; der Excel-Zweig lieferte nichts (kein `fileExtension` übergeben,
+   Zeilen statt Text), also verschob sich die Zuordnung. Jetzt: `fileExtension` wird explizit übergeben,
+   **ein Knoten „Nicht-PDF vereinheitlichen"** macht aus Excel/CSV/HTML/Text/Tika genau ein Element mit
+   `docling_filename`, die Hauptkette paart **nach Dateinamen** (Position nur als Rückfall). Word,
+   PowerPoint und alles Unbekannte laufen über **Tika** statt still zu verschwinden.
+2. **Werkzeuge kannten nur PDF-Seiten.** `seiten_lesen`, `bestand_durchsuchen`, `abkuerzung` und die
+   Aussagen-Prüfung lesen jetzt für Dokumente ohne PDF den Bestandstext (Seitenmarken `[Seite n]`,
+   sonst eine Seite). Seitenbilder/Abbildungen gibt es dafür ehrlich nicht.
+3. **Prüfungsfragen sind jetzt deterministisch** (`pruefungskatalog.py`, vor Stufe 1/2 im Proxy):
+   Katalog erkennen (Tabelle mit `Frage | Antwort richtig | Antwort falsch …` oder a)/b)/c)-Blöcke),
+   Frage **wörtlich** stellen (Optionen gemischt, Nr./Thema/LE), Antwort **gegen den Katalog** prüfen,
+   Zustand je Faden (`notiz`), „weiter", „Frage 7", „zum Thema X", „warum?" → Gesprächsmodus mit dem
+   Katalogeintrag als Vorwissen. Für das Modell zusätzlich Werkzeug `pruefungsfrage` + Regel 16.
+   Ohne Lösungsspalte (gescannte Testbögen) wird **kein Urteil erfunden**.
+
+Außerdem: **Bestandsliste** — liefert das Werkzeug die Tabelle mit Links und das Modell macht Fließtext
+daraus, gilt die Tabelle. **Belege-Wächter für alle Kennungen** („(DVS 2213-1_neu, S. 12)"), nicht nur
+`DS-24-xxx`; Klammertext ohne Dokumentbezug bleibt unangetastet.
+
+Prüfung: `dialogtest.py` Szenario 24 (26 Prüfungen), Replay des Parsers gegen die echten AuW-Texte auf
+der A40 (Testfragen-Scan: 12 Fragen erkannt, Werkzeugliste/Leitfaden: kein Katalog). Offen: Excel neu
+aufnehmen (in `loeschen/`, dann wieder nach `input/`), Live-Faden mit dem echten Katalog.

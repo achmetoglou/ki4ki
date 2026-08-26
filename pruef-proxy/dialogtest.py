@@ -444,7 +444,7 @@ def szenario_20_proxy_statisch():
                 treffer.append("%s:%d %s" % (fn.name, x.lineno, x.value.id))
     pruefe(not treffer, "Modul-Schatten: %s" % (treffer[:3] or "keine"))
     import py_compile
-    for f in ("pruef_proxy.py", "assistent.py", "fadenfrage.py", "gespraech.py", "absicht.py", "mehrstufig.py", "wortsuche.py", "bestand.py"):
+    for f in ("pruef_proxy.py", "assistent.py", "fadenfrage.py", "gespraech.py", "absicht.py", "mehrstufig.py", "wortsuche.py", "bestand.py", "pruefungskatalog.py", "metadaten.py", "stoerfall.py"):
         try:
             py_compile.compile(os.path.join(HIER, f), doraise=True)
             pruefe(True, "kompiliert: %s" % f)
@@ -507,6 +507,68 @@ def szenario_23_kennzahlen():
     pruefe(z["nutzung_je_tag"] == {"2026-08-26": 1, "2026-08-27": 1} and z["belegt_anteil"] == round(100.0 / 3, 1), "Nutzung je Tag + belegt-Anteil")
 
 
+def szenario_24_pruefungskatalog():
+    print("\n[24] Pruefungskatalog: exakte Fragen aus Excel/Scan, Antwort gegen den Katalog, Belege fuer alle Kennungen (AuW 26.08.)")
+    import pruefungskatalog as pk
+    import gespraech
+    excel = ("## Inhalt\n\n[Seite 1]\n"
+             "| Frage | Antwort richtig | Antwort falsch | Antwort falsch | Antwort falsch | Bereich | LE |\n"
+             "| --- | --- | --- | --- | --- | --- | --- |\n"
+             "| Womit dürfen PVC-U Rohre wärmebehandlelt werden? | Nur ausschließlich mit Heißluft bzw. mit einem Heißluftgerät. | Mit Gas und einer kleinen Flamme. | Wegen der thermoplastischen Struktur nicht möglich | Nur bei einer Aussentemperatur von + 5 °C | Wärmebehandlung | 31 |\n"
+             "| Adhäsion ist | .... ist die Bezeichnung der Bindungskräfte zwischen Klebstoff und Fügeteil. | .... ist die Bezeichnung der Kräfte, die den Klebstoff zusammenhalten. | .... ist die Bezeichnung des Abbindevorgangs. | ..... ist die Bezeichnung der Oberflächenspannung. | Grundlagen Kleben | 41 |\n"
+             "| Ab welcher Dimension sind Klebarbeiten mit zwei Personen auszuführen? | Ab einer Dimension von ≥ d 90 mm. | Ab einer Dimension von ≥ d 60 mm. | Ab einer Dimension von ≥ d 160 mm. | Ab einer Dimension von ≥ d 250 mm. | Kleben | 67 |\n"
+             "\nZeile 1: Frage: Womit dürfen ...\n")
+    f = pk.fragen_aus_text(excel)
+    pruefe(len(f) == 3 and f[2]["richtig"] == "Ab einer Dimension von ≥ d 90 mm." and f[2]["thema"] == "Kleben" and f[2]["stelle"] == "67",
+           "Excel-Katalog: %d Fragen, Loesung und Thema erkannt" % len(f))
+    pruefe(pk.ist_katalog(excel) and not pk.ist_katalog("Ein Bericht ueber Rohre. Seite 1. Ergebnisse: 3 mm."), "ist_katalog trennt Katalog von Bericht")
+    text, z = pk.stellen(f[2], gesamt=3, kennung="Pruefungsfragen zu DVS 2291")
+    pruefe(text.startswith("**Frage 3 von 3**") and "Ab welcher Dimension sind Klebarbeiten mit zwei Personen auszuführen?" in text
+           and text.count("\na) ") == 1 and text.count("\nd) ") == 1, "Frage woertlich mit Optionen a-d auf eigenen Zeilen")
+    pruefe(sorted(z["reihe"]) == [0, 1, 2, 3] and z["reihe"] != [0, 1, 2, 3], "Optionen deterministisch gemischt (richtige nicht immer a)")
+    richtig_b = "abcd"[z["reihe"].index(0)]
+    u = pk.pruefen(richtig_b, f[2], z, kennung="K")
+    pruefe(u and u.startswith("✅") and "Frage 3" in u and "Thema Kleben" in u, "richtige Antwort erkannt: %s" % richtig_b)
+    falsch_b = "abcd"[z["reihe"].index(3)]
+    u2 = pk.pruefen("Antwort: %s" % falsch_b.upper(), f[2], z)
+    pruefe(u2 and u2.startswith("❌") and ("**%s)** richtig" % richtig_b) in u2 and "90 mm" in u2, "falsche Antwort: Katalog-Loesung genannt")
+    u3 = pk.pruefen("Ab einer Dimension von 160 mm", f[2], z)
+    pruefe(u3 and u3.startswith("❌") and "160 mm" in u3.split("Laut Katalog")[0], "Antwort als Text: Zahl entscheidet")
+    pruefe(pk.pruefen("warum?", f[2], z) is None and pk.pruefen("Was ist Adhäsion?", f[2], z) is None, "Rueckfragen sind keine Antworten")
+    scan = ("[Seite 1]\n| 3. 3. | Wodurch unterscheidet sich die Kalthärtung der EP-Harze von der |\n"
+            "| Bei den EP-Harzen... | Bei den EP-Harzen... |\n| a) | benötigt man keinen Beschleuniger. |\n| b) | benötigt man einen speziellen Beschleuniger. |\n"
+            "| c) | muss die Mischung erwärmt werden. |\n| poale d) | besteht kein Unterschied zu UP-Harzen. |\n"
+            "[Seite 2]\n7. Welche Aussage ist richtig?\na) eins zwei\nb) drei vier\nc) fuenf sechs\n")
+    g = pk.fragen_aus_text(scan)
+    pruefe(len(g) == 2 and len(g[0]["optionen"]) == 4 and g[0]["richtig"] is None and g[1]["seite"] == 2, "Scan-Katalog (a/b/c ohne Loesung): %d Fragen, Seite erkannt" % len(g))
+    t2, z2 = pk.stellen(g[0], kennung="Testfragen DVS 2290")
+    pruefe("keine Lösungen" in t2, "ohne Loesung: Hinweis statt Behauptung")
+    u4 = pk.pruefen("b", g[0], z2)
+    pruefe(u4 and "keine Lösung" in u4 and not u4.startswith("✅") and not u4.startswith("❌"), "ohne Loesung wird kein Urteil erfunden")
+    pruefe(all(pk.ist_wunsch(x) for x in ("Kannst du mir Prüfungsfragen stellen?", "stell mir bitte eine exakte Frage aus dem Katalog", "nächste Frage", "frag mich ab", "Frage 7 aus dem Katalog"))
+           and not any(pk.ist_wunsch(x) for x in ("Was ist Adhäsion?", "Welche Aussage ist richtig? a) x b) y")), "Wunsch erkannt, Sachfragen nicht")
+    pruefe(pk.gewuenschte_nummer("Frage 7 aus dem Katalog") == 7 and pk.gewuenschtes_thema("eine Prüfungsfrage zum Thema Kleben bitte") == "Kleben"
+           and pk.gewuenschtes_thema("stell mir eine Frage aus dem Katalog") == "", "Nummer und Thema aus dem Wunsch")
+    w = pk.waehlen(f, gestellt=[1, 2], thema="")
+    pruefe(w["nr"] == 3 and pk.waehlen(f, gestellt=[1, 2, 3])["nr"] == 1 and pk.waehlen(f, thema="Kleben")["nr"] == 2 and pk.waehlen(f, nummer=9) is None,
+           "Auswahl: naechste offene, von vorn, Thema, unbekannte Nummer")
+    pruefe(all(pk.ist_weiter(x) for x in ("weiter", "ja", "Nächste")) and not pk.ist_weiter("warum?"), "weiter/ja/naechste")
+    m = pk.zeile_fuer_modell(f[2], "K")
+    pruefe("RICHTIG: Ab einer Dimension von ≥ d 90 mm." in m and m.count("FALSCH:") == 3, "Katalogeintrag fuer das Modell mit Loesung")
+    s_ = pk.seiten_aus_text("kopf\n[Seite 1]\nA\n[Seite 2]\nB\nC\n")
+    pruefe(s_ == ["\nA\n", "\nB\nC\n"] and pk.seiten_aus_text("nur Text") == ["nur Text"] and pk.seiten_aus_text("  ") == [], "Seiten aus [Seite n]-Marken")
+    v = assistent.Verlauf(); k = "auw|faden24"
+    v.notiz_setzen(k, "pruefung", {"dok": "X", "nr": 3}); v2 = assistent.Verlauf()
+    pruefe(v2.notiz(k, "pruefung") == {"dok": "X", "nr": 3}, "Notiz je Faden dauerhaft")
+    v2.notiz_setzen(k, "pruefung", None)
+    pruefe(assistent.Verlauf().notiz(k, "pruefung") is None, "Notiz geloescht")
+    b = gespraech.waechter_belege("Laut Norm gilt 5 °C (DVS 2213-1_neu, S. 12).", [], None, "", [], [], kennungen=["DVS 2213-1_neu", "Testfragen DVS 2290"])
+    pruefe(b and b["args"]["dokument"] == "DVS 2213-1_neu", "Waechter sieht Belege mit Nicht-DS-Kennung")
+    pruefe(gespraech.waechter_belege("Es gilt (siehe oben, S. 12).", [], None, "", [], [], kennungen=["DVS 2213-1_neu"]) is None, "Klammertext ohne Dokument -> kein Alarm")
+    pruefe(gespraech.waechter_belege("Es gilt (DVS 2213-1_neu, S. 12).", [("seiten_lesen", {"dokument": "DVS 2213-1_neu"}, 1)], None, "", ["=== DVS 2213-1_neu, Seite 12 ===\nText"], [], kennungen=["DVS 2213-1_neu"]) is None, "gelesene Seite -> ok")
+    pruefe(any(w["function"]["name"] == "pruefungsfrage" for w in gespraech.WERKZEUGE) and "16. PRUEFUNGSKATALOG" in gespraech.system_text(), "Werkzeug und Regel 16 vorhanden")
+
+
 if __name__ == "__main__":
     for s in (szenario_1_verfasser_und_folgefragen, szenario_2_beschwerde_reparatur,
               szenario_3_themenwechsel, szenario_4_rueckkehr, szenario_5_nicht_im_dokument,
@@ -516,7 +578,8 @@ if __name__ == "__main__":
               szenario_13_zweifel_und_anlage, szenario_14_selbes_thema,
               szenario_15_vergleich, szenario_16_kennwerte_abkuerzung, szenario_17_export_kontakt_tippfehler,
               szenario_18_absichts_modell, szenario_19_gespraechsmodus, szenario_20_proxy_statisch,
-              szenario_21_metadaten, szenario_22_stoerfall, szenario_23_kennzahlen):
+              szenario_21_metadaten, szenario_22_stoerfall, szenario_23_kennzahlen,
+              szenario_24_pruefungskatalog):
         try:
             s()
         except Exception as e:

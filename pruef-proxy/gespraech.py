@@ -108,6 +108,13 @@ WERKZEUGE = [
             "dokument": {"type": "string"}, "kurz": {"type": "string"}},
             "required": ["dokument", "kurz"]}}},
     {"type": "function", "function": {
+        "name": "pruefungsfrage",
+        "description": "Eine EXAKTE Frage aus einem Pruefungskatalog des Bereichs (Excel/PDF mit Fragen und Optionen): Fragetext und Optionen woertlich, mit Nummer. nummer=0: die naechste noch nicht gestellte. Nur damit Pruefungsfragen stellen - nie selbst welche ausdenken.",
+        "parameters": {"type": "object", "properties": {
+            "dokument": {"type": "string", "description": "Kennung des Katalogs (leer = der einzige Katalog im Bereich)"},
+            "nummer": {"type": "integer", "description": "Fragenummer, 0 = naechste"},
+            "thema": {"type": "string", "description": "Themenwunsch, optional"}}}}},
+    {"type": "function", "function": {
         "name": "exportieren",
         "description": "Gibt etwas als kopierbaren Text aus: 'bibtex' (Katalog) oder 'csv' (letzte Tabelle im Gespraech).",
         "parameters": {"type": "object", "properties": {
@@ -158,7 +165,10 @@ def system_text(faden_dok=None, dokumente=None, kontakt=""):
         "Je Option: Beleg lesen, dann Option und Beleg WOERTLICH vergleichen. Sagt der Beleg das Gegenteil "
         "(z.B. 'verkuerzt die Lebensdauer' gegen 'erhoeht die Lebensdauer'), ist die Option FALSCH - nie 'richtig' "
         "mit einem widersprechenden Zitat. Ohne Beleg: 'nicht belegbar'. Schluss: ein Satz mit dem Urteil.\n"
-        "15. Ohne Faden-Dokument und ohne genanntes Dokument: bestand_durchsuchen statt raten oder nachfragen.",
+        "15. Ohne Faden-Dokument und ohne genanntes Dokument: bestand_durchsuchen statt raten oder nachfragen.\n"
+        "16. PRUEFUNGSKATALOG ('stell mir eine Pruefungsfrage', 'frag mich ab', 'Frage 7'): NUR pruefungsfrage nutzen und "
+        "dessen Text UNVERAENDERT ausgeben - nie eigene Fragen oder Optionen erfinden. Antwortet der Mensch auf eine "
+        "Frage, gilt allein die Loesung aus dem Katalogeintrag (RICHTIG/FALSCH im Werkzeugtext); fehlt sie, sag das.",
         "GESPRAECHSZUSTAND:\nFaden-Dokument: %s" % (faden_dok or "keins (frag nach oder nutze dokument_finden/bestand)"),
     ]
     if dokumente:
@@ -221,15 +231,28 @@ def bildnennungen(text):
 
 
 _KENNUNG = re.compile(r"\b([A-Z]{1,4}-\d{2}-\d{3})\b")
-_BELEG = re.compile(r"\(\s*([A-Z]{1,4}-\d{2}-\d{3})\s*,\s*S\.?\s*(\d{1,4})\s*\)")
+# ⭐ Belege fuer JEDE Kennung, nicht nur DS-24-005: "(DVS 2213-1_neu, S. 12)",
+#   "(Pruefungsfragen zu DVS 2291, S. 1)". Gemessen 26.08. im Bereich AuW:
+#   das Modell erfand Zitate mit solchen Kennungen, und der Waechter sah sie
+#   nicht, weil er nur DS-24-xxx kannte.
+_BELEG = re.compile(r"\(\s*([A-Za-z0-9ÄÖÜäöüß][^(),\n]{1,90}?)\s*,\s*S\.?\s*(\d{1,4})\s*\)")
 
 
-def _dokument_im_text(text, faden_dok):
+def belege(text):
+    return _BELEG.findall(text or "")
+
+
+def _dokument_im_text(text, faden_dok, kennungen=None):
     m = _KENNUNG.search(text or "")
-    return m.group(1) if m else (faden_dok or None)
+    if m:
+        return m.group(1)
+    for k in sorted(kennungen or [], key=len, reverse=True):
+        if k and k in (text or ""):
+            return k
+    return faden_dok or None
 
 
-def waechter_bilder(text, aufrufe, faden_dok=None, frage="", tool_texte=None, verlauf_texte=None):
+def waechter_bilder(text, aufrufe, faden_dok=None, frage="", tool_texte=None, verlauf_texte=None, kennungen=None):
     """Nennt das Modell Abbildungsnummern, ohne die Liste geholt zu haben?
     Gemessen 26.08.: bei 'andere Grafiken' erfand es zehn Nummern samt
     Seiten - und wiederholte sie nach einer blossen Aufforderung. Deshalb
@@ -240,7 +263,7 @@ def waechter_bilder(text, aufrufe, faden_dok=None, frage="", tool_texte=None, ve
     namen = {n for n, _, _ in (aufrufe or [])}
     if namen & {"abbildungen_auflisten", "abbildung_zeigen"}:
         return None
-    dok = _dokument_im_text(text, faden_dok)
+    dok = _dokument_im_text(text, faden_dok, kennungen)
     if not dok:
         return None
     return {"werkzeug": "abbildungen_auflisten", "args": {"dokument": dok},
@@ -249,7 +272,7 @@ def waechter_bilder(text, aufrufe, faden_dok=None, frage="", tool_texte=None, ve
                         "und Seiten aus dieser Liste; zeige passende Bilder mit abbildung_zeigen.")}
 
 
-def waechter_belege(text, aufrufe, faden_dok=None, frage="", tool_texte=None, verlauf_texte=None):
+def waechter_belege(text, aufrufe, faden_dok=None, frage="", tool_texte=None, verlauf_texte=None, kennungen=None):
     """Zitiert das Modell Seiten (Kennung, S. n), die kein Werkzeug geliefert
     hat und die auch nicht aus dem bisherigen Gespraech stammen? Gemessen
     26.08.: 'die Einspannung erhoeht die Lebensdauer (DS-24-005, S. 12)' -
@@ -257,6 +280,12 @@ def waechter_belege(text, aufrufe, faden_dok=None, frage="", tool_texte=None, ve
     belege = _BELEG.findall(text or "")
     if not belege:
         return None
+    if kennungen:
+        # Nur Belege auf Dokumente des Bereichs pruefen - alles andere ist Text in Klammern.
+        bekannt = {k.lower() for k in kennungen if k}
+        belege = [(k, s) for k, s in belege if k.strip().lower() in bekannt or _KENNUNG.fullmatch(k.strip())]
+        if not belege:
+            return None
     gelesen = set(n for n, _, _ in (aufrufe or []))
     quelle = "\n".join(tool_texte or []) + "\n" + "\n".join(verlauf_texte or [])
     zusammengefasst = {str(a.get("dokument") or "") for n, a, _ in (aufrufe or []) if n == "zusammenfassen"}
@@ -275,16 +304,16 @@ def waechter_belege(text, aufrufe, faden_dok=None, frage="", tool_texte=None, ve
     return None
 
 
-def waechter(text, aufrufe, faden_dok=None, frage="", tool_texte=None, verlauf_texte=None):
+def waechter(text, aufrufe, faden_dok=None, frage="", tool_texte=None, verlauf_texte=None, kennungen=None):
     for w in (waechter_bilder, waechter_belege):
-        a = w(text, aufrufe, faden_dok, frage, tool_texte, verlauf_texte)
+        a = w(text, aufrufe, faden_dok, frage, tool_texte, verlauf_texte, kennungen)
         if a:
             return a
     return None
 
 
 def fuehren(frage, verlauf, faden_dok, dokumente, werkzeug, rufen=None, kontakt="",
-            melden=None, max_runden=None, pruefer=None, vorwissen=None, denken=None):
+            melden=None, max_runden=None, pruefer=None, vorwissen=None, denken=None, kennungen=None):
     """Ein Gespraechszug. werkzeug(name, args) -> str. rufen(messages) -> message.
     Rueckgabe dict: text, aufrufe [(name, args, ms)], dokumente (beruehrte
     Kennungen), runden, ms, fehler."""
@@ -326,7 +355,7 @@ def fuehren(frage, verlauf, faden_dok, dokumente, werkzeug, rufen=None, kontakt=
                 try:
                     tool_texte = [x.get("content", "") for x in msgs if x.get("role") == "tool"]
                     verlauf_texte = [x.get("content", "") for x in msgs[:-1] if x.get("role") == "assistant"]
-                    korrektur = (pruefer or waechter)(inhalt, aufrufe, faden_dok, frage, tool_texte, verlauf_texte)
+                    korrektur = (pruefer or waechter)(inhalt, aufrufe, faden_dok, frage, tool_texte, verlauf_texte, kennungen)
                 except Exception:
                     korrektur = None
             if korrektur:

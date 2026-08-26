@@ -221,6 +221,23 @@ class Verlauf:
         eintrag = self._hol(kennung)
         return (eintrag.get("antwort") or "") if eintrag else ""
 
+    def notiz_setzen(self, kennung, name, wert):
+        """Ein benannter Zustand je Faden (z.B. die offene Pruefungsfrage).
+        wert=None loescht die Notiz."""
+        with self._sperre:
+            eintrag = self._neu(kennung)
+            notizen = eintrag.setdefault("notizen", {})
+            if wert is None:
+                notizen.pop(name, None)
+            else:
+                notizen[name] = wert
+            eintrag["zuletzt"] = time.time()
+            self._sichern()
+
+    def notiz(self, kennung, name):
+        eintrag = self._hol(kennung)
+        return (eintrag.get("notizen") or {}).get(name) if eintrag else None
+
     def dokument_merken(self, kennung, name):
         """Welches Dokument in diesem Faden gerade Thema ist.
 

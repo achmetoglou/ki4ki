@@ -47,6 +47,7 @@ import fadenfrage
 import gespraech as gespraechsmodus   # nicht 'gespraech': so heisst die Faden-Kennung in _chat
 import metadaten
 import stoerfall
+import pruefungskatalog
 import mehrstufig
 import pdfstelle
 import pruefprotokoll
@@ -1722,6 +1723,32 @@ def _pdf_schluessel(name):
     return _pdf_schluessel_roh(name)
 
 
+def _seiten_ohne_pdf(name):
+    """Seitentexte aus dem Bestandstext - fuer Dokumente ohne PDF (Excel,
+    Word, Text). Die Aufnahme setzt [Seite n]-Marken; fehlen sie, ist der
+    ganze Text eine Seite. Gemessen 26.08.: Die Pruefungs-Excel im Bereich
+    AuW war fuer seiten_lesen/bestand_durchsuchen unsichtbar - das Modell
+    erfand daraufhin Fragen und Zitate."""
+    try:
+        s = bestandsschluessel(name)
+        d = BESTAND.hol(s) if s else None
+    except Exception:
+        d = None
+    return pruefungskatalog.seiten_aus_text((getattr(d, "text", "") or "") if d else "")
+
+
+def _seitentexte_von(name):
+    """(pdf_schluessel oder None, Seitentexte) - PDF ueber pdfstelle, sonst
+    aus dem Bestandstext. EINE Stelle fuer alle Werkzeuge."""
+    sch = _pdf_schluessel(name)
+    if sch:
+        try:
+            return sch, (pdfstelle.seitentexte(sch) or [])
+        except Exception:
+            return sch, []
+    return None, _seiten_ohne_pdf(name)
+
+
 STELLE = """<!doctype html>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
@@ -3049,13 +3076,7 @@ def _verifizierte_seite(name, kontext, bevorzugt=None):
     Pruefung NICHT besteht (z. B. das notorische "S. 1"), wird weiterhin
     ersetzt oder verworfen.
     """
-    schluessel = _pdf_schluessel(name)
-    if not schluessel:
-        return None
-    try:
-        seiten = pdfstelle.seitentexte(schluessel) or []
-    except Exception:
-        return None
+    _sch, seiten = _seitentexte_von(name)
     if not seiten:
         return None
     ziel = {w for w in re.sub(r"[^0-9a-zA-zäöüÄÖÜß]+", " ",
@@ -3526,6 +3547,15 @@ class Griff(BaseHTTPRequestHandler):
                 return
             except Exception:
                 traceback.print_exc(file=sys.stderr)
+        # ⭐ PRUEFUNGSKATALOG (26.08.): exakte Fragen aus der Datei, Antwort gegen
+        #   den Katalog - deterministisch, ohne Modell. Emrach: "er sollte doch
+        #   exakte Fragen aus der Datei mir nennen ... pruefst du anhand des
+        #   Katalogs, ob das richtig ist."
+        try:
+            if self._pruefung_antwort(frage):
+                return
+        except Exception:
+            traceback.print_exc(file=sys.stderr)
         # ⭐ STUFE 2 (ARCHITEKTUR-GESPRAECH §4): Das Modell fuehrt das Gespraech
         #   selbst - mit Werkzeugen und dem ganzen Faden. Faellt es aus, laeuft
         #   der bisherige Weg (Absicht/Regeln) weiter.
@@ -5354,7 +5384,10 @@ class Griff(BaseHTTPRequestHandler):
             _stati = [(k, st) for k, st in _stati if st]
             if _stati:
                 t += "\n\nStatus (Metadaten): " + "; ".join("%s: %s" % kv for kv in _stati[:40])
+            zustand["bestand_text"] = t
             return t
+        if name == "pruefungsfrage":
+            return self._pruefungsfrage_werkzeug(args, zustand)
         if name in ("bestand_durchsuchen", "stoerfall_suchen"):
             if name == "stoerfall_suchen":
                 kontext = {"anlage": str(args.get("anlage") or ""), "fehlercode": str(args.get("fehlercode") or ""),
@@ -5386,13 +5419,13 @@ class Griff(BaseHTTPRequestHandler):
             return ("Dokument '%s' unbekannt. Nutze dokument_finden oder eine Kennung aus der Liste."
                     % args.get("dokument"))
         schluessel = _pdf_schluessel(dok)
-        if not schluessel or not dokument_erlaubt(schluessel, self.headers):
+        if schluessel and not dokument_erlaubt(schluessel, self.headers):
             return "Dieses Dokument liegt nicht vor."
+        if not schluessel and name in ("abbildungen_auflisten", "abbildung_zeigen", "seite_zeigen"):
+            return ("%s liegt nicht als PDF vor (Excel/Word/Text) - es gibt keine Seitenbilder oder "
+                    "Abbildungen dazu. Lies stattdessen mit seiten_lesen." % assistent._titel_saubern(dok))
         if name == "seiten_lesen":
-            try:
-                seiten = pdfstelle.seitentexte(schluessel) or []
-            except Exception:
-                seiten = []
+            _sch, seiten = _seitentexte_von(dok)
             such = str(args.get("frage") or "")
             nummern, terme = fadenfrage.seiten_waehlen(such, seiten)
             if not nummern:
@@ -5452,10 +5485,7 @@ class Griff(BaseHTTPRequestHandler):
             w = self._fakten_zaehlen(dok, str(args.get("was") or "seiten"))
             return "%s: %s" % (args.get("was"), w if w not in (None, "") else "unbekannt")
         if name == "abkuerzung":
-            try:
-                seiten = pdfstelle.seitentexte(schluessel) or []
-            except Exception:
-                seiten = []
+            _sch, seiten = _seitentexte_von(dok)
             t = assistent.abkuerzung_aufloesen(str(args.get("kurz") or ""), seiten)
             if not t:
                 return "Abkuerzung %s wird in %s nicht ausgeschrieben eingefuehrt." % (args.get("kurz"), dok)
@@ -5486,12 +5516,8 @@ class Griff(BaseHTTPRequestHandler):
             kandidaten = list(namen)[:40]
         punkte = []
         for dok in kandidaten[:40]:
-            sch = _pdf_schluessel(dok)
-            if not sch or not dokument_erlaubt(sch, self.headers):
-                continue
-            try:
-                seiten = pdfstelle.seitentexte(sch) or []
-            except Exception:
+            sch, seiten = _seitentexte_von(dok)
+            if (sch and not dokument_erlaubt(sch, self.headers)) or not seiten:
                 continue
             nummern, _t = fadenfrage.seiten_waehlen(begriffe, seiten, hoechstens=2)
             for n in nummern:
@@ -5520,13 +5546,15 @@ class Griff(BaseHTTPRequestHandler):
         stand = "gespraech-%d" % id(self)
         self._stand(stand, "Denke nach …")
         zustand = {"namen": namen, "dokumente": [], "seiten": {}, "abbildungen": {},
-                   "gezeigt": [], "seiten_gezeigt": [], "zusammengefasst": [], "stand": stand, "gespraech": gespraech_k}
+                   "gezeigt": [], "seiten_gezeigt": [], "zusammengefasst": [], "stand": stand, "gespraech": gespraech_k,
+                   "bestand_text": ""}
         _melde = {"seiten_lesen": "Lese Seiten in %s …", "abbildungen_auflisten": "Suche Abbildungen in %s …",
                   "abbildung_zeigen": "Hole Bild aus %s …", "zusammenfassen": "Lese %s vollständig …",
                   "zaehlen": "Zähle in %s …", "bestand": "Sehe im Katalog nach …",
                   "dokument_finden": "Suche das Dokument …", "abkuerzung": "Suche die Abkürzung in %s …",
                   "exportieren": "Stelle den Export zusammen …", "seite_zeigen": "Hole Seite aus %s …",
-                  "bestand_durchsuchen": "Durchsuche alle Dokumente …", "stoerfall_suchen": "Suche in Fehlerkatalogen und Handbüchern …"}
+                  "bestand_durchsuchen": "Durchsuche alle Dokumente …", "stoerfall_suchen": "Suche in Fehlerkatalogen und Handbüchern …",
+                  "pruefungsfrage": "Hole die Frage aus dem Katalog …"}
 
         def melden(name, args):
             t = _melde.get(name, name)
@@ -5541,6 +5569,16 @@ class Griff(BaseHTTPRequestHandler):
         #   Faden-Dokument -> Bestandssuche mit den Fachwoertern der Frage.
         vorwissen = []
         try:
+            # Offene Pruefungsfrage ("warum ist b richtig?"): der Katalogeintrag
+            # samt Loesung liegt dem Modell vor - es muss nichts raten.
+            _pf = GESPRAECHE.notiz(gespraech_k, "pruefung") or {}
+            if _pf.get("dok") and _pf.get("nr"):
+                _f = self._katalogfrage(_pf["dok"], _pf["nr"])
+                if _f:
+                    vorwissen.append(("pruefungsfrage", {"dokument": assistent._titel_saubern(_pf["dok"]), "nummer": _pf["nr"]},
+                                      pruefungskatalog.zeile_fuer_modell(_f, assistent._titel_saubern(_pf["dok"]))))
+                    if _pf["dok"] not in zustand["dokumente"]:
+                        zustand["dokumente"].append(_pf["dok"])
             optionen = assistent.optionen_finden(frage)
             if len(optionen) >= 2:
                 self._stand(stand, "Prüfungsfrage: suche Belege je Option …")
@@ -5561,7 +5599,8 @@ class Griff(BaseHTTPRequestHandler):
             _frage_modell, GESPRAECHE.verlauf_kurz(gespraech_k), assistent._titel_saubern(faden_dok) if faden_dok else None,
             zeilen, lambda n, a: self._werkzeug(n, a, zustand), kontakt=assistent.kontakt_zeile(),
             melden=melden, vorwissen=vorwissen,
-            denken=True if (len(assistent.optionen_finden(frage)) >= 2 or assistent.ist_negativfrage(frage)) else None)
+            denken=True if (len(assistent.optionen_finden(frage)) >= 2 or assistent.ist_negativfrage(frage)) else None,
+            kennungen=[assistent._titel_saubern(n) for n in namen])
         self._stand_weg(stand)
         text = e.get("text") or ""
         if e.get("fehler") and not text:
@@ -5571,6 +5610,14 @@ class Griff(BaseHTTPRequestHandler):
                                 % e["fehler"], "sources": [], "close": True, "error": False})
             self._strom_schliessen()
             return True
+        # ⭐ Bestandsliste: Liefert das Werkzeug eine Tabelle (mit Links) und das
+        #   Modell macht Fliesstext daraus (gemessen 26.08.: nackte Liste ohne
+        #   Verlinkung), gilt die Tabelle - unveraendert.
+        _werkzeugnamen = {n for n, _, _ in e["aufrufe"] if n != "waechter"}
+        if zustand.get("bestand_text") and _werkzeugnamen and _werkzeugnamen <= {"bestand", "dokument_finden"} \
+                and ("|" in zustand["bestand_text"] or "](" in zustand["bestand_text"]) \
+                and "|" not in text and "](" not in text:
+            text = zustand["bestand_text"]
         # ---- Pruefen und einbetten: Bilder nur, wenn es sie gibt ----------
         gezeigt = set()
 
@@ -5638,10 +5685,14 @@ class Griff(BaseHTTPRequestHandler):
         # Deckt die genannte Seite (oder eine andere) die Aussage nicht,
         # bleibt die Aussage stehen, aber als "nicht belegt" markiert.
         unbelegt = 0
+        _bekannt = {assistent._titel_saubern(n).strip().lower(): n for n in namen}
 
         def _beleg(m):
             nonlocal unbelegt
-            k, n = m.group(1), int(m.group(2))
+            k, n = m.group(1).strip(), int(m.group(2))
+            if k.lower() not in _bekannt and not re.fullmatch(r"[A-Z]{1,4}-\d{2}-\d{3}", k):
+                return m.group(0)          # Klammertext, kein Dokument des Bereichs
+            k = assistent._titel_saubern(_bekannt.get(k.lower(), k))
             anfang = max(text.rfind(x, 0, m.start()) for x in (". ", "\n", "! ", "? ", "• ", "- "))
             satz = text[anfang + 1:m.start()].strip(" *:„“\"")
             if len(satz) < 25:
@@ -5673,7 +5724,7 @@ class Griff(BaseHTTPRequestHandler):
         _kurz = {"seiten_lesen": "gelesen", "abbildungen_auflisten": "Bilder gelistet", "abbildung_zeigen": "Bild",
                  "zusammenfassen": "zusammengefasst", "zaehlen": "gezählt", "bestand": "Katalog", "dokument_finden": "gesucht",
                  "abkuerzung": "Abkürzung", "exportieren": "Export", "seite_zeigen": "Seite", "bestand_durchsuchen": "Bestand durchsucht",
-                 "stoerfall_suchen": "Störfallsuche"}
+                 "stoerfall_suchen": "Störfallsuche", "pruefungsfrage": "Katalogfrage"}
         _doks = ", ".join(assistent._titel_saubern(d) for d in zustand["dokumente"][:3])
         _was = sorted({_kurz.get(n, n) for n, _, _ in e["aufrufe"] if n != "waechter"})
         fuss = []
@@ -5707,6 +5758,150 @@ class Griff(BaseHTTPRequestHandler):
               % (len(e["aufrufe"]), e["ms"], ok, ok + nein, unbelegt, len(gezeigt),
                  (", gestrichen " + ",".join(gestrichen)) if gestrichen else "", frage[:60]),
               file=sys.stderr, flush=True)
+        return True
+
+    # ------------------------------------------------------ Pruefungskatalog
+    _KATALOGE = {}      # bestandsschluessel -> (textlaenge, fragen)
+
+    def _katalog_fragen(self, dok):
+        """Die Fragen eines Dokuments - [] wenn es kein Katalog ist."""
+        try:
+            s = bestandsschluessel(dok)
+            d = BESTAND.hol(s) if s else None
+        except Exception:
+            return []
+        t = (getattr(d, "text", "") or "") if d else ""
+        if not t.strip():
+            return []
+        alt = Griff._KATALOGE.get(s)
+        if alt and alt[0] == len(t):
+            return alt[1]
+        fragen = pruefungskatalog.fragen_aus_text(t)
+        Griff._KATALOGE[s] = (len(t), fragen)
+        return fragen
+
+    def _kataloge_im_bereich(self, namen):
+        return [n for n in sorted(namen) if len(self._katalog_fragen(n)) >= 3]
+
+    def _katalogfrage(self, dok, nr):
+        for f in self._katalog_fragen(dok):
+            if f["nr"] == nr:
+                return f
+        return None
+
+    def _pruefungsfrage_stellen(self, gespraech_k, dok, nummer=None, thema=""):
+        """Die naechste (oder gewuenschte) Frage als Chat-Text; merkt sie im Faden."""
+        fragen = self._katalog_fragen(dok)
+        titel = assistent._titel_saubern(dok)
+        if not fragen:
+            return None
+        alt = GESPRAECHE.notiz(gespraech_k, "pruefung") or {}
+        gestellt = list(alt.get("gestellt") or []) if alt.get("dok") == dok else []
+        f = pruefungskatalog.waehlen(fragen, gestellt, nummer, thema)
+        if not f:
+            return "Frage %s gibt es in %s nicht — der Katalog hat die Fragen 1 bis %d." % (nummer, titel, len(fragen))
+        text, z = pruefungskatalog.stellen(f, gesamt=len(fragen), kennung=titel)
+        z.update({"dok": dok, "gestellt": (gestellt + [f["nr"]])[-500:]})
+        GESPRAECHE.notiz_setzen(gespraech_k, "pruefung", z)
+        GESPRAECHE.dokument_merken(gespraech_k, dok)
+        return text
+
+    def _pruefungsfrage_werkzeug(self, args, zustand):
+        """Werkzeug fuer das Modell (Stufe 2) - derselbe Weg wie der direkte."""
+        namen = zustand["namen"]
+        kat = self._kataloge_im_bereich(namen)
+        dok = None
+        wunsch = str(args.get("dokument") or "").strip()
+        if wunsch:
+            dok = absicht._kennung_finden(wunsch, namen) or assistent.dokument_gemeint(wunsch, namen)[0]
+            if dok and dok not in kat:
+                return "%s ist kein Pruefungskatalog (keine Fragen mit Optionen darin)." % assistent._titel_saubern(dok)
+        if not dok:
+            if len(kat) == 1:
+                dok = kat[0]
+            elif not kat:
+                return "Im Bereich liegt kein Pruefungskatalog (keine Datei mit Fragen und Antwortoptionen)."
+            else:
+                return "Mehrere Kataloge im Bereich: " + "; ".join(assistent._titel_saubern(k) for k in kat) + \
+                       " - frag den Menschen, welcher gemeint ist."
+        if dok not in zustand["dokumente"]:
+            zustand["dokumente"].append(dok)
+        try:
+            nummer = int(args.get("nummer") or 0) or None
+        except Exception:
+            nummer = None
+        t = self._pruefungsfrage_stellen(zustand["gespraech"], dok, nummer, str(args.get("thema") or ""))
+        return (t + "\n\n[Gib diesen Text UNVERAENDERT aus - Frage und Optionen woertlich.]") if t else "Katalog leer."
+
+    def _pruefung_antwort(self, frage):
+        """Deterministischer Pruefungsweg: Frage aus dem Katalog stellen,
+        Antwort gegen den Katalog pruefen. True = erledigt."""
+        offen = None
+        gespraech_k = GESPRAECHE.kennung(self.path, self.headers)
+        try:
+            offen = GESPRAECHE.notiz(gespraech_k, "pruefung") or {}
+        except Exception:
+            offen = {}
+        wunsch = pruefungskatalog.ist_wunsch(frage)
+        if not wunsch and not offen:
+            return False
+        if not bereich_sichtbar(self.path, self.headers):
+            return False
+        BESTAND.aktualisiere()
+        namen = (titel_im_bereich(self.path, self.headers)
+                 or nur_erlaubte(BESTAND.titel(), self.headers) or [])
+        if not namen:
+            return False
+        kat = self._kataloge_im_bereich(namen)
+        # 1) Es liegt eine Frage vor: Antwort pruefen / weiter
+        if offen.get("dok") and offen.get("nr") and not wunsch:
+            f = self._katalogfrage(offen["dok"], offen["nr"])
+            if f:
+                if pruefungskatalog.ist_weiter(frage):
+                    t = self._pruefungsfrage_stellen(gespraech_k, offen["dok"])
+                    if t:
+                        self._direkt_senden("pruefung", frage, t, dok=offen["dok"])
+                        print("[Pruefung] naechste Frage aus %s" % offen["dok"], file=sys.stderr, flush=True)
+                        return True
+                urteil = pruefungskatalog.pruefen(frage, f, offen, kennung=assistent._titel_saubern(offen["dok"]))
+                if urteil:
+                    self._direkt_senden("pruefung", frage, urteil, dok=offen["dok"])
+                    print("[Pruefung] Antwort %r zu Frage %d geprueft" % (frage[:20], f["nr"]), file=sys.stderr, flush=True)
+                    return True
+            return False        # "warum?", andere Frage -> Gespraech mit Vorwissen
+        # 1b) Es wurde nach dem Katalog gefragt (mehrere): Auswahl
+        if offen.get("auswahl") and not wunsch:
+            g, _k = assistent.dokument_gemeint(frage, offen["auswahl"])
+            if not g:
+                return False
+            t = self._pruefungsfrage_stellen(gespraech_k, g)
+            if t:
+                self._direkt_senden("pruefung", frage, t, dok=g)
+                return True
+            return False
+        if not wunsch:
+            return False
+        # 2) Wunsch nach einer Frage
+        dok = assistent.dokument_gemeint(frage, kat)[0] if kat else None
+        if not dok and len(kat) == 1:
+            dok = kat[0]
+        if not dok:
+            if not kat:
+                t = ("Im Bereich liegt kein Prüfungskatalog — keine Datei, in der Fragen mit Antwortoptionen stehen. "
+                     "Vorhanden: %s." % ", ".join(assistent._titel_saubern(n) for n in sorted(namen)[:8]))
+                self._direkt_senden("pruefung", frage, t)
+                return True
+            GESPRAECHE.notiz_setzen(gespraech_k, "pruefung", {"auswahl": kat})
+            t = "Es gibt mehrere Kataloge — welcher?\n\n" + "\n".join("- %s (%d Fragen)" % (
+                assistent._titel_saubern(k), len(self._katalog_fragen(k))) for k in kat)
+            self._direkt_senden("pruefung", frage, t)
+            return True
+        t = self._pruefungsfrage_stellen(gespraech_k, dok, pruefungskatalog.gewuenschte_nummer(frage),
+                                         pruefungskatalog.gewuenschtes_thema(frage))
+        if not t:
+            return False
+        self._direkt_senden("pruefung", frage, t, dok=dok)
+        print("[Pruefung] Frage aus %s gestellt <- %r" % (dok, frage[:50]), file=sys.stderr, flush=True)
         return True
 
     def _absicht_ausfuehren(self, frage):
