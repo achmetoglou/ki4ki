@@ -358,6 +358,66 @@ def _liegengebliebene_einraeumen():
     _pdfs_erneuern_wenn_faellig()
 
 
+def bereich_ordner_anlegen(slug):
+    """dokumente/<slug>/{input,parkplatz,archiv,aussortiert,loeschen} + bereich.json
+    mit den Rechten der Aufnahme (1000:KI4KI_GID, 2775). Gemessen 26.08.:
+    Emrach legte AuW/KAP/KI4KI in der Oberflaeche an - per FileZilla gab es
+    nur 'wissensdatenbank', weil der Ordner erst beim ersten Upload entstand.
+    True = angelegt oder vorhanden."""
+    if not slug:
+        return False
+    try:
+        wurzel = os.path.join(EINGANG_ORDNER, _ordnername(slug))
+        neu = not os.path.isdir(wurzel)
+        gid = int(os.environ.get("KI4KI_GID") or 1000)
+        for unter in ("", "input", "parkplatz", "archiv", "aussortiert", "loeschen"):
+            d = os.path.join(wurzel, unter) if unter else wurzel
+            if not os.path.isdir(d):
+                os.makedirs(d, exist_ok=True)
+                try:
+                    os.chown(d, 1000, gid)
+                    os.chmod(d, 0o2775)
+                except Exception:
+                    pass
+        konf = os.path.join(wurzel, "bereich.json")
+        if not os.path.exists(konf):
+            with open(konf, "w", encoding="utf-8") as fh:
+                json.dump({"bereich": _ordnername(slug), "ablage": _ordnername(slug)}, fh, ensure_ascii=False)
+            try:
+                os.chown(konf, 1000, gid)
+                os.chmod(konf, 0o664)
+            except Exception:
+                pass
+        if neu:
+            print("[Bereich] Ordner angelegt: dokumente/%s" % _ordnername(slug), file=sys.stderr, flush=True)
+        return True
+    except Exception as e:
+        print("[Bereich] Ordner fuer %r nicht anlegbar: %s" % (slug, str(e)[:100]), file=sys.stderr, flush=True)
+        return False
+
+
+_BEREICHE_ABGLEICH = [0.0]
+
+
+def _bereiche_abgleichen():
+    """Alle fuenf Minuten: fuer jeden Arbeitsbereich in AnythingLLM den
+    Ordnerbaum sicherstellen - auch fuer Bereiche, die vor dieser Fassung
+    angelegt wurden oder an der Heilung vorbei entstanden sind."""
+    if not API_SCHLUESSEL or time.time() - _BEREICHE_ABGLEICH[0] < 300:
+        return
+    _BEREICHE_ABGLEICH[0] = time.time()
+    try:
+        req = urllib.request.Request(ZIEL + "/api/v1/workspaces",
+                                     headers={"Authorization": "Bearer " + API_SCHLUESSEL})
+        with urllib.request.urlopen(req, timeout=20) as r:
+            ws = (json.load(r) or {}).get("workspaces") or []
+        for w in ws:
+            if w.get("slug"):
+                bereich_ordner_anlegen(w["slug"])
+    except Exception as e:
+        print("[Bereich] Abgleich nicht moeglich: %s" % str(e)[:100], file=sys.stderr, flush=True)
+
+
 def _seiten_vorwaermen(hoechstens=3):
     """Seitentexte neuer PDFs im Hintergrund lesen (pdftotext, 1-2 s je
     Dokument). Gemessen 25.08.: Die Belegpruefung der ERSTEN Antwort dauerte
@@ -390,6 +450,10 @@ def _loesch_wache():
             traceback.print_exc(file=sys.stderr)
         try:
             _seiten_vorwaermen()
+        except Exception:
+            traceback.print_exc(file=sys.stderr)
+        try:
+            _bereiche_abgleichen()
         except Exception:
             traceback.print_exc(file=sys.stderr)
         try:
@@ -1376,6 +1440,8 @@ def _titel_im_bereich_roh(pfad, kopfzeilen):
                 _TITEL[slug] = (titel, jetzt)
                 return titel
         except Exception as e:
+            if "403" in str(e):
+                continue     # kein Zugang dieser Sitzung zu dem Bereich - normal, kein Fehler
             print("[Titel] %s%s: %s" % (weg, slug, str(e)[:90]),
                   file=sys.stderr, flush=True)
     return None
@@ -6939,6 +7005,7 @@ class Griff(BaseHTTPRequestHandler):
                 w = (json.loads(daten or b"{}") or {}).get("workspace") or {}
                 w = w[0] if isinstance(w, list) else w
                 bereich_setzen((w or {}).get("slug"))
+                bereich_ordner_anlegen((w or {}).get("slug"))
         except Exception:
             traceback.print_exc(file=sys.stderr)
 

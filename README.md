@@ -39,7 +39,7 @@ den `.pub`-Inhalt bei GitHub als Deploy-Key (nur lesen) eintragen, dann
 | **Bilder** | „Zeig mir Bild 2.1" / „Zeig mir ein Diagramm" → Bildunterschrift, Seite, Bild. |
 | **Folgefragen** | Ein Dokument benennen — per Kennung (DS-24-005), Verfasser („die Arbeit von Becker") oder Titelwörtern. Danach meinen „die Arbeit", „daraus", „gesamte Zusammenfassung", „ein Diagramm aus der Arbeit" genau dieses Dokument — dauerhaft je Gesprächsfaden, auch nächste Woche noch. Antworten kommen dann **nur aus diesem Dokument** (mit geprüften Zitaten); steht etwas nicht drin, sagt die Anlage das. Alle Dokumente durchsuchen: Frage mit „im ganzen Bestand:" beginnen. Ohne genanntes Dokument fragt die Anlage nach, welches gemeint ist. Rückmeldung wie „das ist falsch" → sie wiederholt die letzte Frage aus dem richtigen Dokument. |
 | **Bestand** | „Welche Dokumente haben wir?" → Tabelle aus dem Katalog (Titel/Autor/Jahr liest die Anlage selbst vom Deckblatt). |
-| **Neuer Arbeitsbereich** | Per Klick in der Oberfläche anlegen — bekommt automatisch die geprüften Einstellungen. Ordner `dokumente/<bereich>/` entsteht beim ersten Upload. |
+| **Neuer Arbeitsbereich** | Per Klick in der Oberfläche anlegen — bekommt automatisch die geprüften Einstellungen und sofort den Ordner `dokumente/<bereich>/` (input, parkplatz, archiv, aussortiert, loeschen). Fehlende Ordner bestehender Bereiche legt die Anlage alle 5 Minuten nach. |
 | **Nutzer** | Oberfläche → Einstellungen → Benutzer. Ein Nutzer sieht nur zugewiesene Bereiche. |
 
 Wo etwas nicht ankam, steht der Grund in `dokumente/<bereich>/aussortiert/aussortiert.log`
