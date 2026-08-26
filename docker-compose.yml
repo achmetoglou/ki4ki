@@ -304,6 +304,9 @@ services:
     # Archiv-PDF), Protokoll in <bereich>/loeschen.log. Nur dieser Ordner
     # loest Loeschen aus. Abschaltbar mit 0.
     - KI4KI_LOESCHEN=1
+    # Zeitstempel in aussortiert.log/claim.log in Ortszeit (gemessen 25.08.:
+    # UTC, zwei Stunden daneben). Gleiche Quelle wie n8n.
+    - TZ=${TZ:-Europe/Berlin}
     - KI4KI_ZWISCHENSPEICHER=/daten/pruefung/vorauswahl.pickle
     # Der Katalog (Titel/Verfasser/Jahr je Dokument) - dauerhaft im
     # Daten-Volume, nicht im Abbild: Was das Modell vom Deckblatt liest,

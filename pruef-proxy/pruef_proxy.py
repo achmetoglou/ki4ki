@@ -3355,15 +3355,29 @@ class Griff(BaseHTTPRequestHandler):
             #   Bestands-Verfeinerung durch -> Bestandstabelle; die naechste
             #   ("ich habe nicht nach einem Bestand gefragt!") wurde zur
             #   Wortsuche nach "Bestand".
+            _faden_dok_jetzt = GESPRAECHE.letztes_dokument(gespraech)
             if assistent.ist_beschwerde(frage):
                 art = "beschwerde"
+            elif assistent.ist_zweifel(frage):
+                art = "zweifel"
+            elif assistent.ist_anlagefrage(frage):
+                art = "anlage"
             else:
                 art = assistent.einordnen(frage, hat_verlauf=bool(gegenstand))
                 art = _wahl_beantwortet(gespraech, frage, art)
+                # ⭐ VETO: "... hat diese Arbeit?" bei gesetztem Faden-Dokument ist
+                #   eine Frage an DIESES Dokument, keine Bestandsfrage - auch wenn
+                #   das Auffangnetz "bestand" sagt (gemessen 26.08.).
+                if art == "bestand" and _faden_dok_jetzt and \
+                        assistent.meint_dieses_dokument(frage) and \
+                        not assistent.ist_thema_bezug(frage):
+                    print("[Assistent] Veto: meint das Faden-Dokument, nicht den Bestand",
+                          file=sys.stderr, flush=True)
+                    art = "normal"
             _vorher_best = GESPRAECHE.letzte_bestand(gespraech)
             # Verfeinerung nur, wenn der UNMITTELBAR vorige Schritt eine
             # Bestandsfrage war - nicht irgendeine im Faden davor.
-            if art not in ("bestand", "beschwerde") and _vorher_best and \
+            if art not in ("bestand", "beschwerde", "zweifel", "anlage") and _vorher_best and \
                     GESPRAECHE.letzte_art(gespraech) == "bestand" and \
                     assistent.ist_bestand_verfeinerung(frage):
                 art = "bestand"
@@ -3387,6 +3401,43 @@ class Griff(BaseHTTPRequestHandler):
                        code=404)
             return
 
+        if art == "bestand" and gespraech and assistent.ist_thema_bezug(frage) \
+                and GESPRAECHE.letztes_dokument(gespraech):
+            try:
+                _dok = GESPRAECHE.letztes_dokument(gespraech)
+                _namen = (titel_im_bereich(self.path, self.headers)
+                          or nur_erlaubte(BESTAND.titel(), self.headers) or [])
+                _aehnl = assistent.aehnliche_titel(_dok, _namen)
+                if _aehnl:
+                    _zeilen = "\n".join("- %s *(gemeinsam: %s)*"
+                                        % (assistent.dokument_zeile(n), ", ".join(g[:3]))
+                                        for n, g in _aehnl)
+                    _text = ("Zum Thema von **%s** passen nach Titel:\n\n%s\n\n"
+                             "*Verglichen wurden die Titel im Katalog — nicht der "
+                             "Volltext. Für eine inhaltliche Suche: „im ganzen "
+                             "Bestand: …“ mit dem konkreten Begriff.*"
+                             % (assistent._titel_saubern(_dok), _zeilen))
+                else:
+                    _text = ("Zum Thema von **%s** finde ich im Katalog keinen "
+                             "weiteren Titel mit gemeinsamen Begriffen. Inhaltlich "
+                             "suchen: „im ganzen Bestand: <Begriff>“."
+                             % assistent._titel_saubern(_dok))
+                self._festhalten("bestand", frage, _text)
+                GESPRAECHE.merken(gespraech, frage, "bestand", [])
+                self._sende_strom([
+                    {"uuid": _neue_marke("bestand"), "type": "textResponseChunk",
+                     "textResponse": _text, "sources": [], "close": False,
+                     "error": False},
+                    {"uuid": _neue_marke("bestand"), "type": "textResponseChunk",
+                     "textResponse": "", "sources": [], "close": True,
+                     "error": False},
+                ])
+                print("[Assistent] Themen-Nachbarn zu %r: %d" % (_dok, len(_aehnl)),
+                      file=sys.stderr, flush=True)
+                return
+            except Exception:
+                traceback.print_exc(file=sys.stderr)
+
         if art == "bestand":
             try:
                 if self._bestandsauskunft(frage, _vorher_best):
@@ -3396,29 +3447,80 @@ class Griff(BaseHTTPRequestHandler):
                 # Kein Abbruch - die Frage geht dann eben den normalen Weg.
                 traceback.print_exc(file=sys.stderr)
 
-        if art == "beschwerde":
+        if art == "anlage":
+            # Fragen an die Anlage selbst beantwortet der Proxy - ehrlich und
+            # mit dem echten Faden-Zustand. Das Modell weiss davon nichts.
+            try:
+                _anz = dokumente_im_bereich(self.path, self.headers)
+                _text = assistent.anlage_antwort(
+                    GESPRAECHE.letztes_dokument(gespraech), _anz)
+                self._festhalten("anlage", frage, _text)
+                GESPRAECHE.merken(gespraech, frage, "anlage", [])
+                self._sende_strom([
+                    {"uuid": _neue_marke("anlage"), "type": "textResponseChunk",
+                     "textResponse": _text, "sources": [], "close": False,
+                     "error": False},
+                    {"uuid": _neue_marke("anlage"), "type": "textResponseChunk",
+                     "textResponse": "", "sources": [], "close": True,
+                     "error": False},
+                ])
+                print("[Assistent] Anlage-Frage beantwortet", file=sys.stderr,
+                      flush=True)
+                return
+            except Exception:
+                traceback.print_exc(file=sys.stderr)
+
+        if art in ("beschwerde", "zweifel"):
             # ⭐ REPARATUR statt nur Entschuldigung (GESPRAECH-ANFORDERUNGEN
             #   §4.1): die letzte inhaltliche Frage noch einmal - diesmal
-            #   NUR aus dem Faden-Dokument.
+            #   NUR aus dem Faden-Dokument, Satz fuer Satz mit Seitenbeleg.
+            #   Gemessen 26.08.: Eine wiederholte Zusammenfassung ist keine
+            #   Reparatur (kam identisch aus dem Speicher). Bei einer reinen
+            #   Zusammenfassungs-Bitte fragt die Anlage, WELCHE Aussage
+            #   falsch ist - dann wird genau die geprueft.
             try:
                 _dok = GESPRAECHE.letztes_dokument(gespraech)
                 _letzte = GESPRAECHE.letzte_frage(gespraech)
                 if _dok and _letzte:
                     _lf, _la = _letzte
-                    _vor = ("Entschuldige — das war daneben. Noch einmal, "
-                            "diesmal nur aus **%s**:\n\n"
-                            % assistent._titel_saubern(_dok))
-                    GESPRAECHE.merken(gespraech, frage, "beschwerde", [])
+                    _vor = (("Entschuldige — das war daneben. Noch einmal, "
+                             "diesmal nur aus **%s**, Satz für Satz belegt:\n\n")
+                            if art == "beschwerde" else
+                            ("Ich prüfe das noch einmal — diesmal Satz für Satz "
+                             "am Original von **%s**:\n\n")) \
+                           % assistent._titel_saubern(_dok)
+                    GESPRAECHE.merken(gespraech, frage, art, [])
                     if _la == "bild" or _ist_bildwunsch(_lf):
                         if self._bild_antwort(_lf, erzwinge=_dok, vorspann=_vor):
                             return
-                    elif _la == "zusammenfassung" and \
-                            assistent.bezieht_sich_auf_vorheriges(_lf):
-                        if self._zusammenfassung(_lf):
-                            return
-                    else:
+                    elif fadenfrage.suchwoerter(_lf):
                         if self._faden_antwort(_lf, _dok, vorspann=_vor):
                             return
+                    else:
+                        _text = assistent.rueckfrage_welche_aussage(_dok)
+                        self._festhalten(art, frage, _text)
+                        self._sende_strom([
+                            {"uuid": _neue_marke(art), "type": "textResponseChunk",
+                             "textResponse": _text, "sources": [], "close": False,
+                             "error": False},
+                            {"uuid": _neue_marke(art), "type": "textResponseChunk",
+                             "textResponse": "", "sources": [], "close": True,
+                             "error": False},
+                        ])
+                        return
+                elif art == "zweifel":
+                    _text = assistent.zweifel_antwort_ohne()
+                    self._festhalten(art, frage, _text)
+                    GESPRAECHE.merken(gespraech, frage, art, [])
+                    self._sende_strom([
+                        {"uuid": _neue_marke(art), "type": "textResponseChunk",
+                         "textResponse": _text, "sources": [], "close": False,
+                         "error": False},
+                        {"uuid": _neue_marke(art), "type": "textResponseChunk",
+                         "textResponse": "", "sources": [], "close": True,
+                         "error": False},
+                    ])
+                    return
             except Exception:
                 traceback.print_exc(file=sys.stderr)
             try:
@@ -3460,6 +3562,13 @@ class Griff(BaseHTTPRequestHandler):
                         print("[Assistent] Dokumentwechsel: %r" % _hit,
                               file=sys.stderr, flush=True)
                         _dok = _hit
+                # Zaehlbares (Seiten, Abbildungen, Tabellen, Verfasser, Jahr)
+                # braucht kein Modell - PDF und Katalog wissen es.
+                if _dok and not _gesamt and assistent.dokument_fakten_frage(frage) and (
+                        assistent.bezieht_sich_auf_vorheriges(frage)
+                        or (_hit is not None and _dok == _hit)):
+                    if self._fakten_antwort(frage, _dok):
+                        return
                 if _gesamt and _frage_rein != frage:
                     # Vorspann "im ganzen Bestand:" abstreifen, Rest normal.
                     d = json.loads(koerper or b"{}") or {}
@@ -3476,6 +3585,25 @@ class Griff(BaseHTTPRequestHandler):
                 traceback.print_exc(file=sys.stderr)
 
         # ---- Zusammenfassungen brauchen das ganze Dokument --------------
+        if art == "zusammenfassung" and gespraech and assistent.ist_zielfrage(frage):
+            # "Was ist das Ziel der Arbeit?" ist eine Frage an das Dokument -
+            # gezielt von den passenden Seiten (Sekunden), nicht der
+            # Volltext-Lauf (Minuten) mit allgemeiner Zusammenfassung.
+            try:
+                _dok = None
+                if not assistent.bezieht_sich_auf_vorheriges(frage):
+                    _namen = (titel_im_bereich(self.path, self.headers)
+                              or nur_erlaubte(BESTAND.titel(), self.headers) or [])
+                    _dok, _ = assistent.dokument_gemeint(frage, _namen)
+                    if _dok:
+                        GESPRAECHE.dokument_merken(gespraech, _dok)
+                else:
+                    _dok = GESPRAECHE.letztes_dokument(gespraech)
+                if _dok and self._faden_antwort(frage, _dok):
+                    return
+            except Exception:
+                traceback.print_exc(file=sys.stderr)
+
         if art == "zusammenfassung":
             try:
                 if self._zusammenfassung(frage):
@@ -4699,6 +4827,64 @@ class Griff(BaseHTTPRequestHandler):
         _dokus = {d for d, _ in gute}
         if gewaehlt or len(_dokus) == 1:
             GESPRAECHE.dokument_merken(gespraech, gewaehlt or _dokus.pop())
+        return True
+
+    def _fakten_antwort(self, frage, dok):
+        """Seiten, Abbildungen, Tabellen, Verfasser, Jahr, Titel eines
+        Dokuments - gezaehlt aus dem PDF-Text und dem Katalog, ohne Modell."""
+        was = assistent.dokument_fakten_frage(frage)
+        schluessel = _pdf_schluessel(dok)
+        if not was or not schluessel or not dokument_erlaubt(schluessel, self.headers):
+            return False
+        try:
+            seiten = pdfstelle.seitentexte(schluessel) or []
+        except Exception:
+            seiten = []
+        try:
+            import bestand as _b
+            ang = _b.angaben(dok) or {}
+        except Exception:
+            ang = {}
+        titel = assistent._titel_saubern(dok)
+        kopf = "**%s**" % assistent.dokument_zeile(dok)
+        if was == "seiten":
+            text = "%s hat **%d Seiten** (gezählt im PDF)." % (kopf, len(seiten))
+        elif was in ("abbildungen", "tabellen"):
+            wort = "Abbildung" if was == "abbildungen" else "Tabelle"
+            muster = (r"(?m)^\s*(?:Bild|Abbildung|Abb\.?|Figure|Fig\.?)\s*(\d{1,2}[.\-]\d{1,3})\b"
+                      if was == "abbildungen" else
+                      r"(?m)^\s*(?:Tabelle|Tab\.?|Table)\s*(\d{1,2}[.\-]\d{1,3})\b")
+            nummern = {}
+            for i, s in enumerate(seiten, 1):
+                for m in re.finditer(muster, s or "", re.I):
+                    nummern.setdefault(m.group(1).replace("-", "."), i)
+            if nummern:
+                sortiert = sorted(nummern.items(), key=lambda kv: [int(x) for x in kv[0].split(".")])
+                erste, letzte = sortiert[0], sortiert[-1]
+                text = ("%s enthält **%d %sen mit Unterschrift** (%s %s auf S. %d bis %s %s auf S. %d)."
+                        % (kopf, len(nummern), wort, wort, erste[0], erste[1], wort, letzte[0], letzte[1]))
+                if was == "abbildungen":
+                    text += " „Zeig mir Bild %s“ holt eine davon." % erste[0]
+            else:
+                text = "%s: keine %s mit nummerierter Unterschrift im Text gefunden." % (kopf, wort)
+            text += "\n\n*Gezählt aus dem PDF-Text — %sen ohne nummerierte Unterschrift werden nicht erfasst.*" % wort
+        elif was == "verfasser":
+            text = ("%s — Verfasser: **%s**." % (kopf, ang.get("verfasser") or "im Katalog nicht hinterlegt"))
+        elif was == "jahr":
+            text = ("%s — Jahr: **%s**." % (kopf, ang.get("jahr") or "im Katalog nicht hinterlegt"))
+        else:
+            text = ("%s — Titel: **%s**." % (kopf, ang.get("titel") or titel))
+        text += "\n\n📇 *Direkt aus PDF und Katalog — ohne Sprachmodell.*"
+        gespraech = GESPRAECHE.kennung(self.path, self.headers)
+        self._festhalten("fakten", frage, text)
+        GESPRAECHE.merken(gespraech, frage, "normal", [{"title": dok}])
+        self._sende_strom([
+            {"uuid": _neue_marke("fakten"), "type": "textResponseChunk",
+             "textResponse": text, "sources": [], "close": False, "error": False},
+            {"uuid": _neue_marke("fakten"), "type": "textResponseChunk",
+             "textResponse": "", "sources": [], "close": True, "error": False},
+        ])
+        print("[Fakten] %s zu %r" % (was, dok), file=sys.stderr, flush=True)
         return True
 
     def _faden_antwort(self, frage, dok, vorspann=""):

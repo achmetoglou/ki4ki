@@ -227,11 +227,65 @@ def szenario_10_gedaechtnis_dauerhaft():
         _t.time = echt
 
 
+def szenario_11_dieses_dokument_kein_bestand():
+    print("\n[11] 'diese Arbeit' bei gesetztem Faden-Dokument ist nie Bestand (26.08.)")
+    for f in ("Wieviele Diagramme hat diese Arbeit?", "Wie viele Seiten hat das Dokument?",
+              "Wer ist der Verfasser dieser Dissertation?"):
+        pruefe(assistent.meint_dieses_dokument(f), "meint dieses Dokument: %r" % f)
+        pruefe(not assistent.ist_thema_bezug(f), "kein Themen-Bezug: %r" % f)
+    for f in ("Welche Dokumente haben wir?", "Gibt es andere Arbeiten dazu?", "Welche Dissertationen behandeln Kleben?"):
+        pruefe(not assistent.meint_dieses_dokument(f), "meint NICHT dieses Dokument: %r" % f)
+    pruefe(assistent.dokument_fakten_frage("Wieviele Diagramme hat diese Arbeit?") == "abbildungen", "Fakt: Abbildungen")
+    pruefe(assistent.dokument_fakten_frage("Wie viele Seiten hat das Dokument?") == "seiten", "Fakt: Seiten")
+    pruefe(assistent.dokument_fakten_frage("Wer ist der Verfasser dieser Dissertation?") == "verfasser", "Fakt: Verfasser")
+    pruefe(assistent.dokument_fakten_frage("Aus welchem Jahr ist die Arbeit?") == "jahr", "Fakt: Jahr")
+    pruefe(assistent.dokument_fakten_frage("Was ist das Ziel der Arbeit?") is None, "Zielfrage ist kein Fakt")
+
+
+def szenario_12_zielfrage_und_reparatur():
+    print("\n[12] Zielfrage -> gezielt aus dem Dokument; Reparatur nie dieselbe Zusammenfassung")
+    for f in ("Was ist das Ziel der Arbeit?", "Welche Methodik wird verwendet?", "Was sind die Ergebnisse?", "Warum wurde die Arbeit geschrieben, was ist die Motivation?"):
+        pruefe(assistent.ist_zielfrage(f), "Zielfrage: %r" % f)
+        pruefe(assistent.einordnen(f) == "zusammenfassung" or assistent.einordnen(f) == "normal", "Einordnung bleibt (Routing im Proxy)")
+    pruefe(not assistent.ist_zielfrage("Fasse die Dissertation zusammen"), "reine Bitte ist keine Zielfrage")
+    pruefe(fadenfrage.suchwoerter("Was ist das Ziel der Arbeit?") == [] or True, "Suchwoerter berechnet")
+    pruefe(fadenfrage.suchwoerter("Fasse die Dissertation zusammen") == [], "Zusammenfassungs-Bitte hat keine Inhaltswoerter -> Rueckfrage 'welche Aussage'")
+    pruefe(fadenfrage.suchwoerter("Was ist das Ziel der Arbeit?") == [], "'Ziel' allein: keine Inhaltswoerter -> Seitenwahl ueber Text")
+    t = assistent.rueckfrage_welche_aussage("DS-24-005.md")
+    pruefe("Welche Aussage" in t and "DS-24-005" in t, "Rueckfrage nennt das Dokument")
+
+
+def szenario_13_zweifel_und_anlage():
+    print("\n[13] 'Sicher?' ist Zweifel; Fragen an die Anlage beantwortet der Proxy")
+    for f in ("Sicher", "sicher?", "Bist du sicher?", "Wirklich?", "Stimmt das?", "Ist das so richtig?"):
+        pruefe(assistent.ist_zweifel(f), "Zweifel: %r" % f)
+    for f in ("Sicherheitsfaktor der Verschraubung?", "Was ist ein sicherer Betriebspunkt?"):
+        pruefe(not assistent.ist_zweifel(f), "kein Zweifel: %r" % f)
+    for f in ("Hast du jetzt nur diese eine Dissertation angedockt und kann dich nur damit sachen fragen? Kannst du das ausdocken oder eine andere nehmen?",
+              "Welches Dokument nutzt du gerade?", "Kannst du eine andere Dissertation nehmen?"):
+        pruefe(assistent.ist_anlagefrage(f), "Anlage-Frage: %r" % f[:50])
+    pruefe(not assistent.ist_anlagefrage("Welche Dokumente haben wir?"), "Bestandsfrage ist keine Anlage-Frage")
+    t = assistent.anlage_antwort("DS-24-005.md", 11)
+    pruefe("DS-24-005" in t and "im ganzen Bestand" in t and "11 im Bereich" in t, "Anlage-Antwort nennt Zustand und Wege")
+
+
+def szenario_14_selbes_thema():
+    print("\n[14] 'zum selben Thema' nimmt das Thema des Faden-Dokuments")
+    pruefe(assistent.ist_thema_bezug("Haben wir Dissertationen zum selben thema?"), "Themen-Bezug erkannt")
+    pruefe(assistent.ist_thema_bezug("Gibt es ähnliche Arbeiten?"), "'aehnliche Arbeiten'")
+    pruefe(not assistent.ist_thema_bezug("Welche Dissertationen haben wir zum Thema Kleben?"), "konkretes Thema ist kein Bezug")
+    a = assistent.aehnliche_titel("DS-24-005.md", NAMEN)
+    pruefe(any(n == "DS-23-005.md" for n, _ in a), "Becker (glasfaserverstaerkt) findet Mueller (endlosfaserverstaerkt): %r" % [n for n, _ in a])
+    pruefe(all(n != "DS-24-005.md" for n, _ in a), "sich selbst nicht")
+
+
 if __name__ == "__main__":
     for s in (szenario_1_verfasser_und_folgefragen, szenario_2_beschwerde_reparatur,
               szenario_3_themenwechsel, szenario_4_rueckkehr, szenario_5_nicht_im_dokument,
               szenario_6_zitate_pruefen, szenario_7_fachwort_vs_alltag, szenario_8_bestand_tippfehler,
-              szenario_9_klaerfrage, szenario_10_gedaechtnis_dauerhaft):
+              szenario_9_klaerfrage, szenario_10_gedaechtnis_dauerhaft,
+              szenario_11_dieses_dokument_kein_bestand, szenario_12_zielfrage_und_reparatur,
+              szenario_13_zweifel_und_anlage, szenario_14_selbes_thema):
         try:
             s()
         except Exception as e:

@@ -1392,6 +1392,191 @@ def dokument_zeile(name):
     return zeile
 
 
+# --------------------------------------------- Rueckmeldungen und Anlage-Fragen
+
+_ZWEIFEL = re.compile(
+    r"^\s*(?:(?:bist\s+du\s+(?:dir\s+)?(?:da\s+)?)?(?:ganz\s+)?sicher|wirklich|echt|"
+    r"stimmt\s+das|ist\s+das\s+(?:so\s+)?(?:richtig|korrekt|sicher)|"
+    r"sicher,?\s+dass\s+(?:das|es)\s+(?:so\s+)?(?:ist|stimmt)|"
+    r"kann\s+das\s+(?:so\s+)?(?:sein|stimmen)|bist\s+du\s+dir\s+da\s+sicher)"
+    r"[\s?!.]*$", re.I)
+
+
+def ist_zweifel(frage):
+    """"Sicher?", "Wirklich?", "Stimmt das?" - eine Rueckmeldung, keine
+    Frage nach dem Wort "sicher". Gemessen 26.08.: "Sicher" wurde zur
+    Wortsuche und lieferte "keine Informationen zum Begriff Sicher"."""
+    f = (frage or "").strip()
+    return bool(f) and len(f) <= 60 and bool(_ZWEIFEL.match(f))
+
+
+_DIESES_DOKUMENT = re.compile(
+    r"\b(?:diese[rsm]?|dieses|das|der|die|jene[rsm]?)\s+"
+    r"(?:arbeit|dissertation|doktorarbeit|dokument|studie|paper|werk|datei|pdf|quelle)\b(?!en)",
+    re.I)
+_MEHRERE = re.compile(
+    r"\b(?:andere[nrs]?|weitere[nrs]?|alle[nrs]?|sonstige[nrs]?|mehrere|"
+    r"arbeiten|dissertationen|dokumente|studien|quellen|werke)\b", re.I)
+
+
+def meint_dieses_dokument(frage):
+    """"... hat diese Arbeit?", "in dem Dokument" - Einzahl mit Zeiger. Bei
+    gesetztem Faden-Dokument darf das NIE zur Bestandsfrage werden (gemessen
+    26.08.: "Wieviele Diagramme hat diese Arbeit?" -> Bestandstabelle)."""
+    f = frage or ""
+    return bool(_DIESES_DOKUMENT.search(f)) and not _MEHRERE.search(f)
+
+
+_THEMA_BEZUG = re.compile(
+    r"\b(?:zum\s+|zu\s+dem\s+|über\s+das\s+|ueber\s+das\s+)?(?:selben|gleichen|"
+    r"(?:ae|ä)hnlichen?|diesem|dem\s+gleichen)\s+(?:thema|gebiet|bereich|feld)\b|"
+    r"\b(?:ae|ä)hnliche[rsn]?\s+(?:arbeiten|dissertationen|dokumente|themen)\b|"
+    r"\bdazu\s+(?:noch\s+)?(?:andere|weitere|mehr)\b|\bvergleichbare[rsn]?\b", re.I)
+
+
+def ist_thema_bezug(frage):
+    """"Haben wir Dissertationen zum selben Thema?" - das Thema ist das des
+    Faden-Dokuments, nicht das Wort "selben Thema" (gemessen 26.08.)."""
+    return bool(_THEMA_BEZUG.search(frage or ""))
+
+
+_STAMM_STOPP = set("""untersuchung untersuchungen analyse analysen entwicklung
+einfluss einflusses methode methoden methodik verfahren beitrag bewertung
+verhalten eigenschaften herstellung anwendung einsatz auslegung
+kunststoff kunststoffe kunststoffen polymer polymere polymeren werkstoff
+werkstoffe bauteil bauteile bauteilen prozess prozesse mittels unter beim
+einer eines eine einem einen durch fuer für ueber über zwischen anhand
+geometrie modell modelle""".split())
+
+
+def _titelgramme(text):
+    """Wortstuecke (8 Zeichen) je Titelwort - damit Komposita zueinander
+    finden: "glasfaserverstaerkten" und "endlosfaserverstaerkten" teilen
+    "faserver", "erverst" ... Rueckgabe {gramm: wort}."""
+    gramme = {}
+    for w in re.findall(r"[A-Za-zÄÖÜäöüß\-]{6,}", text or ""):
+        f = _flach(w)
+        if len(f) < 8 or f in _STAMM_STOPP:
+            continue
+        for i in range(0, len(f) - 7):
+            gramme.setdefault(f[i:i + 8], f)
+    return gramme
+
+
+def aehnliche_titel(name, namen, hoechstens=6):
+    """Dokumente, deren Katalog-Titel Wortbestandteile mit dem Titel von
+    `name` teilen - [(name, [gemeinsame Woerter])], bester zuerst."""
+    try:
+        import bestand as _b
+        eig = _b.angaben(name) or {}
+    except Exception:
+        return []
+    basis = _titelgramme(eig.get("titel") or "")
+    if not basis:
+        return []
+    treffer = []
+    for n in namen:
+        if n == name:
+            continue
+        try:
+            ang = _b.angaben(n) or {}
+        except Exception:
+            continue
+        andere = _titelgramme(ang.get("titel") or "")
+        gemeinsam = sorted({basis[g] for g in basis if g in andere})
+        if gemeinsam:
+            treffer.append((n, gemeinsam))
+    treffer.sort(key=lambda x: -len(x[1]))
+    return treffer[:hoechstens]
+
+
+_ZIELFRAGE = re.compile(
+    r"^\s*(?:was|wie|welche[rsn]?|worin|wof(?:ue|ü)r|wozu|warum|wieso|weshalb)\b"
+    r".{0,60}?\b(?:ziel|ziele|zielsetzung|thema|anliegen|fragestellung|"
+    r"forschungsfrage|hypothese|motivation|methodik|vorgehen|aufbau|"
+    r"ergebnis|ergebnisse|fazit|kernaussage|kernaussagen|erkenntnis|"
+    r"erkenntnisse|schlussfolgerung|schlussfolgerungen|neuheit|beitrag)\b", re.I)
+
+
+def ist_zielfrage(frage):
+    """"Was ist das Ziel der Arbeit?" ist eine FRAGE an ein Dokument, keine
+    Bitte um eine Zusammenfassung. Gemessen 26.08.: zwei Minuten Volltext-
+    Lauf mit allgemeiner Zusammenfassung statt einer gezielten Antwort."""
+    return bool(_ZIELFRAGE.match((frage or "").strip()))
+
+
+_FAKTEN = (
+    ("seiten", re.compile(r"\bwie\s*viele?\s+seiten\b|\bseitenzahl\b|\bwie\s+lang\s+ist\b", re.I)),
+    ("abbildungen", re.compile(r"\bwie\s*viele?\s+(?:abbildungen|bilder|diagramme|grafiken|figuren|abb)\b", re.I)),
+    ("tabellen", re.compile(r"\bwie\s*viele?\s+tabellen\b", re.I)),
+    ("verfasser", re.compile(r"\b(?:wer\s+(?:ist|war)\s+der\s+(?:verfasser|autor)|von\s+wem\s+(?:ist|stammt)|wer\s+hat\s+(?:die|das|diese|dieses)\s+\w+\s+(?:geschrieben|verfasst))\b", re.I)),
+    ("jahr", re.compile(r"\b(?:aus\s+welchem\s+jahr|wann\s+(?:ist|wurde)\s+.{0,30}(?:erschienen|veröffentlicht|veroeffentlicht|geschrieben|eingereicht)|welches\s+jahr)\b", re.I)),
+    ("titel", re.compile(r"\bwie\s+(?:heisst|heißt|lautet)\s+(?:der\s+titel|die\s+arbeit|das\s+dokument|die\s+dissertation)\b", re.I)),
+)
+
+
+def dokument_fakten_frage(frage):
+    """Welche ZAEHLBARE Eigenschaft eines Dokuments ist gefragt - oder None.
+    Seiten, Abbildungen, Tabellen, Verfasser, Jahr, Titel braucht kein
+    Sprachmodell; das steht im PDF und im Katalog."""
+    for art, muster in _FAKTEN:
+        if muster.search(frage or ""):
+            return art
+    return None
+
+
+_ANLAGE_FRAGE = re.compile(
+    r"\b(?:angedockt|ausdocken|andocken|eingestellt\s+auf|festgelegt\s+auf|"
+    r"nur\s+(?:noch\s+)?(?:diese[sr]?|dieses|die\s+eine|auf\s+diese)\s+(?:eine\s+)?"
+    r"(?:dissertation|arbeit|dokument|datei)|"
+    r"(?:welche[sr]?|welches)\s+(?:dokument|arbeit|dissertation)\s+(?:nutzt|benutzt|verwendest|hast)\s+du|"
+    r"worauf\s+(?:bist|beziehst)\s+du|"
+    r"(?:kannst|k(?:oe|ö)nntest)\s+du\s+(?:das\s+)?(?:wechseln|umschalten|ausdocken|eine\s+andere\s+nehmen)|"
+    r"(?:andere|anderes)\s+(?:dissertation|dokument|arbeit)\s+(?:nehmen|laden|w(?:ae|ä)hlen)|"
+    r"wie\s+wechsle\s+ich|wie\s+komme\s+ich\s+(?:zu|an)\s+(?:andere|alle))\b", re.I)
+
+
+def ist_anlagefrage(frage):
+    """Fragen an die ANLAGE selbst ("Hast du nur diese Dissertation
+    angedockt? Kannst du eine andere nehmen?"). Die beantwortet der Proxy -
+    das Sprachmodell weiss nichts ueber Faeden und erfindet sonst etwas
+    (gemessen 26.08.: "kein Zugriff auf externe Datenbank")."""
+    f = (frage or "").strip()
+    return bool(f) and len(f) <= 220 and bool(_ANLAGE_FRAGE.search(f))
+
+
+def anlage_antwort(dokument=None, anzahl=None):
+    teile = []
+    if dokument:
+        teile.append("Ja — dieses Gespräch ist gerade auf **%s** eingestellt: "
+                     "Folgefragen, Zusammenfassungen und Bilder beziehen sich "
+                     "darauf, Antworten kommen nur aus diesem Dokument."
+                     % dokument_zeile(dokument))
+    else:
+        teile.append("Dieses Gespräch ist auf **kein** bestimmtes Dokument "
+                     "eingestellt — ich suche über alle Dokumente des Bereichs.")
+    teile.append("So steuerst du das:\n"
+                 "- **Wechseln:** ein anderes Dokument nennen — Kennung (z. B. DS-24-006) "
+                 "oder Verfasser („die Arbeit von Köbel“).\n"
+                 "- **Alle durchsuchen:** die Frage mit „im ganzen Bestand:“ beginnen.\n"
+                 "- **Übersicht:** „Welche Dokumente haben wir?“%s\n"
+                 "- **Neu anfangen:** neuen Gesprächsfaden öffnen."
+                 % (" (%d im Bereich)" % anzahl if anzahl else ""))
+    return "\n\n".join(teile)
+
+
+def zweifel_antwort_ohne():
+    return ("Verstanden, du zweifelst. Sag mir bitte, **welche Aussage** — "
+            "dann prüfe ich genau diese Stelle am Original.")
+
+
+def rueckfrage_welche_aussage(dokument):
+    return ("Entschuldige. Die Zusammenfassung stammt aus dem ganzen Dokument "
+            "**%s**. **Welche Aussage ist falsch?** Zitiere sie oder nenne das "
+            "Stichwort — dann prüfe ich genau diese Stelle Satz für Satz an den "
+            "Seiten, mit wörtlichen Belegen." % _titel_saubern(dokument))
+
+
 def _aus_katalog(frage, titel):
     """Dokument ueber den Katalog finden: Verfasser oder Titelwoerter.
 
