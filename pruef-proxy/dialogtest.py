@@ -335,6 +335,37 @@ def szenario_17_export_kontakt_tippfehler():
     pruefe("Weiter:" in assistent.naechste_schritte("faden", "DS-24-005.md"), "naechste Schritte vorhanden")
 
 
+def szenario_18_absichts_modell():
+    print("\n[18] Stufe 1: Absichts-Modell - Auftrag, Parsen, Waechter (Modell simuliert)")
+    import absicht
+    zeilen = [assistent.dokument_zeile(n) for n in NAMEN]
+    p = absicht.anweisung("Und die Kernaussagen?", [("Fasse Becker zusammen", "zusammenfassung", "Die Arbeit ...")],
+                          "DS-24-005.md", "zusammenfassung", [], zeilen)
+    pruefe("FADEN-DOKUMENT: DS-24-005.md" in p and "DS-24-005 — Fabian Becker" in p and "NEUE EINGABE: Und die Kernaussagen?" in p,
+           "Auftrag enthaelt Zustand, Dokumente, Eingabe")
+    pruefe(absicht.parsen('{"aktion":"frage_an_dokument","dokument":"DS-24-005","zweites_dokument":null,"aspekt":"Kernaussagen","frage":"Was sind die Kernaussagen?","sicherheit":0.9,"begruendung":"x"}')["aktion"] == "frage_an_dokument", "JSON geparst")
+    pruefe(absicht.parsen('Hier: {"aktion":"bild","dokument":"null","zweites_dokument":null,"aspekt":"","frage":"","sicherheit":"0.8","begruendung":""} fertig')["dokument"] is None, "Text drumherum + 'null' toleriert")
+    pruefe(absicht.parsen('{"aktion":"unsinn"}') is None and absicht.parsen("kaputt") is None, "Murks -> None")
+    a, g = absicht.pruefen({"aktion": "frage_an_dokument", "dokument": "DS-24-005", "zweites_dokument": None, "aspekt": "", "frage": "", "sicherheit": 0.9, "begruendung": ""}, NAMEN)
+    pruefe(a["dokument"] == "DS-24-005.md" and g == "ok", "Kennung auf Namen abgebildet: %r" % a["dokument"])
+    a, g = absicht.pruefen({"aktion": "frage_an_dokument", "dokument": "DS-99-999", "zweites_dokument": None, "aspekt": "", "frage": "", "sicherheit": 0.9, "begruendung": ""}, NAMEN)
+    pruefe(a["aktion"] == "klaerfrage", "unbekanntes Dokument -> Klaerfrage (%s)" % g)
+    a, g = absicht.pruefen({"aktion": "frage_an_dokument", "dokument": None, "zweites_dokument": None, "aspekt": "", "frage": "", "sicherheit": 0.9, "begruendung": ""}, NAMEN, faden_dok="DS-24-005.md")
+    pruefe(a["dokument"] == "DS-24-005.md" and a["aktion"] == "frage_an_dokument", "ohne Nennung -> Faden-Dokument")
+    a, g = absicht.pruefen({"aktion": "zusammenfassung", "dokument": "DS-24-005", "zweites_dokument": None, "aspekt": "", "frage": "", "sicherheit": 0.3, "begruendung": ""}, NAMEN)
+    pruefe(a["aktion"] == "klaerfrage", "geringe Sicherheit -> Klaerfrage")
+    a, g = absicht.pruefen({"aktion": "vergleich", "dokument": "DS-24-005", "zweites_dokument": None, "aspekt": "", "frage": "", "sicherheit": 0.9, "begruendung": ""}, NAMEN)
+    pruefe(a["aktion"] == "klaerfrage", "Vergleich mit einem Dokument -> Klaerfrage")
+    a, g, ms = absicht.erkennen("Sicher?", [], "DS-24-005.md", "faden", [], zeilen, NAMEN,
+                                rufen=lambda p: '{"aktion":"rueckmeldung","dokument":null,"zweites_dokument":null,"aspekt":"","frage":"Sicher?","sicherheit":0.95,"begruendung":"Zweifel"}')
+    pruefe(a and a["aktion"] == "rueckmeldung" and absicht.als_art(a) == "beschwerde", "erkennen() Ende-zu-Ende mit simuliertem Modell")
+    a, g, ms = absicht.erkennen("x", [], None, None, [], zeilen, NAMEN, rufen=lambda p: (_ for _ in ()).throw(RuntimeError("weg")))
+    pruefe(a is None and g.startswith("Fehler"), "Modell weg -> None, kein Absturz")
+    v = assistent.Verlauf(); k = "wissensdatenbank|t18"; v.merken(k, "Fasse Becker zusammen", "zusammenfassung", []); v.antwort_merken(k, "Die Arbeit untersucht ...")
+    vk = v.verlauf_kurz(k)
+    pruefe(vk == [("Fasse Becker zusammen", "zusammenfassung", "Die Arbeit untersucht ...")], "verlauf_kurz: %r" % vk)
+
+
 if __name__ == "__main__":
     for s in (szenario_1_verfasser_und_folgefragen, szenario_2_beschwerde_reparatur,
               szenario_3_themenwechsel, szenario_4_rueckkehr, szenario_5_nicht_im_dokument,
@@ -342,7 +373,8 @@ if __name__ == "__main__":
               szenario_9_klaerfrage, szenario_10_gedaechtnis_dauerhaft,
               szenario_11_dieses_dokument_kein_bestand, szenario_12_zielfrage_und_reparatur,
               szenario_13_zweifel_und_anlage, szenario_14_selbes_thema,
-              szenario_15_vergleich, szenario_16_kennwerte_abkuerzung, szenario_17_export_kontakt_tippfehler):
+              szenario_15_vergleich, szenario_16_kennwerte_abkuerzung, szenario_17_export_kontakt_tippfehler,
+              szenario_18_absichts_modell):
         try:
             s()
         except Exception as e:

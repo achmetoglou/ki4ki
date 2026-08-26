@@ -114,3 +114,11 @@ Dialogen.
 4. Stufe 3 messen.
 
 Changelog: siehe Git-Historie (`git log --oneline`), Prüfreihen unter `pruef-proxy/dialogtest.py`.
+
+## Stand 26.08.2026 — Stufe 1 gebaut, Schalter aus
+
+- Code: `pruef-proxy/absicht.py` (Auftrag, Modellaufruf mit erzwungenem JSON, Parsen, Wächter), Hook im Proxy (`_absicht_ausfuehren`), Protokollfeld `absicht` je Frage.
+- Schalter: `KI4KI_ABSICHT_MODELL=1` in der `.env` (Standard 0). Modell: `KI4KI_ABSICHT_MODELL_NAME` (Standard gemma4:12b).
+- Prüfreihe Schicht 1 (ohne Modell): `python3 pruef-proxy/dialogtest.py` — 18 Szenarien, 155 Prüfungen.
+- Prüfreihe Schicht 2 (mit Modell, auf der Anlage): `docker exec ki4ki-pruef-proxy python3 /app/absichttest.py` — 32 echte Dialogzüge, Bedingung ≥ 90 % für Standard „an".
+- Abnahme-Weg: 1) aktualisieren, 2) absichttest laufen lassen, 3) bei ≥ 90 % `KI4KI_ABSICHT_MODELL=1` in die `.env`, `./aktualisiere.sh`, 4) Live-Dialoge vergleichen (Proxy-Log `[Absicht]`-Zeilen).

@@ -311,6 +311,11 @@ services:
     # Verantwortlichen, erscheint bei "steht nicht drin" und Anlage-Fragen.
     # Leer = kein Hinweis. Beispiel in .env: KI4KI_KONTAKT=Max Mustermann, m.mustermann@institut.de
     - KI4KI_KONTAKT=${KI4KI_KONTAKT:-}
+    # ⭐ STUFE 1 (ARCHITEKTUR-GESPRAECH.md): Das Modell erkennt die Absicht
+    # jeder Eingabe im Gespraechszusammenhang; Regeln bleiben Waechter und
+    # Rueckfall. Standard 0, bis die Pruefreihe (absichttest.py) >= 90 % zeigt.
+    - KI4KI_ABSICHT_MODELL=${KI4KI_ABSICHT_MODELL:-0}
+    - KI4KI_ABSICHT_MODELL_NAME=${KI4KI_ABSICHT_MODELL_NAME:-gemma4:12b}
     - KI4KI_ZWISCHENSPEICHER=/daten/pruefung/vorauswahl.pickle
     # Der Katalog (Titel/Verfasser/Jahr je Dokument) - dauerhaft im
     # Daten-Volume, nicht im Abbild: Was das Modell vom Deckblatt liest,

@@ -42,6 +42,7 @@ from urllib.parse import parse_qs, quote, unquote, urlparse
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import assistent
+import absicht
 import fadenfrage
 import mehrstufig
 import pdfstelle
@@ -3369,19 +3370,50 @@ class Griff(BaseHTTPRequestHandler):
             #   ("ich habe nicht nach einem Bestand gefragt!") wurde zur
             #   Wortsuche nach "Bestand".
             _faden_dok_jetzt = GESPRAECHE.letztes_dokument(gespraech)
+            self._absicht = None
             if assistent.ist_beschwerde(frage):
                 art = "beschwerde"
             elif assistent.ist_zweifel(frage):
                 art = "zweifel"
             elif assistent.ist_anlagefrage(frage):
                 art = "anlage"
+            elif assistent.export_frage(frage):
+                art = "normal"     # der Export-Weg im Faden-Block
             else:
-                art = assistent.einordnen(frage, hat_verlauf=bool(gegenstand))
-                art = _wahl_beantwortet(gespraech, frage, art)
+                # ⭐ STUFE 1: Das Modell erkennt die Absicht - mit Gespraech,
+                #   Faden-Zustand und Dokumentliste (ARCHITEKTUR-GESPRAECH §3).
+                #   Faellt es aus oder ist es unsicher, greift der Regel-Router.
+                art = None
+                if absicht.AN:
+                    try:
+                        _namen_abs = (titel_im_bereich(self.path, self.headers)
+                                      or nur_erlaubte(BESTAND.titel(), self.headers) or [])
+                        _zeilen = [assistent.dokument_zeile(n) for n in sorted(_namen_abs)[:40]]
+                        _a, _grund, _ms = absicht.erkennen(
+                            frage, GESPRAECHE.verlauf_kurz(gespraech), _faden_dok_jetzt,
+                            GESPRAECHE.letzte_art(gespraech), GESPRAECHE.offene_wahl(gespraech),
+                            _zeilen, _namen_abs)
+                        print("[Absicht] %s dok=%s aspekt=%r sicher=%.2f %d ms (%s) <- %r"
+                              % (_a["aktion"] if _a else "-", _a.get("dokument") if _a else "-",
+                                 _a.get("aspekt") if _a else "", _a["sicherheit"] if _a else 0,
+                                 _ms, _grund, frage[:60]), file=sys.stderr, flush=True)
+                        self._absicht = _a
+                        self._absicht_protokoll = ({"aktion": _a["aktion"], "dokument": _a.get("dokument"),
+                                                    "sicherheit": _a["sicherheit"], "ms": _ms, "grund": _grund}
+                                                   if _a else {"aktion": None, "ms": _ms, "grund": _grund})
+                        if _a:
+                            art = absicht.als_art(_a)
+                    except Exception:
+                        traceback.print_exc(file=sys.stderr)
+                        self._absicht = None
+                if art is None:
+                    art = assistent.einordnen(frage, hat_verlauf=bool(gegenstand))
+                    art = _wahl_beantwortet(gespraech, frage, art)
                 # ⭐ VETO: "... hat diese Arbeit?" bei gesetztem Faden-Dokument ist
                 #   eine Frage an DIESES Dokument, keine Bestandsfrage - auch wenn
                 #   das Auffangnetz "bestand" sagt (gemessen 26.08.).
-                if art == "bestand" and not assistent.ist_thema_bezug(frage) and (
+                if art == "bestand" and not getattr(self, "_absicht", None) and \
+                        not assistent.ist_thema_bezug(frage) and (
                         (_faden_dok_jetzt and assistent.meint_dieses_dokument(frage))
                         or assistent.dokument_fakten_frage(frage)):
                     print("[Assistent] Veto: meint das Faden-Dokument, nicht den Bestand",
@@ -3390,7 +3422,8 @@ class Griff(BaseHTTPRequestHandler):
             _vorher_best = GESPRAECHE.letzte_bestand(gespraech)
             # Verfeinerung nur, wenn der UNMITTELBAR vorige Schritt eine
             # Bestandsfrage war - nicht irgendeine im Faden davor.
-            if art not in ("bestand", "beschwerde", "zweifel", "anlage") and _vorher_best and \
+            if art not in ("bestand", "beschwerde", "zweifel", "anlage", "klaerfrage", "smalltalk") \
+                    and not getattr(self, "_absicht", None) and _vorher_best and \
                     GESPRAECHE.letzte_art(gespraech) == "bestand" and \
                     assistent.ist_bestand_verfeinerung(frage):
                 art = "bestand"
@@ -3413,6 +3446,16 @@ class Griff(BaseHTTPRequestHandler):
             self._json({"error": "Workspace does not exist."},
                        code=404)
             return
+
+        # ⭐ STUFE 1: Was das Modell erkannt hat, wird hier ausgefuehrt - mit
+        #   den vorhandenen Werkzeugen. Gibt False zurueck, wenn der alte Weg
+        #   (nach `art`) weitermachen soll.
+        if getattr(self, "_absicht", None):
+            try:
+                if self._absicht_ausfuehren(frage):
+                    return
+            except Exception:
+                traceback.print_exc(file=sys.stderr)
 
         if art == "bestand" and gespraech and assistent.ist_thema_bezug(frage) \
                 and GESPRAECHE.letztes_dokument(gespraech):
@@ -3576,6 +3619,8 @@ class Griff(BaseHTTPRequestHandler):
         if art in ("normal", "folgefrage", "verfahren") and gespraech:
             try:
                 _gesamt, _frage_rein = fadenfrage.will_gesamtbestand(frage)
+                if getattr(self, "_absicht", None) and self._absicht["aktion"] == "gesamtbestand":
+                    _gesamt = True
                 _dok = GESPRAECHE.letztes_dokument(gespraech)
                 _hit = None
                 if not _gesamt and not assistent.bezieht_sich_auf_vorheriges(frage):
@@ -4153,6 +4198,7 @@ class Griff(BaseHTTPRequestHandler):
                 faden=(m.group(2) if m else None) or "-",
                 weg="browser" if "/v1/" not in (self.path or "") else "dienst",
                 regel=art,
+                absicht=getattr(self, "_absicht_protokoll", None),
                 frage_original=frage,
                 # Beide Fassungen, immer: Ohne die umgeschriebene Suche
                 # laesst sich spaeter nicht nachvollziehen, warum eine
@@ -4577,7 +4623,7 @@ class Griff(BaseHTTPRequestHandler):
             antwort = json.load(r)
         return ((antwort.get("message") or {}).get("content") or "").strip()
 
-    def _zusammenfassung(self, frage):
+    def _zusammenfassung(self, frage, erzwinge=None):
         """Ein ganzes Dokument zusammenfassen.
 
         Rueckgabe True, wenn erledigt (auch bei einer Rueckfrage). Bei
@@ -4624,6 +4670,8 @@ class Griff(BaseHTTPRequestHandler):
             return True
         gewaehlt, kandidaten = assistent.dokument_gemeint(
             frage, vorwahl or auswahl)
+        if erzwinge and erzwinge in auswahl:
+            gewaehlt, kandidaten = erzwinge, [erzwinge]
         if gewaehlt:
             GESPRAECHE.wahl_vergessen(gespraech)
         # ⭐ FADEN-DOKUMENT: Nennt die Frage kein Dokument ("Schreib mir eine
@@ -4887,6 +4935,61 @@ class Griff(BaseHTTPRequestHandler):
         if gewaehlt or len(_dokus) == 1:
             GESPRAECHE.dokument_merken(gespraech, gewaehlt or _dokus.pop())
         return True
+
+    def _absicht_ausfuehren(self, frage):
+        """Die vom Modell erkannte Absicht mit den vorhandenen Werkzeugen
+        ausfuehren. True = erledigt. False = der Regel-Weg macht weiter."""
+        a = self._absicht
+        if not a:
+            return False
+        gespraech = GESPRAECHE.kennung(self.path, self.headers)
+        aktion = a["aktion"]
+        dok = a.get("dokument")
+        frage_um = a.get("frage") or frage
+        # Ein genanntes Dokument wird zum Faden-Dokument (Pivot).
+        if dok and dok != GESPRAECHE.letztes_dokument(gespraech) and aktion not in ("vergleich", "bestand"):
+            GESPRAECHE.dokument_merken(gespraech, dok)
+            print("[Absicht] Dokumentwechsel: %r" % dok, file=sys.stderr, flush=True)
+        if aktion == "klaerfrage":
+            namen = (titel_im_bereich(self.path, self.headers)
+                     or nur_erlaubte(BESTAND.titel(), self.headers) or [])
+            kand = sorted(namen)[:10]
+            if not kand:
+                return False
+            liste = "\n".join("- %s" % assistent.dokument_zeile(k) for k in kand)
+            kopf = "Welches Dokument meinst du? Nenn mir Kennung oder Verfasser — oder wähle:"
+            if len(namen) > 10:
+                kopf += " (die ersten 10 von %d)" % len(namen)
+            GESPRAECHE.wahl_merken(gespraech, kand)
+            self._direkt_senden("rueckfrage", frage, kopf + "\n\n" + liste, merk_art="zusammenfassung")
+            return True
+        if aktion == "smalltalk":
+            self._direkt_senden("meta", frage, META_TEXT_GRUSS)
+            return True
+        if aktion == "bild":
+            return self._bild_antwort(frage, erzwinge=dok)
+        if aktion == "fakten":
+            return self._fakten_antwort(frage, dok)
+        if aktion == "abkuerzung":
+            kurz = assistent.abkuerzungs_frage(frage) or assistent.abkuerzungs_frage(frage_um) \
+                or (a.get("aspekt") if a.get("aspekt") and sum(1 for c in a["aspekt"] if c.isupper()) >= 2 else None)
+            if kurz and dok:
+                return self._abkuerzung_antwort(frage, kurz, dok)
+            return False
+        if aktion == "vergleich":
+            return self._vergleich_antwort(frage, dok, a.get("zweites_dokument"), a.get("aspekt") or "")
+        if aktion == "export":
+            return self._export_antwort(frage, dok)
+        if aktion == "zusammenfassung":
+            return self._zusammenfassung(frage, erzwinge=dok)
+        if aktion == "frage_an_dokument":
+            if not dok:
+                return False
+            if assistent.dokument_fakten_frage(frage):
+                return self._fakten_antwort(frage, dok)
+            return self._faden_antwort(frage_um, dok)
+        # bestand, rueckmeldung, anlage, gesamtbestand: die bestehenden Wege nach `art`
+        return False
 
     def _direkt_senden(self, art, frage, text, merk_art=None, dok=None):
         """Eine fertige Antwort senden, festhalten, merken. Wirft nie."""

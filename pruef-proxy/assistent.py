@@ -295,6 +295,20 @@ class Verlauf:
             return None
         return eintrag["schritte"][-1]["art"]
 
+    def verlauf_kurz(self, kennung, hoechstens=6):
+        """[(frage, art, antwortanfang)] der letzten Schritte - fuer das
+        Absichts-Modell. Die Antworten selbst sind nur als letzte gemerkt;
+        aeltere Schritte tragen nur Frage und Art."""
+        eintrag = self._hol(kennung)
+        if not eintrag:
+            return []
+        schritte = eintrag["schritte"][-hoechstens:]
+        aus = []
+        for i, s in enumerate(schritte):
+            ant = eintrag.get("antwort", "") if i == len(schritte) - 1 else ""
+            aus.append((s.get("frage", ""), s.get("art", ""), (ant or "")[:200]))
+        return aus
+
     def letzte_frage(self, kennung):
         """(Frage, Art) des letzten inhaltlichen Schritts - fuer die
         Reparatur nach einer Beschwerde. None, wenn es keinen gibt."""
