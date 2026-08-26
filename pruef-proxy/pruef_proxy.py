@@ -4949,8 +4949,8 @@ class Griff(BaseHTTPRequestHandler):
                 if beschreibung:
                     teile.append(beschreibung)
                     modell_benutzt = True
-            teile.append("[![Abbildung aus %s, Seite %d](/abbildung?dok=%s&seite=%d)](%s)"
-                         % (doku, seite, dq, seite, stelle))
+            teile.append("[![Abbildung aus %s, Seite %d](%s)](%s)"
+                         % (doku, seite, self._bild_url(_pdf_schluessel(doku) or doku, seite), stelle))
             bloecke.append("\n\n".join(teile))
         if nummer:
             text = "\n\n".join(bloecke)
@@ -4999,11 +4999,11 @@ class Griff(BaseHTTPRequestHandler):
             seiten = pdfstelle.seitentexte(schluessel) or []
         except Exception:
             seiten = []
-        try:
-            import abbildung
-        except Exception:
-            abbildung = None
-        pfad = PDFS.get(schluessel, "")
+        # ⚠ KEINE Filterung nach Rasterbild (gemessen 26.08.: Vektorgrafiken
+        #   wie Figure 1.1/2.1 fielen weg, drei Werkzeuge nannten drei
+        #   verschiedene Zahlen, und der Waechter strich echte Bilder als
+        #   "gibt es nicht"). Die Bildunterschrift ist die Wahrheit; ob ein
+        #   Rasterbild da ist, entscheidet nur, WIE es gezeigt wird.
         muster = re.compile(r"(?m)^\s*(?:Bild|Abbildung|Abb\.?|Figure|Fig\.?)\s*(\d{1,2}[.\-]\d{1,3})\b[:\s]*([^\n]{0,160})")
         aus, gesehen = [], set()
         for i, s in enumerate(seiten, 1):
@@ -5011,25 +5011,39 @@ class Griff(BaseHTTPRequestHandler):
                 n = m.group(1).replace("-", ".")
                 if n in gesehen:
                     continue
-                try:
-                    if abbildung and pfad and not abbildung.hat_abbildung(pfad, i):
-                        continue
-                except Exception:
-                    pass
                 gesehen.add(n)
                 aus.append((n, i, re.sub(r"\s+", " ", m.group(2)).strip()[:160]))
         cache[schluessel] = aus
         return aus
+
+    def _bild_url(self, schluessel, seite):
+        """Freigestellte Abbildung, wenn ein Rasterbild da ist - sonst die
+        gerenderte Seite (Vektorgrafiken, Diagramme aus Linien)."""
+        dq = quote(str(schluessel), safe="")
+        try:
+            import abbildung
+            if abbildung.hat_abbildung(PDFS.get(schluessel, ""), seite):
+                return "/abbildung?dok=%s&seite=%d" % (dq, seite)
+        except Exception:
+            pass
+        return "/seitenbild?dok=%s&seite=%d" % (dq, seite)
 
     def _bild_block(self, dok, nummer, seite, unterschrift):
         schluessel = _pdf_schluessel(dok) or dok
         dq = quote(str(schluessel), safe="")
         stelle = "/stelle?dok=%s&seite=%d" % (dq, seite)
         return ("**Bild %s** — %s, [Seite %d](%s)\n\n*%s*\n\n"
-                "[![Abbildung aus %s, Seite %d](/abbildung?dok=%s&seite=%d)](%s)"
+                "[![Abbildung aus %s, Seite %d](%s)](%s)"
                 % (nummer, assistent._titel_saubern(dok), seite, stelle,
                    ("Bild %s: %s" % (nummer, unterschrift)) if unterschrift else "Bild %s" % nummer,
-                   assistent._titel_saubern(dok), seite, dq, seite, stelle))
+                   assistent._titel_saubern(dok), seite, self._bild_url(schluessel, seite), stelle))
+
+    def _seiten_block(self, dok, seite):
+        schluessel = _pdf_schluessel(dok) or dok
+        dq = quote(str(schluessel), safe="")
+        stelle = "/stelle?dok=%s&seite=%d" % (dq, seite)
+        return ("**%s, [Seite %d](%s)**\n\n[![Seite %d aus %s](/seitenbild?dok=%s&seite=%d)](%s)"
+                % (assistent._titel_saubern(dok), seite, stelle, seite, assistent._titel_saubern(dok), dq, seite, stelle))
 
     def _werkzeug(self, name, args, zustand):
         """Ein Werkzeugaufruf des Modells. Liefert Text fuers Modell."""
@@ -5088,13 +5102,26 @@ class Griff(BaseHTTPRequestHandler):
             liste = self._abbildungen_liste(dok)
             zustand["abbildungen"][dok] = liste
             ab = int(args.get("ab") or 0)
-            teil = liste[ab:ab + 12]
+            teil = liste[ab:ab + 80]
             if not liste:
                 return "Keine Abbildung mit nummerierter Unterschrift in %s." % assistent._titel_saubern(dok)
-            aus = json.dumps([{"nummer": n, "seite": s, "unterschrift": u} for n, s, u in teil], ensure_ascii=False)
-            if len(liste) > ab + 12:
-                aus += " (insgesamt %d; weitere mit ab=%d)" % (len(liste), ab + 12)
+            aus = "%d Abbildungen in %s (vollstaendige Liste, Nummer | Seite | Unterschrift):\n" % (len(liste), assistent._titel_saubern(dok))
+            aus += "\n".join("%s | S. %d | %s" % (n, s, u[:110]) for n, s, u in teil)
             return aus
+        if name == "seite_zeigen":
+            try:
+                seite = int(args.get("seite") or 0)
+            except Exception:
+                seite = 0
+            try:
+                anzahl = pdfstelle.seitenzahl(schluessel)
+            except Exception:
+                anzahl = 0
+            if seite < 1 or (anzahl and seite > anzahl):
+                return "Seite %s gibt es in %s nicht (1-%d)." % (args.get("seite"), assistent._titel_saubern(dok), anzahl)
+            zustand["seiten_gezeigt"].append((dok, seite))
+            return "[[SEITE:%s:%d]] — Seite %d von %s. Setze den Platzhalter in deine Antwort." % (
+                assistent._titel_saubern(dok), seite, seite, assistent._titel_saubern(dok))
         if name == "abbildung_zeigen":
             liste = self._abbildungen_liste(dok)
             zustand["abbildungen"][dok] = liste
@@ -5151,12 +5178,12 @@ class Griff(BaseHTTPRequestHandler):
         stand = "gespraech-%d" % id(self)
         self._stand(stand, "Denke nach …")
         zustand = {"namen": namen, "dokumente": [], "seiten": {}, "abbildungen": {},
-                   "gezeigt": [], "zusammengefasst": [], "stand": stand, "gespraech": gespraech_k}
+                   "gezeigt": [], "seiten_gezeigt": [], "zusammengefasst": [], "stand": stand, "gespraech": gespraech_k}
         _melde = {"seiten_lesen": "Lese Seiten in %s …", "abbildungen_auflisten": "Suche Abbildungen in %s …",
                   "abbildung_zeigen": "Hole Bild aus %s …", "zusammenfassen": "Lese %s vollständig …",
                   "zaehlen": "Zähle in %s …", "bestand": "Sehe im Katalog nach …",
                   "dokument_finden": "Suche das Dokument …", "abkuerzung": "Suche die Abkürzung in %s …",
-                  "exportieren": "Stelle den Export zusammen …"}
+                  "exportieren": "Stelle den Export zusammen …", "seite_zeigen": "Hole Seite aus %s …"}
 
         def melden(name, args):
             t = _melde.get(name, name)
@@ -5187,19 +5214,43 @@ class Griff(BaseHTTPRequestHandler):
                     return "\n\n" + self._bild_block(dok, n, s, u) + "\n\n"
             return ""
         text = gespraechsmodus.BILD_MARKE.sub(_platzhalter, text)
-        # Genannte Abbildungen ohne Platzhalter: echte einbetten, erfundene streichen
+
+        def _seiten_platzhalter(m):
+            k, seite = m.group(1), int(m.group(2))
+            dok = absicht._kennung_finden(k, namen) or k
+            return "\n\n" + self._seiten_block(dok, seite) + "\n\n"
+        text = re.sub(r"\[\[SEITE:([^:\]]+):(\d{1,4})\]\]", _seiten_platzhalter, text)
+        # 1) Was per Werkzeug ANGEFORDERT wurde, kommt sicher - auch wenn das
+        #    Modell den Platzhalter vergessen hat (gemessen 26.08.: "zeig 6.3"
+        #    -> Modell schrieb nur Text, eingebettet wurden 2.2/2.3/2.6).
+        for dok, n, s, u in zustand["gezeigt"]:
+            if (dok, n) not in gezeigt:
+                text += "\n\n" + self._bild_block(dok, n, s, u)
+                gezeigt.add((dok, n))
+        for dok, seite in zustand["seiten_gezeigt"]:
+            if "/seitenbild?dok=%s&seite=%d" % (quote(str(_pdf_schluessel(dok) or dok), safe=""), seite) not in text:
+                text += "\n\n" + self._seiten_block(dok, seite)
+        # 2) Genannte Nummern: Seitenzahlen berichtigen, erfundene streichen,
+        #    einbetten nur, wenn noch nichts angefordert war.
         dok_fuer_bilder = zustand["dokumente"][-1] if zustand["dokumente"] else faden_dok
         gestrichen = []
         if dok_fuer_bilder:
             liste = {n: (s, u) for n, s, u in self._abbildungen_liste(dok_fuer_bilder)}
-            for nummer in gespraechsmodus.bildnennungen(text)[:6]:
+            def _seite_richtig(m):
+                n = m.group(2).replace("-", ".")
+                if n in liste and int(m.group(3)) != liste[n][0]:
+                    return "%s%s — [S. %d]" % (m.group(1), n, liste[n][0])
+                return m.group(0)
+            text = re.sub(r"((?:Bild|Abbildung|Figure)\s*)(\d{1,2}[.\-]\d{1,3})\s*(?:—|-|–)\s*\[?S\.\s*(\d{1,4})\]?", _seite_richtig, text)
+            for nummer in gespraechsmodus.bildnennungen(text)[:12]:
                 if (dok_fuer_bilder, nummer) in gezeigt:
                     continue
-                if nummer in liste and len(gezeigt) < 3:
-                    s, u = liste[nummer]
-                    text += "\n\n" + self._bild_block(dok_fuer_bilder, nummer, s, u)
-                    gezeigt.add((dok_fuer_bilder, nummer))
-                elif nummer not in liste:
+                if nummer in liste:
+                    if not gezeigt and len([1 for g in gezeigt]) < 3 and not zustand["gezeigt"]:
+                        s, u = liste[nummer]
+                        text += "\n\n" + self._bild_block(dok_fuer_bilder, nummer, s, u)
+                        gezeigt.add((dok_fuer_bilder, nummer))
+                else:
                     gestrichen.append(nummer)
             if gestrichen:
                 text = re.sub(r"\[?\b(?:Abbildung|Abb\.?|Bild)\s*(%s)\b\]?" % "|".join(re.escape(g) for g in gestrichen),
@@ -5263,7 +5314,8 @@ class Griff(BaseHTTPRequestHandler):
             GESPRAECHE.dokument_merken(gespraech_k, zustand["dokumente"][-1])
         self._festhalten("gespraech", frage, text)
         GESPRAECHE.merken(gespraech_k, frage, "gespraech",
-                          [{"title": d} for d in zustand["dokumente"][:3]], antwort=text)
+                          [{"title": d} for d in zustand["dokumente"][:3]],
+                          antwort=text.split("\n\n---\n")[0])
         self._strom_stueck({"uuid": _neue_marke("gespraech"), "type": "textResponseChunk",
                             "textResponse": text, "sources": [], "close": True, "error": False})
         self._strom_schliessen()
@@ -5489,10 +5541,10 @@ class Griff(BaseHTTPRequestHandler):
             seiten = []
         if was == "seiten":
             return len(seiten)
-        if was in ("abbildungen", "tabellen"):
-            muster = (r"(?m)^\s*(?:Bild|Abbildung|Abb\.?|Figure|Fig\.?)\s*(\d{1,2}[.\-]\d{1,3})\b"
-                      if was == "abbildungen" else
-                      r"(?m)^\s*(?:Tabelle|Tab\.?|Table)\s*(\d{1,2}[.\-]\d{1,3})\b")
+        if was == "abbildungen":
+            return len(self._abbildungen_liste(dok))
+        if was == "tabellen":
+            muster = r"(?m)^\s*(?:Tabelle|Tab\.?|Table)\s*(\d{1,2}[.\-]\d{1,3})\b"
             nummern = set()
             for s in seiten:
                 for m in re.finditer(muster, s or "", re.I):
@@ -5564,9 +5616,13 @@ class Griff(BaseHTTPRequestHandler):
                       if was == "abbildungen" else
                       r"(?m)^\s*(?:Tabelle|Tab\.?|Table)\s*(\d{1,2}[.\-]\d{1,3})\b")
             nummern = {}
-            for i, s in enumerate(seiten, 1):
-                for m in re.finditer(muster, s or "", re.I):
-                    nummern.setdefault(m.group(1).replace("-", "."), i)
+            if was == "abbildungen":
+                for n_, s_, _u in self._abbildungen_liste(dok):
+                    nummern.setdefault(n_, s_)
+            else:
+                for i, s in enumerate(seiten, 1):
+                    for m in re.finditer(muster, s or "", re.I):
+                        nummern.setdefault(m.group(1).replace("-", "."), i)
             if nummern:
                 sortiert = sorted(nummern.items(), key=lambda kv: [int(x) for x in kv[0].split(".")])
                 erste, letzte = sortiert[0], sortiert[-1]

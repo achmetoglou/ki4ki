@@ -58,6 +58,12 @@ WERKZEUGE = [
             "nummer": {"type": "string", "description": "Bildnummer aus der Unterschrift, z.B. 6.12"}},
             "required": ["dokument", "nummer"]}}},
     {"type": "function", "function": {
+        "name": "seite_zeigen",
+        "description": "Zeigt eine ganze Seite eines Dokuments als Bild im Chat (z.B. eine Seite mit Formeln, einer Tabelle oder Herleitung). Gibt einen Platzhalter zurueck, den du in die Antwort setzt.",
+        "parameters": {"type": "object", "properties": {
+            "dokument": {"type": "string"}, "seite": {"type": "integer"}},
+            "required": ["dokument", "seite"]}}},
+    {"type": "function", "function": {
         "name": "zusammenfassen",
         "description": "Zusammenfassung des GANZEN Dokuments (dauert bei langen Arbeiten ein bis zwei Minuten). Optional mit Auftrag (z.B. 'als Stichpunkte fuer einen Vortrag').",
         "parameters": {"type": "object", "properties": {
@@ -126,7 +132,12 @@ def system_text(faden_dok=None, dokumente=None, kontakt=""):
         "8b. Meinungs- und Diskussionsfragen ('ist 0,6 nicht sehr konservativ?') beantwortest du "
         "sachlich aus dem, was die Dokumente hergeben, und sagst offen, wo die Einschaetzung endet.\n"
         "9. Zahlen: Wert, Einheit, Messbedingung, Seite - fehlt die Bedingung, schreib 'Bedingung fehlt'.\n"
-        "10. Keine Meta-Saetze wie 'Basierend auf den Werkzeugen'. Keine Zusammenfassung deiner Werkzeugaufrufe.",
+        "10. Keine Meta-Saetze wie 'Basierend auf den Werkzeugen'. Schreibe NIE Zeilen wie 'Gespraech mit "
+        "Werkzeugen: ...' - das fuegt die Anlage selbst an.\n"
+        "11. Liefert ein Werkzeug eine Markdown-Tabelle oder eine Liste (Bestand, Abbildungen), uebernimm "
+        "sie UNVERAENDERT und vollstaendig - keine Kuerzung, keine Umformung in Fliesstext, keine "
+        "eigenen Seitenzahlen. Fehlt dir eine Seitenzahl, lass sie weg.\n"
+        "12. 'Zeig mir die Seite / eine Seite mit Formeln' -> seite_zeigen mit der Seitenzahl aus seiten_lesen.",
         "GESPRAECHSZUSTAND:\nFaden-Dokument: %s" % (faden_dok or "keins (frag nach oder nutze dokument_finden/bestand)"),
     ]
     if dokumente:
