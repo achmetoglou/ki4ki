@@ -6624,6 +6624,7 @@ class Griff(BaseHTTPRequestHandler):
                 pass
             _pdfs_erneuern_wenn_faellig()
             daten = json.dumps({"bestand": len(BESTAND.titel()),
+                                "verwaiste_bereiche": list(VERWAISTE_BEREICHE),
                                 "pdfs": len(PDFS)}).encode()
             self.send_response(200)
             self.send_header("Content-Type", "application/json")
