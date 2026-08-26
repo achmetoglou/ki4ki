@@ -1463,7 +1463,7 @@ _THEMA_BEZUG = re.compile(
     r"\b(?:zum\s+|zu\s+dem\s+|über\s+das\s+|ueber\s+das\s+)?(?:selben|gleichen|"
     r"(?:ae|ä)hnlichen?|diesem|dem\s+gleichen)\s+(?:thema|gebiet|bereich|feld)\b|"
     r"\b(?:ae|ä)hnliche[rsn]?\s+(?:arbeiten|dissertationen|dokumente|themen)\b|"
-    r"\bdazu\s+(?:noch\s+)?(?:andere|weitere|mehr)\b|\bvergleichbare[rsn]?\b", re.I)
+    r"\bdazu\s+(?:noch\s+|auch\s+)?(?:andere|weitere|mehr)\b|\bvergleichbare[rsn]?\b", re.I)
 
 
 def ist_thema_bezug(frage):

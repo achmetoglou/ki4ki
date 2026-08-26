@@ -4987,6 +4987,10 @@ class Griff(BaseHTTPRequestHandler):
                 return False
             if assistent.dokument_fakten_frage(frage):
                 return self._fakten_antwort(frage, dok)
+            # "Worum geht es?" traegt keine Inhaltswoerter - dann ist die
+            # Zusammenfassung die richtige Antwort, nicht "keine Seite gefunden".
+            if not fadenfrage.suchwoerter(frage_um) and not fadenfrage.suchwoerter(frage):
+                return self._zusammenfassung(frage, erzwinge=dok)
             return self._faden_antwort(frage_um, dok)
         # bestand, rueckmeldung, anlage, gesamtbestand: die bestehenden Wege nach `art`
         return False

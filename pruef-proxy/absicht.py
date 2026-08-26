@@ -32,12 +32,12 @@ AKTIONEN = (
     ("bild", "Eine Abbildung, ein Diagramm, eine Grafik ZEIGEN (z.B. 'zeig mir Bild 2.1', 'ein Diagramm aus der Arbeit')."),
     ("fakten", "Zaehlbares zu einem Dokument: wie viele Seiten/Abbildungen/Tabellen, wer ist der Verfasser, welches Jahr, wie lautet der Titel."),
     ("vergleich", "ZWEI Dokumente vergleichen oder auf Widersprueche pruefen."),
-    ("bestand", "Welche Dokumente es gibt (Liste, Anzahl, Thema, Art) - Fragen nach dem Bestand, nicht nach Inhalten."),
+    ("bestand", "Welche Dokumente es gibt: Liste, Anzahl, Art, 'was habt ihr zum Thema X', 'gibt es andere/aehnliche Arbeiten', 'zum selben Thema' - Fragen nach dem Bestand, nicht nach Inhalten."),
     ("export", "Etwas als CSV, BibTeX oder Tabelle zum Kopieren ausgeben."),
     ("abkuerzung", "Wofuer eine Abkuerzung steht (GFK, FVK, REM ...)."),
     ("rueckmeldung", "Eine Rueckmeldung zur letzten Antwort, keine neue Frage: 'das ist falsch', 'sicher?', 'nicht danach gefragt', 'nochmal genauer'."),
     ("anlage", "Eine Frage an die Anlage selbst: was sie kann, welches Dokument sie gerade nutzt, wie man wechselt, 'angedockt?'."),
-    ("gesamtbestand", "Ausdruecklich ueber ALLE Dokumente suchen ('im ganzen Bestand', 'in allen Arbeiten', 'gibt es andere Arbeiten, die ...')."),
+    ("gesamtbestand", "NUR wenn der Mensch ausdruecklich eine INHALTLICHE Suche ueber alle Dokumente verlangt ('im ganzen Bestand: ...', 'such in allen Arbeiten nach ...'). Nicht fuer Listenfragen - das ist 'bestand'."),
     ("klaerfrage", "Die Eingabe ist nicht eindeutig zu einem Dokument zuzuordnen und es ist keins im Faden - nachfragen, welches gemeint ist."),
     ("smalltalk", "Begruessung, Dank, Smalltalk ohne Aufgabe."),
 )
@@ -69,14 +69,16 @@ def anweisung(frage, schritte, faden_dok, letzte_art, offene_wahl, dokumente):
         "es als JSON aus. Du antwortest NICHT inhaltlich, du ordnest nur ein.",
         "MOEGLICHE AKTIONEN:\n" + "\n".join("- %s: %s" % (a, e) for a, e in AKTIONEN),
         "REGELN:\n"
-        "- 'dokument' ist die KENNUNG aus der Dokumentliste (z.B. DS-24-005) oder null. "
-        "Nennt der Mensch einen Verfasser oder Titelworte, waehle die passende Kennung. "
+        "- 'dokument' und 'zweites_dokument' sind IMMER die KENNUNG aus der Dokumentliste "
+        "(z.B. DS-24-005), nie ein Name. Nennt der Mensch einen Verfasser oder Titelworte, "
+        "waehle die passende Kennung. Bei 'vergleich' MUESSEN beide Kennungen stehen. "
         "Sagt er 'die Arbeit', 'das Dokument', 'daraus', 'diese' - meint er das FADEN-DOKUMENT.\n"
         "- Ohne Nennung und ohne Faden-Dokument: bei frage_an_dokument/zusammenfassung/bild/fakten "
         "-> aktion 'klaerfrage'.\n"
         "- 'frage': die Eingabe als eigenstaendige, vollstaendige Frage (Pronomen aufloesen, "
         "das Dokument nicht einsetzen). Bei rueckmeldung/anlage/smalltalk: die Eingabe unveraendert.\n"
         "- 'aspekt': das Thema in 1-4 Woertern (z.B. 'Methodik', 'E-Modul', 'Ziel'), sonst ''.\n"
+        "- 'Worum geht es in X', 'Ueberblick', 'Kurzfassung' = zusammenfassung.\n"
         "- 'sicherheit': 0 bis 1, wie sicher du bei Aktion UND Dokument bist. Unter 0,6 wird nachgefragt.\n"
         "- Tippfehler und Umgangssprache sind normal - nicht daran scheitern.",
     ]
@@ -176,10 +178,30 @@ def pruefen(absicht, namen, faden_dok=None):
         if a.get(k):
             gefunden = _kennung_finden(a[k], namen)
             if not gefunden:
+                # Das Modell hat einen Namen statt einer Kennung geliefert
+                # ("Becker") - ueber den Katalog aufloesen.
+                try:
+                    import assistent as _as
+                    gefunden, _ = _as.dokument_gemeint(str(a[k]), namen)
+                except Exception:
+                    gefunden = None
+            if not gefunden:
                 grund = "%s '%s' nicht im Bereich" % (k, a[k])
                 a[k] = None
             else:
                 a[k] = gefunden
+    if a["aktion"] == "gesamtbestand":
+        # Nur die ausdrueckliche Inhaltssuche ueber alles ("im ganzen Bestand:",
+        # "in allen Arbeiten") ist Gesamtbestand; Listenfragen ("gibt es andere
+        # Arbeiten", "was habt ihr zum Thema") sind Bestand (gemessen 26.08.).
+        try:
+            import fadenfrage as _ff
+            marker = bool(_ff._GESAMT.match(str(a.get("frage_original") or a.get("frage") or "")))
+        except Exception:
+            marker = False
+        if not marker:
+            a["aktion"] = "bestand"
+            grund = "Listenfrage -> bestand"
     braucht_dok = a["aktion"] in ("frage_an_dokument", "zusammenfassung", "bild", "abkuerzung")
     if braucht_dok and not a.get("dokument"):
         if faden_dok and faden_dok in namen:
@@ -207,6 +229,7 @@ def erkennen(frage, schritte, faden_dok, letzte_art, offene_wahl, dokumente, nam
         a = parsen(roh)
         if not a:
             return None, "unlesbar", int((time.time() - begonnen) * 1000)
+        a["frage_original"] = frage
         a, grund = pruefen(a, namen, faden_dok)
         return a, grund, int((time.time() - begonnen) * 1000)
     except Exception as e:
