@@ -1,0 +1,116 @@
+# Gesprächsführung: vom Regel-Router zum Modell mit Werkzeugen
+
+Stand 26.08.2026. Entscheidung: Stufe 1 und 2 werden gebaut (Freigabe Emrach, 26.08.).
+Grundlage: `GESPRAECH-ANFORDERUNGEN.md` (Recherche) und die Live-Dialoge vom 25./26.08.
+
+## 1 · Befund
+
+Das Sprachmodell (gemma4:12b) kann Gespräche führen — es bekommt das Gespräch nur
+nicht zu sehen. Heute entscheidet der Prüf-Proxy **vor** dem Modell mit Wortlisten und
+Mustern, was eine Eingabe ist (Bestand, Zusammenfassung, Bild, Beschwerde, Faden-Frage …).
+Erst wenn keine Regel greift, sieht das Modell die Frage — plus sechs Textstellen aus
+der Ähnlichkeitssuche und einige alte Nachrichten. Es weiß nicht, welches Dokument
+gerade Thema ist, was die letzte Antwort war oder dass „sicher?" sich darauf bezieht.
+
+Folge: Jede neue Formulierung braucht eine neue Regel. Gemessen 25./26.08.: „Wieviele
+Diagramme hat diese Arbeit?" → Bestandstabelle · „Sicher" → Wortsuche · „Hast du nur
+diese Dissertation angedockt?" → erfundene Modellantwort · „das ist falsch" → dieselbe
+Antwort noch einmal. Alles einzeln gefixt — und die nächste Formulierung bricht wieder.
+
+Warum es so gebaut wurde: Die Belegprüfung braucht Struktur (Dokument, Seite, Zitat),
+AnythingLLM gibt dem Modell keine Werkzeuge, Regeln laufen in Millisekunden. Die Regeln
+sind nicht falsch — sie sind die falsche **erste** Instanz.
+
+Voraussetzung geprüft (26.08., `ollama show gemma4:12b`): Fähigkeiten `tools`,
+`thinking`, `vision`; Kontext 262 144. Das kleine Modell (gemma4:e2b) ebenso.
+
+## 2 · Zielbild
+
+```
+Eingabe ──► Wächter (Regeln, ms) ──► Absichts-Modell (Gespräch + Zustand) ──► Aktion
+              │  Beschwerde/Export/          │  Aktion · Dokument · Aspekt ·      │
+              │  Anlage-Frage: sicher         │  umformulierte Frage · Sicherheit  │
+              ▼                               ▼                                    ▼
+          direkte Antwort            unsicher → Klärfrage mit Optionen      Werkzeuge des Proxys
+                                                                             (suchen, lesen, zählen,
+                                                                              vergleichen, exportieren)
+                                                                                       │
+                                                                             Belegprüfung (Zitate
+                                                                             gegen Original) ──► Antwort
+```
+
+Das Modell wird Gesprächsführer, der Proxy bleibt Wächter und Prüfer. Nichts, was heute
+gebaut ist, fällt weg: Faden-Gedächtnis, Faden-Antwort, Fakten, Vergleich, Export,
+Abkürzungen, Bild-Weg sind die **Werkzeuge**, die das Modell bekommt.
+
+## 3 · Stufe 1 — das Modell erkennt die Absicht
+
+**Eingabe an das Modell** (jede Frage, bevor der Proxy routet):
+- die letzten 6 Züge des Fadens (Frage + Antwortanfang, gekürzt),
+- der Faden-Zustand: aktuelles Dokument, Art der letzten Antwort, offene Rückfrage,
+- die Dokumentliste des Bereichs (Kennung — Verfasser (Jahr): Titel, bis 40),
+- die erlaubten Aktionen mit je einem Satz Erklärung.
+
+**Ausgabe** (erzwungenes JSON, Ollama `format`):
+```json
+{"aktion": "frage_an_dokument | zusammenfassung | bild | fakten | vergleich |
+            bestand | export | abkuerzung | rueckmeldung | anlage | klaerfrage | gesamtbestand",
+ "dokument": "DS-24-005 | null", "zweites_dokument": "DS-23-005 | null",
+ "aspekt": "Methodik", "frage": "eigenständig umformulierte Frage",
+ "sicherheit": 0.0–1.0, "begruendung": "ein Satz"}
+```
+
+**Wächter (Regeln, bleiben hart):**
+1. Beschwerde/Zweifel, Export, Anlage-Frage werden weiterhin per Regel erkannt — das
+   Modell darf sie nicht übersehen.
+2. Genanntes Dokument muss im Katalog existieren; sonst Klärfrage mit Optionen.
+3. `sicherheit < 0,6` → Klärfrage („Meinst du A oder B?"), nie raten.
+4. Fällt das Modell aus (Zeit, kaputtes JSON) → heutiger Regel-Router (unverändert).
+5. Ergebnis wird protokolliert (`regel`, `absicht`, `sicherheit`) — messbar, vergleichbar.
+
+**Schalter:** `KI4KI_ABSICHT_MODELL=1` (compose, Standard **an** nach Abnahme; vorher
+`0` = alter Router). Modell: `KI4KI_ABSICHT_MODELL_NAME` (Standard gemma4:12b, Denken
+aus; e2b als schnelle Alternative, ~1 s).
+
+**Kosten:** +1–3 s je Frage (JSON-Ausgabe ~150 Token, Eingabe ~2 000 Token). Läuft
+parallel zur Wortsuche.
+
+**Abnahme:** `dialogtest.py` bleibt grün (Regeln unverändert) + neue Schicht-2-Prüfung:
+30 echte Dialoge (aus dem Protokoll) mit erwarteter Absicht → Trefferquote ≥ 90 %,
+sonst kein Standard „an".
+
+## 4 · Stufe 2 — Werkzeuge
+
+Das Modell ruft die Proxy-Funktionen selbst auf (Ollama-Tool-Calling), kann sie
+verketten („Vergleiche Becker und Müller und exportiere das als CSV") und nachfragen.
+
+| Werkzeug | Vorhandene Funktion |
+|---|---|
+| `in_dokument_suchen(dokument, frage)` | `_faden_antwort` / `fadenfrage.seiten_waehlen` |
+| `dokument_zusammenfassen(dokument, auftrag)` | `_zusammenfassung_ganz` |
+| `abbildung_zeigen(dokument, nummer)` | `_bild_antwort` |
+| `zaehlen(dokument, was)` | `_fakten_zaehlen` |
+| `vergleichen(dok_a, dok_b, aspekt, modus)` | `_vergleich_antwort` |
+| `bestand(thema, art)` | `assistent.bestandsauskunft` |
+| `abkuerzung(dokument, kurz)` | `assistent.abkuerzung_aufloesen` |
+| `exportieren(format)` | `_export_antwort` |
+| `im_ganzen_bestand_suchen(frage)` | AnythingLLM-Weg mit Belegprüfung |
+
+Regeln für Stufe 2: höchstens 4 Werkzeugaufrufe je Frage; jedes Zitat wird weiter vom
+Proxy gegen das Original geprüft; ein Werkzeug schreibt nie, nur liest; Zwischenstände
+werden als Statusmeldung gezeigt („lese S. 12, 14 … vergleiche … exportiere").
+
+## 5 · Stufe 3 — größeres Modell (optional, messen)
+
+Auf der A40 (46 GB, ~25 belegt) passt gemma4:27b (≈17 GB Q4). Erwartung: besseres
+Sprachgefühl, halbe Geschwindigkeit. Erst nach Stufe 1/2 messen — an denselben 30
+Dialogen.
+
+## 6 · Reihenfolge
+
+1. Stufe 1 bauen, Schalter aus; Protokoll vergleicht Regel-Router vs. Absichts-Modell.
+2. 30 Dialoge als Prüfreihe; Trefferquote messen; Schalter an.
+3. Stufe 2: Werkzeuge, zuerst read-only Ketten (suchen → zeigen), dann Vergleich/Export.
+4. Stufe 3 messen.
+
+Changelog: siehe Git-Historie (`git log --oneline`), Prüfreihen unter `pruef-proxy/dialogtest.py`.

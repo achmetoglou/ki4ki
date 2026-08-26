@@ -82,3 +82,4 @@ ausführliche Fassung §9.
 - `curl -s localhost:3001/pruef-status` → z. B. `{"bestand": 12, "pdfs": 12}`
 - Platte voll ist die häufigste Ursache: `df -h`
 - Alles Weitere, Schalter und Hintergründe: **`README-ausfuehrlich.md`** · Lizenzen: `LIZENZEN.md`
+- Wie das Gespräch funktioniert und wohin es sich entwickelt: **`ARCHITEKTUR-GESPRAECH.md`** · Anforderungen aus der Recherche: `GESPRAECH-ANFORDERUNGEN.md`
