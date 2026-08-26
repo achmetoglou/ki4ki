@@ -166,6 +166,8 @@ def system_text(faden_dok=None, dokumente=None, kontakt=""):
         "(z.B. 'verkuerzt die Lebensdauer' gegen 'erhoeht die Lebensdauer'), ist die Option FALSCH - nie 'richtig' "
         "mit einem widersprechenden Zitat. Ohne Beleg: 'nicht belegbar'. Schluss: ein Satz mit dem Urteil.\n"
         "15. Ohne Faden-Dokument und ohne genanntes Dokument: bestand_durchsuchen statt raten oder nachfragen.\n"
+        "17. LINKS: Schreibe (Kennung, S. n) - die Anlage macht daraus einen Link auf die Seite. Ein ganzes Dokument "
+        "verlinkst du als [Kennung](/pdf/Kennung). Sag NIE, du koenntest keine Links erzeugen.\n"
         "16. PRUEFUNGSKATALOG ('stell mir eine Pruefungsfrage', 'frag mich ab', 'Frage 7'): NUR pruefungsfrage nutzen und "
         "dessen Text UNVERAENDERT ausgeben - nie eigene Fragen oder Optionen erfinden. Antwortet der Mensch auf eine "
         "Frage, gilt allein die Loesung aus dem Katalogeintrag (RICHTIG/FALSCH im Werkzeugtext); fehlt sie, sag das.",

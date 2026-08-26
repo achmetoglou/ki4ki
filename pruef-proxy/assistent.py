@@ -374,7 +374,7 @@ _BEZUG_AUF_ANTWORT = re.compile(
 # darf keinen weiteren Fachgegenstand tragen.
 _BESTAND_OBJEKT = re.compile(
     r"\b(dokument(?:e|en)?|unterlagen|dateien|quellen|literatur|"
-    r"arbeiten|normen|richtlinien|lerneinheiten)\b", re.I)
+    r"arbeiten|normen|richtlinien|lerneinheiten|bestand|best(?:ä|ae)nde|bestandsliste)\b", re.I)
 # "Inhalte" gehoert BEWUSST nicht hierher: Wer nach dem INHALT fragt
 # ("Stichwortliste der wesentlichen Inhalte"), stellt keine Bestandsfrage.
 _BESITZ = re.compile(
@@ -385,7 +385,7 @@ _BESITZ = re.compile(
     re.I)
 _BESTAND_DIREKT = re.compile(
     r"^\s*(was|welche|wie\s+viele?|wieviel)\b.{0,80}?\b("
-    r"dokument(?:e|en)?|unterlagen|dateien|quellen|literatur)\b", re.I)
+    r"dokument(?:e|en)?|unterlagen|dateien|quellen|literatur|bestand)\b", re.I)
 
 # Bestandsfragen, die gar kein Objektwort nennen: "Was steht dir alles zur
 # Verfuegung?", "Was hast du denn so?", "Was ist hier alles drin?". Ohne

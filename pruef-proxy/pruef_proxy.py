@@ -1738,6 +1738,27 @@ def _pdf_schluessel(name):
     return _pdf_schluessel_roh(name)
 
 
+def _archivdatei(name):
+    """Die Originaldatei zu einem Stamm in irgendeinem <bereich>/archiv/ -
+    fuer Dokumente ohne PDF (Excel, Word ...). None, wenn es keine gibt."""
+    ziel = _loesch_grund(_stamm(name))
+    if not ziel:
+        return None
+    try:
+        bereiche = sorted(os.listdir(EINGANG_ORDNER))
+    except Exception:
+        return None
+    for bereich in bereiche:
+        archiv = os.path.join(EINGANG_ORDNER, bereich, "archiv")
+        try:
+            for d in os.listdir(archiv):
+                if not d.startswith(".") and _loesch_grund(_stamm(d)) == ziel:
+                    return os.path.join(archiv, d)
+        except Exception:
+            continue
+    return None
+
+
 def _seiten_ohne_pdf(name):
     """Seitentexte aus dem Bestandstext - fuer Dokumente ohne PDF (Excel,
     Word, Text). Die Aufnahme setzt [Seite n]-Marken; fehlen sie, ist der
@@ -3496,11 +3517,15 @@ class Griff(BaseHTTPRequestHandler):
         Der Name wird nachgeschlagen, nie zu einem Pfad zusammengesetzt.
         Damit laufen Pfad-Tricks ins Leere.
         """
-        if name.endswith(".pdf"):
-            name = name[:-4]
+        name = _stamm(name)
         pfad = PDFS.get(_pdf_schluessel(name) or "")
         if not pfad or not os.path.exists(pfad):
-            self._fehler(404, "Dieses PDF liegt nicht vor.")
+            # Kein PDF: die Originaldatei (Excel, Word, ...) aus dem Archiv
+            # eines Bereichs - nachgeschlagen ueber den Stamm, nie als Pfad
+            # zusammengesetzt.
+            pfad = _archivdatei(name)
+        if not pfad or not os.path.exists(pfad):
+            self._fehler(404, "Dieses Dokument liegt nicht vor.")
             return
         # KI4KI-TOR-PDF: Angemeldet zu sein genuegt nicht. Das Dokument
         # muss in einem Bereich dieser Anmeldung liegen - sonst kam ein
@@ -3515,11 +3540,15 @@ class Griff(BaseHTTPRequestHandler):
         except OSError as e:
             self._fehler(500, str(e))
             return
+        import mimetypes
+        typ = "application/pdf" if pfad.lower().endswith(".pdf") else \
+            (mimetypes.guess_type(pfad)[0] or "application/octet-stream")
         self.send_response(200)
-        self.send_header("Content-Type", "application/pdf")
+        self.send_header("Content-Type", typ)
         self.send_header("Content-Length", str(len(daten)))
         self.send_header("Content-Disposition",
-                         'inline; filename="%s.pdf"' % name)
+                         '%s; filename="%s"' % ("inline" if typ == "application/pdf" else "attachment",
+                                                os.path.basename(pfad).replace('"', "")))
         self.send_header("X-Robots-Tag", "noindex, nofollow")
         self.send_header("Connection", "close")
         self.end_headers()
@@ -3568,6 +3597,15 @@ class Griff(BaseHTTPRequestHandler):
         #   Katalogs, ob das richtig ist."
         try:
             if self._pruefung_antwort(frage):
+                return
+        except Exception:
+            traceback.print_exc(file=sys.stderr)
+        # ⭐ BESTANDSFRAGE ist eine Abfrage, keine Modellaufgabe: Tabelle mit
+        #   Kennung/Titel/Verfasser/Jahr und Links (gemessen 26.08.: Stufe 2
+        #   antwortete aus der Dokumentliste im Kopf - nackte Aufzaehlung).
+        try:
+            if assistent._ist_bestandsfrage(frage) and not assistent.ist_beschwerde(frage) \
+                    and self._bestandsauskunft(frage):
                 return
         except Exception:
             traceback.print_exc(file=sys.stderr)
@@ -5815,11 +5853,24 @@ class Griff(BaseHTTPRequestHandler):
         f = pruefungskatalog.waehlen(fragen, gestellt, nummer, thema)
         if not f:
             return "Frage %s gibt es in %s nicht — der Katalog hat die Fragen 1 bis %d." % (nummer, titel, len(fragen))
-        text, z = pruefungskatalog.stellen(f, gesamt=len(fragen), kennung=titel)
+        text, z = pruefungskatalog.stellen(f, gesamt=len(fragen), kennung=titel, quelle=self._katalog_quelle(dok, f))
         z.update({"dok": dok, "gestellt": (gestellt + [f["nr"]])[-500:]})
         GESPRAECHE.notiz_setzen(gespraech_k, "pruefung", z)
         GESPRAECHE.dokument_merken(gespraech_k, dok)
         return text
+
+    def _katalog_quelle(self, dok, f):
+        """Quellenangabe mit Link: PDF -> Seite, sonst die Originaldatei."""
+        titel = assistent._titel_saubern(dok)
+        sch = _pdf_schluessel(dok)
+        if sch:
+            seite = int(f.get("seite") or 0)
+            if seite > 0:
+                return "[%s, S. %d](/stelle?dok=%s&seite=%d) — Frage %d" % (
+                    titel, seite, quote(str(sch), safe=""), seite, f.get("nr", 0))
+            return "[%s](/pdf/%s) — Frage %d" % (titel, quote(str(sch), safe=""), f.get("nr", 0))
+        return "[%s](/pdf/%s) — Frage %d (Zeile %d der Tabelle)" % (
+            titel, quote(titel, safe=""), f.get("nr", 0), f.get("nr", 0))
 
     def _pruefungsfrage_werkzeug(self, args, zustand):
         """Werkzeug fuer das Modell (Stufe 2) - derselbe Weg wie der direkte."""
@@ -5868,10 +5919,47 @@ class Griff(BaseHTTPRequestHandler):
         if not namen:
             return False
         kat = self._kataloge_im_bereich(namen)
-        # 1) Es liegt eine Frage vor: Antwort pruefen / weiter
+        nennung = pruefungskatalog.genanntes_dokument(frage)
+        genannt = assistent.dokument_gemeint(nennung, namen)[0] if nennung else None
+        if nennung and not genannt:
+            genannt = assistent.dokument_gemeint(frage, kat)[0] if kat else None
+
+        def _kataloge_zeile():
+            return "\n".join("- %s (%d Fragen)" % (assistent._titel_saubern(k), len(self._katalog_fragen(k))) for k in kat) \
+                or "- (keiner)"
+        # 0) Ein genanntes Dokument, das es nicht gibt oder kein Katalog ist -
+        #    nie stillschweigend einen anderen Katalog nehmen (gemessen 26.08.:
+        #    "aus den Pruefungsfragen zu DVS 2291" -> Frage aus "Testfragen DVS 2290").
+        if nennung and (wunsch or offen) and (not genannt or genannt not in kat):
+            if genannt and genannt not in kat:
+                t = ("**%s** ist kein Prüfungskatalog — darin stehen keine Fragen mit Antwortoptionen.\n\n"
+                     "Kataloge in diesem Bereich:\n%s" % (assistent._titel_saubern(genannt), _kataloge_zeile()))
+            else:
+                t = ("Einen Katalog „%s“ finde ich in diesem Bereich nicht — vielleicht noch nicht aufgenommen oder gelöscht.\n\n"
+                     "Kataloge in diesem Bereich:\n%s\n\nSag mir, aus welchem ich fragen soll." % (nennung, _kataloge_zeile()))
+            if kat:
+                GESPRAECHE.notiz_setzen(gespraech_k, "pruefung", {"auswahl": kat})
+            self._direkt_senden("pruefung", frage, t)
+            print("[Pruefung] genanntes Dokument %r nicht als Katalog gefunden" % nennung, file=sys.stderr, flush=True)
+            return True
+        # 1) Es liegt eine Frage vor: Antwort pruefen / weiter / Quelle / Beschwerde / anderer Katalog
         if offen.get("dok") and offen.get("nr") and not wunsch:
             f = self._katalogfrage(offen["dok"], offen["nr"])
             if f:
+                if genannt and genannt in kat and genannt != offen["dok"]:
+                    t = self._pruefungsfrage_stellen(gespraech_k, genannt)
+                    if t:
+                        self._direkt_senden("pruefung", frage, t, dok=genannt)
+                        return True
+                if pruefungskatalog.will_link(frage) or pruefungskatalog.ist_beschwerde(frage):
+                    t = ("Die Frage %d steht wörtlich in **%s** — Quelle: %s.\n\n"
+                         % (f["nr"], assistent._titel_saubern(offen["dok"]), self._katalog_quelle(offen["dok"], f)))
+                    if f.get("richtig") is None:
+                        t += ("Der Katalog ist ein gescanntes Dokument ohne Lösungen; der Text kann an dieser Stelle "
+                              "lückenhaft sein — im Link siehst du das Original. ")
+                    t += "Nächste Frage: „weiter“."
+                    self._direkt_senden("pruefung", frage, t, dok=offen["dok"])
+                    return True
                 if pruefungskatalog.ist_weiter(frage):
                     t = self._pruefungsfrage_stellen(gespraech_k, offen["dok"])
                     if t:

@@ -524,7 +524,21 @@ def szenario_24_pruefungskatalog():
     pruefe(pk.ist_katalog(excel) and not pk.ist_katalog("Ein Bericht ueber Rohre. Seite 1. Ergebnisse: 3 mm."), "ist_katalog trennt Katalog von Bericht")
     text, z = pk.stellen(f[2], gesamt=3, kennung="Pruefungsfragen zu DVS 2291")
     pruefe(text.startswith("**Frage 3 von 3**") and "Ab welcher Dimension sind Klebarbeiten mit zwei Personen auszuführen?" in text
-           and text.count("\na) ") == 1 and text.count("\nd) ") == 1, "Frage woertlich mit Optionen a-d auf eigenen Zeilen")
+           and text.count("\n- **a)** ") == 1 and text.count("\n- **d)** ") == 1, "Frage woertlich mit Optionen a-d als Listenzeilen")
+    t_q, _ = pk.stellen(f[2], gesamt=3, kennung="K", quelle="[K, S. 1](/stelle?dok=K&seite=1)")
+    pruefe(t_q.rstrip().endswith("*Quelle: [K, S. 1](/stelle?dok=K&seite=1)*"), "Quelle mit Link unter der Frage")
+    pruefe(pk.genanntes_dokument("Stell mir ine Frage aus den Prüfungsfragen zu DVS 2291") == "Prüfungsfragen zu DVS 2291"
+           and pk.genanntes_dokument("Nein dsv2291_uberarbeitet von leo") == "dsv2291_uberarbeitet von leo"
+           and pk.genanntes_dokument("Frage aus den Testfragen bitte") == ""   # Einzelwort: loest der Proxy ueber dokument_gemeint
+           and pk.genanntes_dokument("Stell mir eine Prüfungsfrage") == "" and pk.genanntes_dokument("eine Frage aus dem Katalog") == ""
+           and pk.genanntes_dokument("eine Prüfungsfrage zum Thema Kleben") == "", "genanntes Dokument aus dem Wunsch, Fuellwoerter nicht")
+    pruefe(pk.ist_beschwerde("Es gibt diese Frage gar nicht…") and pk.ist_beschwerde("hä?") and not pk.ist_beschwerde("b"), "Beschwerde bei offener Frage erkannt")
+    pruefe(pk.will_link("Mach mal ein Link zu der Quelle damit ich das dokument hier öffnen kann") and not pk.will_link("weiter"), "Link-Wunsch erkannt")
+    pruefe(pk._sauber("(e Milieuharze verdunsten") == "Milieuharze verdunsten", "OCR-Rest am Anfang entfernt")
+    dop = pk.fragen_aus_text("| 3. | Wodurch unterscheidet sich X von der |\n| Bei den EP-Harzen... | Bei den EP-Harzen... |\n| a) | eins |\n| b) | zwei |\n")
+    pruefe(dop and dop[0]["frage"].count("Bei den EP-Harzen") == 1, "doppelte Tabellenzellen nur einmal im Fragetext")
+    pruefe(assistent._ist_bestandsfrage("Was haben wir alles im bestand") and not assistent._ist_bestandsfrage("Stell mir eine Frage aus dem Katalog"),
+           "'Was haben wir alles im Bestand' ist eine Bestandsfrage, der Katalogwunsch nicht")
     pruefe(sorted(z["reihe"]) == [0, 1, 2, 3] and z["reihe"] != [0, 1, 2, 3], "Optionen deterministisch gemischt (richtige nicht immer a)")
     richtig_b = "abcd"[z["reihe"].index(0)]
     u = pk.pruefen(richtig_b, f[2], z, kennung="K")

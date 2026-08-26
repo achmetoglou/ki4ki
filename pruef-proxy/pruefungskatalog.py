@@ -60,7 +60,9 @@ def _zellen(zeile):
 
 
 def _sauber(t):
-    return re.sub(r"\s+", " ", (t or "").replace("…", "...")).strip()
+    t = re.sub(r"\s+", " ", (t or "").replace("…", "...")).strip()
+    # OCR-Reste am Anfang: "(e Milieuharze ..." -> "Milieuharze ..."
+    return re.sub(r"^[\(\)\[\]\|]{1,2}[a-z]?\s+(?=[A-ZÄÖÜ])", "", t)
 
 
 def _ist_muell(t):
@@ -133,6 +135,9 @@ def _optionen_zeilen(zeilen):
         if not z or re.fullmatch(r"\|?[\s|:\-]+\|?", z):
             continue
         teile = [t for t in (_zellen(z) if z.startswith("|") else [z]) if t]
+        # Doppelte Zellen (Docling wiederholt verbundene Zellen: "Bei den EP-Harzen... | Bei den EP-Harzen...")
+        gesehen = set()
+        teile = [t for t in teile if not (t in gesehen or gesehen.add(t))]
         if not teile:
             continue
         # Option: Marke in der ersten Zelle oder am Zeilenanfang
@@ -163,7 +168,8 @@ def _optionen_zeilen(zeilen):
                 aktuell["frage"] = _sauber(" ".join(teile[1:]))
             continue
         # Fortsetzung des Fragetexts (vor der ersten Option)
-        if aktuell is not None and not aktuell["optionen"] and not _ist_muell(text) and len(text) > 8:
+        if aktuell is not None and not aktuell["optionen"] and not _ist_muell(text) and len(text) > 8 \
+                and _sauber(text) not in aktuell["frage"]:
             aktuell["frage"] = _sauber(aktuell["frage"] + " " + text) if aktuell["frage"] else _sauber(text)
     _abschliessen()
     return fragen
@@ -221,6 +227,37 @@ def gewuenschtes_thema(eingabe):
     return "" if re.fullmatch(r"(?:dem|der|den|das|die|katalog|datei|excel|bestand)\b.*", t, re.I) else t
 
 
+_NENNUNG = re.compile(r"\b(?:aus|von|vom|in|im|nach)\s+(?:den|dem|der|die|das)?\s*([A-Za-zÄÖÜäöüß0-9][\w\-. ]{3,80}?)\s*(?:[?.!,;]|$)", re.I)
+_NENNUNG_MUELL = re.compile(r"^(?:katalog|datei|excel|bestand|liste|dokument|thema|pr(?:ü|ue)fungskatalog|"
+                            r"fragenkatalog|pr(?:ü|ue)fungsfragen|testfragen|fragen)$", re.I)
+
+
+def genanntes_dokument(eingabe):
+    """Was der Mensch als Quelle nennt ('aus den Pruefungsfragen zu DVS 2291',
+    'nein dvs2291 von leo') - oder ''. Nur der Wortlaut; ob es das Dokument
+    gibt, prueft der Proxy gegen den Bestand."""
+    e = (eingabe or "").strip()
+    for m in _NENNUNG.finditer(e):
+        t = re.sub(r"\s+(?:bitte|mal|doch|noch|jetzt)$", "", m.group(1).strip(" ."), flags=re.I)
+        if t and not _NENNUNG_MUELL.match(t) and not re.fullmatch(r"(?:thema\s+)?\w+", t, re.I) or re.search(r"\d{3,}", t):
+            return t
+    # Kurze Eingabe, die wie ein Dokumentname aussieht ("nein dsv2291_uberarbeitet von leo")
+    rest = re.sub(r"^(?:nein|ne|nee|doch|lieber|bitte|die|den|das|aus|von)\b[\s,:]*", "", e, flags=re.I).strip()
+    if rest and len(rest) <= 60 and re.search(r"\d{3,}|_", rest) and not _WUNSCH.search(rest):
+        return rest
+    return ""
+
+
+def ist_beschwerde(eingabe):
+    return bool(re.search(r"\bgibt\b.{0,30}\bnicht\b|(?:ist|stimmt)\s+(?:so\s+)?(?:nicht|falsch)|unsinn|quatsch|"
+                          r"falsche?\s+frage|kaputt|fehlerhaft|unvollst(?:ä|ae)ndig|h(?:ä|ae)\??$", eingabe or "", re.I))
+
+
+def will_link(eingabe):
+    return bool(re.search(r"\blink\b|verlink|(?:quelle|dokument|datei|seite)\s+(?:öffnen|oeffnen|zeigen|anzeigen)|"
+                          r"(?:öffnen|oeffnen)\s+kann|wo\s+steht\s+(?:das|die\s+frage)", eingabe or "", re.I))
+
+
 def _reihenfolge(frage):
     """Deterministische Mischung der Optionen je Frage - die richtige
     Antwort steht sonst immer an erster Stelle (Form A)."""
@@ -229,8 +266,9 @@ def _reihenfolge(frage):
     return idx
 
 
-def stellen(frage, gesamt=None, kennung=""):
-    """(Text fuer den Chat, Zustand zum Merken)."""
+def stellen(frage, gesamt=None, kennung="", quelle=""):
+    """(Text fuer den Chat, Zustand zum Merken). quelle = fertige
+    Quellenangabe, gern mit Link (baut der Proxy)."""
     reihe = _reihenfolge(frage)
     buchstaben = "abcdefgh"
     kopf = "**Frage %d%s**" % (frage.get("nr", 0), (" von %d" % gesamt) if gesamt else "")
@@ -240,13 +278,19 @@ def stellen(frage, gesamt=None, kennung=""):
                         kennung) if x]
     if meta:
         kopf += " *(%s)*" % " · ".join(meta)
+    # Markdown: einzelne Zeilenumbrueche fallen im Chat zusammen (gemessen
+    # 26.08.: a) b) c) d) standen in EINER Zeile). Deshalb Listenzeilen.
     zeilen = [kopf, "", frage["frage"], ""]
     for pos, i in enumerate(reihe):
-        zeilen.append("%s) %s" % (buchstaben[pos], frage["optionen"][i]))
+        zeilen.append("- **%s)** %s" % (buchstaben[pos], frage["optionen"][i]))
     zeilen.append("")
-    zeilen.append("*Antworte mit %s.*" % " / ".join(buchstaben[:len(reihe)]))
+    hinweis = "*Antworte mit %s.*" % " / ".join(buchstaben[:len(reihe)])
     if frage.get("richtig") is None:
-        zeilen.append("*Hinweis: Dieser Katalog enthält keine Lösungen — ich kann deine Antwort dann nur gegen die Norm-Dokumente prüfen.*")
+        hinweis += " *Dieser Katalog enthält keine Lösungen — ich kann deine Antwort nur gegen die Norm-Dokumente prüfen.*"
+    zeilen.append(hinweis)
+    if quelle:
+        zeilen.append("")
+        zeilen.append("*Quelle: %s*" % quelle)
     zustand = {"nr": frage.get("nr", 0), "reihe": reihe, "kennung": kennung}
     return "\n".join(zeilen), zustand
 
