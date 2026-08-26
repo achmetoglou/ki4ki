@@ -154,6 +154,21 @@ def _loesch_grund(name):
     return re.sub(r"[^a-z0-9]", "", str(name).lower())
 
 
+_DOKUMENT_ENDUNGEN = (".pdf", ".xlsx", ".xls", ".csv", ".docx", ".doc", ".pptx", ".ppt",
+                      ".odt", ".ods", ".odp", ".txt", ".html", ".htm", ".md", ".rtf")
+
+
+def _stamm(name):
+    """Dateiname ohne Dokument-Endung: 'Katalog.xlsx' -> 'Katalog'. Gemessen
+    26.08.: Die Loesch-Wache sah nur *.pdf - eine Excel in loeschen/ blieb
+    einfach liegen, der Bestandseintrag dazu auch."""
+    n = os.path.basename(str(name or ""))
+    for e in _DOKUMENT_ENDUNGEN:
+        if n.lower().endswith(e):
+            return n[:-len(e)]
+    return n
+
+
 def _loesch_protokoll(wurzel, text):
     zeile = "%s %s" % (time.strftime("%Y-%m-%d %H:%M:%S"), text)
     print("[Loeschen] " + text, file=sys.stderr, flush=True)
@@ -198,8 +213,7 @@ def _eigene_spuren_tilgen(stamm, grund_log="geloescht"):
         try:
             if os.path.exists(vormerk):
                 alt = open(vormerk, encoding="utf-8").read().splitlines()
-                neu = [z for z in alt if _loesch_grund(
-                    z.strip()[:-4] if z.strip().lower().endswith(".pdf") else z.strip()) != ziel]
+                neu = [z for z in alt if _loesch_grund(_stamm(z.strip())) != ziel]
                 if len(neu) != len(alt):
                     with open(vormerk, "w", encoding="utf-8") as fh:
                         fh.write("\n".join(neu) + ("\n" if neu else ""))
@@ -208,7 +222,7 @@ def _eigene_spuren_tilgen(stamm, grund_log="geloescht"):
             pass
         try:
             for d in os.listdir(os.path.join(wurzel, "archiv")):
-                if d.lower().endswith(".pdf") and _loesch_grund(d[:-4]) == ziel:
+                if not d.startswith(".") and _loesch_grund(_stamm(d)) == ziel:
                     os.remove(os.path.join(wurzel, "archiv", d))
                     getan = True
         except Exception as e:
@@ -236,10 +250,11 @@ def _nach_ui_loeschung(names):
 
 
 def _dokument_loeschen(pdf):
-    """Ein PDF aus <bereich>/loeschen/ ueberall entfernen. True = fertig."""
+    """Eine Datei (PDF, Excel, Word, ...) aus <bereich>/loeschen/ ueberall
+    entfernen. True = fertig."""
     wurzel = os.path.dirname(os.path.dirname(pdf))
     name = os.path.basename(pdf)
-    stamm = name[:-4] if name.lower().endswith(".pdf") else name
+    stamm = _stamm(name)
     ziel = _loesch_grund(stamm)
 
     # 1) Textfassungen in AnythingLLM finden (ueber alle Ablageordner).
@@ -323,15 +338,15 @@ def _liegengebliebene_einraeumen():
         except Exception:
             continue
         for d in sorted(os.listdir(eingang)):
-            if not d.lower().endswith(".pdf"):
-                continue
+            if d.startswith(".") or _stamm(d) == d:
+                continue          # keine Dokumentdatei
             pfad = os.path.join(eingang, d)
             try:
                 if jetzt - os.stat(pfad).st_ctime < 3600:
                     continue
             except OSError:
                 continue
-            if _loesch_grund(d[:-4]) not in im_bestand:
+            if _loesch_grund(_stamm(d)) not in im_bestand:
                 continue
             zeit = time.strftime("%Y-%m-%d %H:%M:%S")
             ziel_archiv = os.path.join(wurzel, "archiv", d)
@@ -496,7 +511,7 @@ def _seiten_vorwaermen(hoechstens=3):
 
 
 def _loesch_wache():
-    """Jede Minute nach <bereich>/loeschen/*.pdf sehen - und liegengebliebene
+    """Jede Minute nach <bereich>/loeschen/* sehen (jede Dokumentdatei) - und liegengebliebene
     Eingangsdateien einraeumen."""
     while True:
         try:
@@ -531,7 +546,7 @@ def _loesch_wache():
                 if not os.path.isdir(lo):
                     continue
                 for f in sorted(os.listdir(lo)):
-                    if f.lower().endswith(".pdf"):
+                    if not f.startswith(".") and f != "loeschen.log" and os.path.isfile(os.path.join(lo, f)):
                         try:
                             _dokument_loeschen(os.path.join(lo, f))
                         except Exception:
