@@ -58,8 +58,12 @@ services:
     container_name: ki4ki-docling
     restart: unless-stopped
     command: docling-serve run
+    # Gemessen 26.08.: Texterkennung (OCR) lief mit RapidOCR auf dem Prozessor, 4 von
+    # 16 Kernen, GPU 0 % - 750 Seiten DVS-Richtlinien brauchten ueber eine Stunde.
+    # Jetzt: EasyOCR auf der GPU (ocr_preset=easyocr im Ablaufplan) und 12 Kerne fuer
+    # Layout/Tabellen. Partner mit weniger Kernen: KI4KI_DOCLING_THREADS in der .env.
     environment:
-    - OMP_NUM_THREADS=4
+    - OMP_NUM_THREADS=${KI4KI_DOCLING_THREADS:-12}
     # gegen Speicher-Zerstueckelung: die Formelerkennung scheiterte sonst bei
     # grossen Dokumenten mit "out of memory", obwohl genug Speicher da war
     - PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True
