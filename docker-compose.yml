@@ -313,8 +313,10 @@ services:
     - KI4KI_KONTAKT=${KI4KI_KONTAKT:-}
     # ⭐ STUFE 1 (ARCHITEKTUR-GESPRAECH.md): Das Modell erkennt die Absicht
     # jeder Eingabe im Gespraechszusammenhang; Regeln bleiben Waechter und
-    # Rueckfall. Standard 0, bis die Pruefreihe (absichttest.py) >= 90 % zeigt.
-    - KI4KI_ABSICHT_MODELL=${KI4KI_ABSICHT_MODELL:-0}
+    # Rueckfall. Abnahme 26.08.: 31/32 Zuege (97 %) mit gemma4:12b, 3,0 s je
+    # Zug; gemma4:e2b nur 84 % (1,9 s) -> nicht gut genug. Standard an;
+    # KI4KI_ABSICHT_MODELL=0 in der .env schaltet auf den Regel-Router zurueck.
+    - KI4KI_ABSICHT_MODELL=${KI4KI_ABSICHT_MODELL:-1}
     - KI4KI_ABSICHT_MODELL_NAME=${KI4KI_ABSICHT_MODELL_NAME:-gemma4:12b}
     - KI4KI_ZWISCHENSPEICHER=/daten/pruefung/vorauswahl.pickle
     # Der Katalog (Titel/Verfasser/Jahr je Dokument) - dauerhaft im

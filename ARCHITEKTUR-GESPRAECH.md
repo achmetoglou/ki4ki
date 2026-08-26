@@ -122,3 +122,11 @@ Changelog: siehe Git-Historie (`git log --oneline`), Prüfreihen unter `pruef-pr
 - Prüfreihe Schicht 1 (ohne Modell): `python3 pruef-proxy/dialogtest.py` — 18 Szenarien, 155 Prüfungen.
 - Prüfreihe Schicht 2 (mit Modell, auf der Anlage): `docker exec ki4ki-pruef-proxy python3 /app/absichttest.py` — 32 echte Dialogzüge, Bedingung ≥ 90 % für Standard „an".
 - Abnahme-Weg: 1) aktualisieren, 2) absichttest laufen lassen, 3) bei ≥ 90 % `KI4KI_ABSICHT_MODELL=1` in die `.env`, `./aktualisiere.sh`, 4) Live-Dialoge vergleichen (Proxy-Log `[Absicht]`-Zeilen).
+
+## Abnahme 26.08.2026 — Stufe 1 an
+
+- Prüfreihe `absichttest.py` auf der A40: **gemma4:12b 31/32 = 97 %**, Ø 3,0 s je Zug (max 3,7 s). Einziger Fehlschlag „Gib mir den Bestand als BibTeX" → bestand — unschädlich, Export fängt der Regel-Wächter vor dem Modell.
+- gemma4:e2b: 27/32 = 84 %, Ø 1,9 s — verfehlt Fakten/Ziel/Anlage-Fragen → nicht als Absichts-Modell geeignet.
+- Erste Fassung (vor Nachschärfung) lag bei 81 %; Ursachen: Bestand/Gesamtbestand-Abgrenzung, Verfassername statt Kennung beim Vergleich. Behoben durch Auftragstext + Wächter (Namen über Katalog auflösen; Gesamtbestand nur mit ausdrücklichem Marker).
+- Schalter jetzt Standard **an** (`KI4KI_ABSICHT_MODELL=1`); Rückfall auf den Regel-Router per `.env`.
+- Kosten: +3 s je Frage. Nächster Schritt: Stufe 2 (Werkzeugketten), danach Prompt kürzen (Dokumentliste nur bei Bedarf) für Tempo.
