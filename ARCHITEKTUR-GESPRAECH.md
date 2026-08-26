@@ -130,3 +130,20 @@ Changelog: siehe Git-Historie (`git log --oneline`), Prüfreihen unter `pruef-pr
 - Erste Fassung (vor Nachschärfung) lag bei 81 %; Ursachen: Bestand/Gesamtbestand-Abgrenzung, Verfassername statt Kennung beim Vergleich. Behoben durch Auftragstext + Wächter (Namen über Katalog auflösen; Gesamtbestand nur mit ausdrücklichem Marker).
 - Schalter jetzt Standard **an** (`KI4KI_ABSICHT_MODELL=1`); Rückfall auf den Regel-Router per `.env`.
 - Kosten: +3 s je Frage. Nächster Schritt: Stufe 2 (Werkzeugketten), danach Prompt kürzen (Dokumentliste nur bei Bedarf) für Tempo.
+
+## Stand 26.08.2026 (nachmittags) — Stufe 2 gebaut, Schalter aus, Grenzen gemessen
+
+**Gebaut:** `pruef-proxy/gespraech.py` (Werkzeugschema, Gesprächsschleife bis 5 Runden, Wächter) + `_gespraech_antwort`/`_werkzeug` im Proxy. Werkzeuge: seiten_lesen, abbildungen_auflisten, abbildung_zeigen, zusammenfassen, zaehlen, bestand, dokument_finden, abkuerzung, exportieren. Schalter `KI4KI_GESPRAECH=1` (Standard 0; Stufe 1 bleibt Rückfall). Nichts davon ist an eine bestimmte Bibliothek gebunden — Kennungen aus Dateinamen, Katalog vom Deckblatt, Abbildungen aus Unterschriften; gilt für jeden Bereich (AuW, KAP, Partner).
+
+**Gemessen am Replay des Fadens vom 26.08. (gemma4:12b, simulierte Werkzeuge):**
+- ✅ Zwei Aufgaben in einem Zug („Zusammenfassung mit stärkstem Bild") → 3–4 Werkzeuge verkettet, 8–10 s. ✅ „Warum unlesbar?" wird erklärt. ✅ Meinungsfragen sachlich. ✅ Dokumentwechsel per Name.
+- ❌ **Das 12B erfindet trotz Werkzeugergebnis**: Abbildungslisten mit Nummern, Seiten und Unterschriften, die es nicht gibt — auch nachdem der Wächter die echte Liste vorgelegt hat; Inhalte samt „Zitat" ohne gelesene Seite (Zug 2: das Gegenteil der Arbeit, mit Seitenangabe).
+
+**Konsequenz — Verteidigung unabhängig vom Modell (eingebaut):**
+1. Wächter *holen* Belege selbst (echte Abbildungsliste, passende Seiten) statt zu bitten.
+2. Jede Aussage mit (Kennung, S. n) wird per Wortdeckung gegen die Seite geprüft; ohne Deckung → „nicht belegt".
+3. Wörtliche Zitate werden geprüft und verlinkt (gelb), erfundene markiert.
+4. Erfundene Bildnummern werden gestrichen; die echte Liste wird angehängt; existierende werden eingebettet.
+5. Temperatur 0; Ausfall → alter Weg.
+
+**Offen / Entscheidung:** Die Erfindungsneigung ist eine Modellgrenze. Stufe 3 (gemma4:27b, ~17 GB, passt auf die A40) ist jetzt der naheliegende Test — dieselbe Replay-Reihe mit beiden Modellen. Bis dahin: Stufe 2 nur im Testbetrieb (`KI4KI_GESPRAECH=1` in der `.env`), Stufe 1 bleibt Standard.
