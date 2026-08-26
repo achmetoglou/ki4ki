@@ -187,3 +187,17 @@ Felder oder aus dem Satz erkannt → Suche in Fehlerkatalogen/Handbüchern → A
 Ursache · Maßnahme · Quelle (Seite) · Gültigkeit → bei Leerlauf **Eskalation** (Ansprechpartner)
 statt Schein-Sicherheit. Der Bestand entscheidet: **ein kleiner, geprüfter Störfall-Bestand vor
 dem Bau — nicht danach.**
+
+## Stand 26.08.2026 (abends) — K1–K5 gebaut
+
+| | Was | Wie es funktioniert | Prüfung |
+|---|---|---|---|
+| K1 | Audit-Trail | Prüfprotokoll je Frage (Konto pseudonym, Bereich, Faden, Quellen, Verdikt, Dauer, **Störfall-Kontext**), verkettet, 90 Tage | vorhanden, Ketten-Prüfung |
+| K2 | Feedback | Daumen der Oberfläche werden am Proxy mitgeschrieben (`chat-feedback`-Route); Chat „Falsche Quelle: …" / „Feedback: …"; Liste unter `/rueckmeldungen` | Kennzahlen-Test |
+| K3 | Metadaten | `dokumente/<bereich>/metadaten.json` (Freigabe, Owner, Version, Gültigkeit, `ki: nein`), `bereich.json` `nur_freigegebene` / `abgelaufene_ausschliessen`; greift in **jeder** Zugriffsprüfung (Listen, Suche, Zitat, Fundstellen-Link); Status und Warnung in Antworten | 10 Prüfungen |
+| K4 | Störfall | Anlage/Fehlercode/Symptom aus Feldern oder Satz; Werkzeuge `stoerfall_suchen` + `bestand_durchsuchen` (Wortverzeichnis → Seitenwahl über alle Dokumente); Belege werden **vor** dem Modell geholt; Antwort als Tabelle Ursache · Maßnahme · Quelle · Gültigkeit; nichts Belegtes → Eskalation mit `KI4KI_KONTAKT` | Replay am Modell: Tabelle korrekt, Entwurf als „nicht freigegeben" markiert; ohne Treffer ehrliche Eskalation (1,2 s) |
+| K5 | KPI | `/kpi`: quellenbasierte Antworten, Trefferquote, Eskalationsquote, Zeit bis zur ersten Quelle (Median je Faden), Störfälle, Rückmeldungen, Nutzung je Tag; `/kpi?format=json` | Kennzahlen-Test |
+
+**Prüfungsfragen (AuW):** Optionen A–D (auch inline, auch Kleinbuchstaben) werden erkannt; je Option wird der Bestand **vorab** durchsucht, das Modell urteilt mit Denken und wörtlichem Vergleich. Replay: „Welche Aussage ist falsch? A) Mitteneinspannung erhöht die Lebensdauer …" → „A ist falsch — der Beleg sagt *verkürzt*" mit Zitaten, 4,7 s. Vorher (ohne Vorab-Belege) riet das Modell ein Dokument und erfand Zitate.
+
+**Fußnoten:** eine `<sub>`-Zeile mit Quelle, Werkzeugen, geprüften Zitaten und Warnungen; Hinweise „Weiter: …" nur in den ersten zwei Zügen eines Fadens.

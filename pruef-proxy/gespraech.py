@@ -155,8 +155,9 @@ def system_text(faden_dok=None, dokumente=None, kontakt=""):
         "Seiten stehen. Findet sich nichts Belegtes: KEINE eigene Vermutung - sag 'nicht im Bestand belegt' und "
         "nenne den Ansprechpartner. Steht bei einer Quelle 'nicht freigegeben' oder 'abgelaufen', sag das dazu.\n"
         "14. PRUEFUNGSFRAGEN (Optionen A-D, 'welche Aussage ist falsch/richtig', 'was ist keine Aufgabe von'): "
-        "bestand_durchsuchen mit den Fachbegriffen jeder Option; urteile je Option mit Beleg; bei Negativfragen "
-        "belege die zutreffenden Optionen und verneine nur, was keine Seite stuetzt.\n"
+        "Je Option: Beleg lesen, dann Option und Beleg WOERTLICH vergleichen. Sagt der Beleg das Gegenteil "
+        "(z.B. 'verkuerzt die Lebensdauer' gegen 'erhoeht die Lebensdauer'), ist die Option FALSCH - nie 'richtig' "
+        "mit einem widersprechenden Zitat. Ohne Beleg: 'nicht belegbar'. Schluss: ein Satz mit dem Urteil.\n"
         "15. Ohne Faden-Dokument und ohne genanntes Dokument: bestand_durchsuchen statt raten oder nachfragen.",
         "GESPRAECHSZUSTAND:\nFaden-Dokument: %s" % (faden_dok or "keins (frag nach oder nutze dokument_finden/bestand)"),
     ]
@@ -283,14 +284,27 @@ def waechter(text, aufrufe, faden_dok=None, frage="", tool_texte=None, verlauf_t
 
 
 def fuehren(frage, verlauf, faden_dok, dokumente, werkzeug, rufen=None, kontakt="",
-            melden=None, max_runden=None, pruefer=None):
+            melden=None, max_runden=None, pruefer=None, vorwissen=None, denken=None):
     """Ein Gespraechszug. werkzeug(name, args) -> str. rufen(messages) -> message.
     Rueckgabe dict: text, aufrufe [(name, args, ms)], dokumente (beruehrte
     Kennungen), runden, ms, fehler."""
     begonnen = time.time()
-    rufen = rufen or _modell_aufruf
+    rufen = rufen or (lambda m: _modell_aufruf(m, denken=denken))
     msgs = nachrichten(system_text(faden_dok, dokumente, kontakt), verlauf, frage)
     aufrufe, beruehrt, texte = [], [], []
+    # ⭐ VORWISSEN: Belege, die der Proxy VOR dem Modell deterministisch geholt
+    #   hat (Pruefungsfragen je Option, Stoerfall ohne Dokument, Frage ohne
+    #   Faden-Dokument). Sie stehen als Werkzeugergebnis im Gespraech - das
+    #   Modell muss nicht raten, welches Dokument gemeint ist (gemessen 26.08.:
+    #   bei einer Pruefungsfrage riet es ein Dokument und erfand Zitate).
+    for name, args, ergebnis in (vorwissen or []):
+        msgs.append({"role": "assistant", "content": "",
+                     "tool_calls": [{"function": {"name": name, "arguments": args}}]})
+        msgs.append({"role": "tool", "content": str(ergebnis)[:20000]})
+        aufrufe.append((name, args, 0))
+        d = args.get("dokument") if isinstance(args, dict) else None
+        if d and d not in beruehrt:
+            beruehrt.append(d)
     fehler = None
     m = {}
     geprueft = False

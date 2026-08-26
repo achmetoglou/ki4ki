@@ -2051,13 +2051,15 @@ def zusammenfassungs_auftrag(volltext, titel, hoechstens=48000):
 # ============================================================================
 
 # Optionen als eigene Zeile. Bis D, weil eine der Pruefstueck-Fragen vier hat.
-_OPTION_ZEILE = re.compile(r"^\s*([A-D])\s*[:)]\s*(.+?)\s*$", re.M)
+_OPTION_ZEILE = re.compile(r"^\s*([A-Da-d])\s*[:)]\s*(.+?)\s*$", re.M)
 
 # Optionen in einer Zeile, durch Komma getrennt. Der Vorgriff sorgt dafuer,
 # dass ein Komma INNERHALB einer Option (".. Garn, das .." ) nicht trennt -
 # getrennt wird nur, wo der naechste Buchstabe folgt.
+# Inline auch mit Punkt/Semikolon vor dem naechsten Buchstaben und mit
+# Kleinbuchstaben: "A) ... . B) ... . C) ..." (Pruefungskatalog, 26.08.).
 _OPTION_REIHE = re.compile(
-    r"([A-D])\s*[:)]\s*(.+?)(?=\s*,\s*[A-D]\s*[:)]|\s*$)")
+    r"\b([A-Da-d])\s*[:)]\s*(.+?)(?=\s*[,;.]?\s*\b[A-Da-d]\s*[:)]\s*\S|\s*$)")
 
 
 def optionen_finden(frage):
@@ -2076,7 +2078,7 @@ def optionen_finden(frage):
         # zerlegt der Ausdruck auch den Fragesatz.
         raus = []
         for zeile in text.splitlines():
-            if not re.search(r"[A-D]\s*[:)]\s*\S", zeile):
+            if not re.search(r"\b[A-Da-d]\s*[:)]\s*\S", zeile):
                 continue
             for b, t in _OPTION_REIHE.findall(zeile):
                 raus.append((b.upper(), t.strip().rstrip(",;.")))

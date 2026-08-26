@@ -5416,10 +5416,32 @@ class Griff(BaseHTTPRequestHandler):
         _frage_modell = frage
         if _kx and stoerfall.ist_stoerfall(frage):
             _frage_modell = frage + "\n[Erkannter Störfall-Kontext: %s]" % stoerfall.kontext_zeile(_kx)
+        # ⭐ VORAB BELEGE HOLEN (deterministisch), damit das Modell nicht raet:
+        #   Pruefungsfrage -> je Option; Stoerfall -> Stoerfallsuche; sonst ohne
+        #   Faden-Dokument -> Bestandssuche mit den Fachwoertern der Frage.
+        vorwissen = []
+        try:
+            optionen = assistent.optionen_finden(frage)
+            if len(optionen) >= 2:
+                self._stand(stand, "Prüfungsfrage: suche Belege je Option …")
+                for buchstabe, text_opt in optionen[:6]:
+                    erg = self._werkzeug("bestand_durchsuchen", {"begriffe": text_opt}, zustand)
+                    vorwissen.append(("bestand_durchsuchen", {"begriffe": "Option %s: %s" % (buchstabe, text_opt)}, erg))
+            elif _kx and stoerfall.ist_stoerfall(frage):
+                self._stand(stand, "Störfall: suche in Fehlerkatalogen und Handbüchern …")
+                args = {"anlage": _kx.get("anlage", ""), "fehlercode": _kx.get("fehlercode", ""), "symptom": _kx.get("symptom", "")}
+                vorwissen.append(("stoerfall_suchen", args, self._werkzeug("stoerfall_suchen", args, zustand)))
+            elif not faden_dok and not assistent.ist_anlagefrage(frage) and not assistent._ist_bestandsfrage(frage) \
+                    and fadenfrage.suchwoerter(frage) and not assistent.dokument_gemeint(frage, namen)[0]:
+                self._stand(stand, "Durchsuche alle Dokumente …")
+                vorwissen.append(("bestand_durchsuchen", {"begriffe": frage}, self._werkzeug("bestand_durchsuchen", {"begriffe": frage}, zustand)))
+        except Exception:
+            traceback.print_exc(file=sys.stderr)
         e = gespraechsmodus.fuehren(
             _frage_modell, GESPRAECHE.verlauf_kurz(gespraech_k), assistent._titel_saubern(faden_dok) if faden_dok else None,
             zeilen, lambda n, a: self._werkzeug(n, a, zustand), kontakt=assistent.kontakt_zeile(),
-            melden=melden)
+            melden=melden, vorwissen=vorwissen,
+            denken=True if (len(assistent.optionen_finden(frage)) >= 2 or assistent.ist_negativfrage(frage)) else None)
         self._stand_weg(stand)
         text = e.get("text") or ""
         if e.get("fehler") and not text:
