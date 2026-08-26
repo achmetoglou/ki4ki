@@ -537,6 +537,9 @@ def szenario_24_pruefungskatalog():
     pruefe(pk._sauber("(e Milieuharze verdunsten") == "Milieuharze verdunsten", "OCR-Rest am Anfang entfernt")
     dop = pk.fragen_aus_text("| 3. | Wodurch unterscheidet sich X von der |\n| Bei den EP-Harzen... | Bei den EP-Harzen... |\n| a) | eins |\n| b) | zwei |\n")
     pruefe(dop and dop[0]["frage"].count("Bei den EP-Harzen") == 1, "doppelte Tabellenzellen nur einmal im Fragetext")
+    tab = assistent._liste(["DVS 2213-1_neu", "Katalog X"], {"Katalog X": "Excel · Prüfungskatalog (29 Fragen)"})
+    pruefe(tab.startswith("| Kennung | Titel | Verfasser | Jahr | Art |") and "| [Katalog X](/pdf/Katalog%20X) | — | — | — | Excel · Prüfungskatalog (29 Fragen) |" in tab
+           and "[DVS 2213-1_neu](/pdf/" in tab, "Index-Tabelle auch ohne Katalogeintrag, mit Spalte Art")
     pruefe(assistent._ist_bestandsfrage("Was haben wir alles im bestand") and not assistent._ist_bestandsfrage("Stell mir eine Frage aus dem Katalog"),
            "'Was haben wir alles im Bestand' ist eine Bestandsfrage, der Katalogwunsch nicht")
     pruefe(sorted(z["reihe"]) == [0, 1, 2, 3] and z["reihe"] != [0, 1, 2, 3], "Optionen deterministisch gemischt (richtige nicht immer a)")

@@ -902,7 +902,7 @@ def anreichern(frage, gegenstand):
 
 # ------------------------------------------------------ Bestandsauskunft
 
-def bestandsauskunft(frage, titel, bereich=None, vorher=None):
+def bestandsauskunft(frage, titel, bereich=None, vorher=None, zusatz=None):
     """Auskunft ueber den eigenen Bestand - ohne Umweg ueber das Modell.
 
     Das ist keine KI-Aufgabe, sondern eine Abfrage. Fuer jeden neuen
@@ -967,7 +967,7 @@ def bestandsauskunft(frage, titel, bereich=None, vorher=None):
         if passend:
             kopf = ("Zu **%s** liegen %d Dokumente vor:"
                     % (stichwort, len(passend)))
-            return kopf + "\n\n" + _liste(passend) + _fussnote(len(sauber))
+            return kopf + "\n\n" + _liste(passend, zusatz) + _fussnote(len(sauber))
         return ("Zu **%s** finde ich im Bestand%s keinen Dokumenttitel. "
                 "Das heisst nicht, dass es inhaltlich nichts dazu gibt - "
                 "frag ruhig direkt nach der Sache."
@@ -988,7 +988,7 @@ def bestandsauskunft(frage, titel, bereich=None, vorher=None):
             _bst.nachtragen(sauber)
         except Exception:
             pass
-        return kopf + "\n\n" + _liste(sauber)
+        return kopf + "\n\n" + _liste(sauber, zusatz)
     # Bei grossen Bestaenden hilft eine angeschnittene Liste niemandem: Die
     # ersten vierzig Titel der Fremdliteratur heissen "0000000" und sagen
     # gar nichts. Dann lieber nur die Aufteilung zeigen und nach einem
@@ -1141,37 +1141,40 @@ def _titel_saubern(t):
     return re.sub(r"\s+", " ", t)
 
 
-def _liste(titel):
-    """Alle Dokumente als Tabelle (Kennung · Titel · Verfasser · Jahr), sobald
-    zu einem der Titel bekannt ist - sonst schlichte Aufzaehlung.
+def _liste(titel, zusatz=None):
+    """Der INDEX eines Bereichs: IMMER eine Tabelle (Kennung · Titel ·
+    Verfasser · Jahr · Art), egal was hochgeladen wurde (Emrach 26.08.:
+    "diese Spaltenansicht soll er immer machen, in jedem Workspace, quasi
+    ein Index, egal was man hochlaedt"). Vorher gab es die Tabelle nur,
+    wenn wenigstens ein Katalogeintrag existierte - sonst nackte Namen.
 
-    Vorher stand hier nur der Dateiname ("DS-00-000"). Fuer jemanden, der
-    den Bestand nicht auswendig kennt, sagt das nichts."""
+    zusatz = {kennung: "Dissertation · PDF · 131 S."} vom Proxy (Art,
+    Dateiart, Seiten, Pruefungskatalog) - hier nicht ermittelbar."""
     try:
         import bestand
     except Exception:
         bestand = None
     from urllib.parse import quote
     angaben = [(t, bestand.angaben(t) if bestand else None) for t in titel]
-    if not any(a and a.get("titel") for _, a in angaben):
-        return "\n".join("- %s" % t for t in titel)
+    zusatz = zusatz or {}
 
     def _zelle(x):
         return (x or "").replace("|", "\\|").replace("\n", " ").strip()
 
-    zeilen = ["| Kennung | Titel | Verfasser | Jahr |", "|---|---|---|---|"]
+    zeilen = ["| Kennung | Titel | Verfasser | Jahr | Art |", "|---|---|---|---|---|"]
     for t, a in angaben:
         verweis = "[%s](/pdf/%s)" % (_zelle(t), quote(t, safe=""))
+        art = zusatz.get(t) or (a.get("art") if a else "") or ""
         if a and a.get("titel"):
             marke = "°" if a.get("quelle") == "modell" else ""
-            zeilen.append("| %s | %s%s | %s | %s |" % (
+            zeilen.append("| %s | %s%s | %s | %s | %s |" % (
                 verweis, _zelle(a["titel"]), marke,
-                _zelle(a.get("verfasser")), _zelle(str(a.get("jahr") or ""))))
+                _zelle(a.get("verfasser")), _zelle(str(a.get("jahr") or "")), _zelle(art)))
         else:
-            zeilen.append("| %s | *kein Katalogeintrag* |  |  |" % verweis)
+            zeilen.append("| %s | — | — | — | %s |" % (verweis, _zelle(art)))
     if any(a and a.get("quelle") == "modell" for _, a in angaben):
         zeilen.append("")
-        zeilen.append("*° = vom kleinen Modell aus dem Deckblatt gelesen.*")
+        zeilen.append("*° = aus dem Deckblatt gelesen · — = noch kein Deckblatt-Eintrag (wird nachgetragen).*")
     return "\n".join(zeilen)
 
 

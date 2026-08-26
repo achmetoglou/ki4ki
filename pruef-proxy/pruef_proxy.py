@@ -1738,6 +1738,34 @@ def _pdf_schluessel(name):
     return _pdf_schluessel_roh(name)
 
 
+_SEITENZAHLEN = {}
+
+
+def _seitenzahl_schnell(pfad):
+    """Seitenzahl per pdfinfo (Millisekunden) - NICHT ueber den Volltext,
+    sonst zieht die Index-Tabelle eines Bereichs mit 60 Arbeiten beim
+    ersten Aufruf minutenlang pdftotext hinter sich her."""
+    if not pfad:
+        return 0
+    try:
+        st = os.stat(pfad)
+    except OSError:
+        return 0
+    k = (pfad, st.st_mtime_ns, st.st_size)
+    if k in _SEITENZAHLEN:
+        return _SEITENZAHLEN[k]
+    n = 0
+    try:
+        import subprocess
+        aus = subprocess.run(["pdfinfo", pfad], capture_output=True, text=True, timeout=5).stdout
+        m = re.search(r"^Pages:\s+(\d+)", aus, re.M)
+        n = int(m.group(1)) if m else 0
+    except Exception:
+        n = 0
+    _SEITENZAHLEN[k] = n
+    return n
+
+
 def _archivdatei(name):
     """Die Originaldatei zu einem Stamm in irgendeinem <bereich>/archiv/ -
     fuer Dokumente ohne PDF (Excel, Word ...). None, wenn es keine gibt."""
@@ -5430,9 +5458,9 @@ class Griff(BaseHTTPRequestHandler):
         if name == "bestand":
             thema = str(args.get("thema") or "").strip()
             frage = ("Welche Dokumente haben wir zum Thema %s?" % thema) if thema else "Welche Dokumente haben wir?"
-            t = assistent.bestandsauskunft(frage, namen, bereich=True)
+            t = assistent.bestandsauskunft(frage, namen, bereich=True, zusatz=self._bestand_zusatz(namen))
             if not t:
-                t = "\n".join(assistent.dokument_zeile(n) for n in sorted(namen))
+                t = assistent._liste(sorted(assistent._titel_saubern(n) for n in namen), self._bestand_zusatz(namen))
             _stati = [(assistent._titel_saubern(n), dokument_status(n)) for n in sorted(namen)]
             _stati = [(k, st) for k, st in _stati if st]
             if _stati:
@@ -5812,6 +5840,43 @@ class Griff(BaseHTTPRequestHandler):
                  (", gestrichen " + ",".join(gestrichen)) if gestrichen else "", frage[:60]),
               file=sys.stderr, flush=True)
         return True
+
+    def _bestand_zusatz(self, namen, hoechstens=120):
+        """Spalte 'Art' des Index: Dissertation/Norm-Art aus der Kennung, sonst
+        Dateiart (PDF · n S. / Excel / Word / Text) und ob es ein
+        Pruefungskatalog ist. Schluessel = Anzeigetitel (wie in der Tabelle)."""
+        aus = {}
+        try:
+            import bestand as _bst
+        except Exception:
+            _bst = None
+        for n in list(namen or [])[:hoechstens]:
+            anzeige = assistent._titel_saubern(n)
+            teile = []
+            try:
+                art = _bst.art_von(anzeige) if _bst else None
+            except Exception:
+                art = None
+            if art:
+                teile.append(art)
+            sch = _pdf_schluessel(n)
+            if sch:
+                seiten = _seitenzahl_schnell(PDFS.get(sch, ""))
+                teile.append("PDF · %d S." % seiten if seiten else "PDF")
+            else:
+                datei = _archivdatei(anzeige) or _archivdatei(n) or ""
+                endung = os.path.splitext(datei)[1].lower()
+                teile.append({".xlsx": "Excel", ".xls": "Excel", ".csv": "Tabelle (CSV)", ".docx": "Word", ".doc": "Word",
+                              ".pptx": "PowerPoint", ".ppt": "PowerPoint", ".txt": "Text", ".html": "HTML",
+                              ".htm": "HTML", ".md": "Text", ".odt": "Text (ODT)"}.get(endung, "Datei" if datei else "Text"))
+            try:
+                fragen = self._katalog_fragen(n)
+                if len(fragen) >= 3:
+                    teile.append("Prüfungskatalog (%d Fragen)" % len(fragen))
+            except Exception:
+                pass
+            aus[anzeige] = " · ".join(teile)
+        return aus
 
     # ------------------------------------------------------ Pruefungskatalog
     _KATALOGE = {}      # bestandsschluessel -> (textlaenge, fragen)
@@ -6525,7 +6590,7 @@ class Griff(BaseHTTPRequestHandler):
             bereich = False
         text = assistent.bestandsauskunft(frage, titel,
                                           bereich=bereich or None,
-                                          vorher=vorher)
+                                          vorher=vorher, zusatz=self._bestand_zusatz(titel))
         if not text:
             return False
         self._festhalten("bestand", frage, text)

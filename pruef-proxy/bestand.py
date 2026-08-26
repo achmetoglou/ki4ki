@@ -184,12 +184,15 @@ _NACHTRAG_SPERRE = threading.Lock()
 _NACHTRAG_LAEUFT = set()
 
 _DECKBLATT_ANWEISUNG = (
-    "Unten steht der Anfang eines wissenschaftlichen Dokuments (Deckblatt, "
-    "Impressum). Lies daraus den TITEL der Arbeit, den VERFASSER (die Person, "
-    "die die Arbeit geschrieben hat - nicht Betreuer, Gutachter oder Institut) "
-    "und das JAHR. Antworte NUR mit einer JSON-Zeile der Form "
-    '{"titel": "...", "verfasser": "...", "jahr": "..."}. Was nicht dasteht, '
-    "bleibt leer. Nichts erfinden.")
+    "Unten steht der Anfang eines Dokuments (Deckblatt, Impressum, Kopf einer "
+    "Tabelle) - es kann eine wissenschaftliche Arbeit sein, eine Norm oder "
+    "Richtlinie, ein Handbuch, ein Bericht, eine Praesentation oder eine "
+    "Fragen-/Datentabelle. Lies daraus den TITEL des Dokuments (bei Normen: "
+    "Nummer und Titel, z.B. 'DVS 2213-1 Kunststoffkleben'), den VERFASSER (die "
+    "Person oder die herausgebende Organisation, z.B. 'DVS' - nicht Betreuer, "
+    "Gutachter oder Institut einer Arbeit) und das JAHR. Antworte NUR mit einer "
+    'JSON-Zeile der Form {"titel": "...", "verfasser": "...", "jahr": "..."}. '
+    "Was nicht dasteht, bleibt leer. Nichts erfinden.")
 
 
 def _volltext_anfang(name, zeichen=4000):

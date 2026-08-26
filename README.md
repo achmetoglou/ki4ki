@@ -55,6 +55,11 @@ Wo etwas nicht ankam, steht der Grund in `dokumente/<bereich>/aussortiert/aussor
 | **Kennzahlen & Liste** | `http://<server>:3001/kpi` (eine Seite: quellenbasierte Antworten, Trefferquote, Eskalationsquote, Zeit bis zur ersten Quelle, Störfälle, Rückmeldungen, Nutzung je Tag) · `/rueckmeldungen` (alle Rückmeldungen) · `/protokoll` (Rohdaten, CSV-Export). Sichtbar für die Konten in `KI4KI_PROTOKOLL_EINSICHT` (Standard `admin`), nach Anmeldung in der Oberfläche. |
 | **Audit-Trail** | Jede Frage, Quelle, Antwort, Konto (pseudonym), Bereich, Dauer, Störfall-Kontext — manipulationssicher verkettet, Aufbewahrung `KI4KI_PROTOKOLL_TAGE` (90). |
 
+**Index eines Bereichs.** „Was haben wir im Bestand?" liefert in jedem Bereich dieselbe Tabelle —
+Kennung (Link zur Datei) · Titel · Verfasser · Jahr · Art (Dissertation / PDF mit Seitenzahl / Excel /
+Word / Prüfungskatalog) — egal, was hochgeladen wurde. Titel, Verfasser und Jahr liest das kleine
+Modell aus dem Deckblatt nach (° in der Tabelle); bis dahin steht ein „—".
+
 **Prüfungskatalog (Fragen abfragen).** Liegt im Bereich eine Datei mit Fragen und Antwortoptionen
 (Excel mit Spalten `Frage | Antwort richtig | Antwort falsch | … | Bereich | LE`, oder ein Katalog mit
 a)/b)/c)-Optionen), stellt die Anlage auf „stell mir eine Prüfungsfrage", „frag mich ab", „Frage 7",
