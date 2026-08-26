@@ -110,3 +110,80 @@ Technik: [T1] MTRAG https://arxiv.org/html/2501.03468 · https://github.com/IBM/
 **Router (§4):** 1 Feedback-Gate mit Reparatur ✅ · 2 Pivot/Vertiefung ✅ · 3 Dokumentbezug vor Bestand (Veto gegen Auffangnetz) ✅ · 4 Klärfrage erzwungen ✅ · 5 kein freies Umschreiben ✅ · 6 Unanswerable-Pfad ✅ · 8 Konfidenz „Hoch" ohne geprüftes Zitat → „Mittel" ✅ · 7 Recap 🟡.
 
 **Neu dazu:** Dokument-Fakten (Seiten/Abbildungen/Tabellen/Verfasser/Jahr) ohne Modell, einzeln oder als Tabelle über den Bereich · Fragen an die Anlage selbst („angedockt?") beantwortet der Proxy · Denken je Aufgabe (Vergleich, Widerspruch, Kennwerte) · Testreihe `pruef-proxy/dialogtest.py`: 17 Szenarien, 143 Prüfungen.
+
+
+## 7 · Anforderungen aus den Partner-Unterlagen (Netzwerktreffen 2+3, Implementierungsleitfaden 141 S.)
+
+Ausgewertet am 31.07.2026 (Session-Archiv), hier nachgetragen am 26.08., weil die Recherche
+oben (§1–§6) generisch war und **nicht** gegen diese Unterlagen geprüft wurde. Der benannte
+Pilot-Use-Case ist **nicht** „Fragen an Dissertationen", sondern:
+
+> **UC 1: KI-gestützte Störfallassistenz** im Prozess **„Breakdown-to-Recovery"** —
+> „sehr hoher Nutzen, hohe Prozessnähe, gute Datenbasis, beherrschbares Risiko,
+> klarer MVP-Kandidat" (S. 102).
+
+Damit ist der Zielzustand nicht mehr Auslegungssache. Konkret gefordert:
+
+| Anforderung aus dem Leitfaden | Stand 31.07. → 26.08. |
+|---|---|
+| Antwort **immer mit Quellenbezug** (S. 103, 111, 115) | ✅ **besser als gefordert** — Belegprüfung + seitengenauer Sprung ins Original |
+| „**Eskalation statt Schein-Sicherheit**", keine Antwort ohne Evidenz (S. 111) | ✅ vorhanden, inkl. „Wo nachgesehen wurde" |
+| Human-in-the-loop, keine automatische Freigabe/Parametrierung (S. 109, 113) | ✅ per Bauart erfüllt |
+| **„KI-Suche darf Berechtigungen nicht umgehen"** (S. 74) | ⚠ genau unser Rechteloch — produktiv geschlossen, **im Paket offen** |
+| **Audit Gate: Logging aller Anfragen, Quellen und Antworten** (S. 100, 117, 139) | ⛔ **existiert nicht** |
+| **Feedback im UI**: hilfreich / nicht hilfreich, Meldung falscher Quellen (S. 123, 128) | ⛔ existiert nicht |
+| **Kontextparameter** Linie · Fehlercode · Symptom · Rolle werden mitgegeben (S. 115) | ⛔ heute freier Chat ohne Prozesskontext |
+| **Metadaten je Wissensobjekt**: Freigabestatus, Owner, Version, Gültigkeit, Review-Zyklus (S. 51–55) | ⛔ keine Metadatenebene |
+| Zustand **„Für KI ausschließen"** — Inhalt bleibt, wird aber nicht indexiert (S. 88, 95) | ⛔ heute wird alles indexiert |
+| **Reaktionszeit < 5 Minuten** im Störfall (S. 60, 62) | ✅ 38–113 s |
+| **KPIs**: Suchzeit bis zur ersten verwertbaren Quelle, MTTR, Eskalationsquote, Anteil quellenbasierter Antworten, Trefferquote, Nutzungsquote (S. 101, 105, 127) | ⛔ nichts davon wird gemessen |
+| **Geregelte Re-Indexierung** bei Content-Änderungen, Incident-Prozess, Fallback (S. 117, 139) | teilweise (Zyklus/Wächter), nicht als Betriebsmodell |
+
+**Der wichtigste inhaltliche Befund:** Die geforderten Wissensobjekte sind
+**Known-Issue-Einträge, Troubleshooting Guides, Fehlerkataloge, Soll-Parameterblätter,
+Schichtberichte und eine Expertenmatrix** (S. 46–47, 59–65) — überwiegend **strukturierte
+Datensätze mit Metadaten**, ausdrücklich *keine* PDF-Sammlung. Die IKV-Bibliothek ist
+Forschungsliteratur. Beides ist dieselbe Maschine, aber **nicht derselbe Bestand.**
+
+**Und der Leitfaden warnt vor genau unserem Muster** (S. 7, 14, 82):
+„KI verstärkt vorhandenes Wissen – sie ersetzt keine saubere Struktur, Ownership und
+Methodik" · „Eine KI würde diese Unschärfen nicht lösen, sondern lediglich schneller
+verbreiten" · „KI braucht nicht möglichst viel Content, sondern einen geprüften, führenden
+und strukturierten Wissensbestand."
+
+→ **Konsequenz für den Plan:** Der Bestand entscheidet, nicht die Antwortqualität. Ein
+kleiner, sauber verschlagworteter Störfall-Bestand schlägt 1.259 Bibliotheks-PDFs.
+
+
+**Stand 26.08. zu den fünf Arbeitspaketen K1–K5:** K1 Audit-Trail ✅ (Prüfprotokoll je Frage,
+Kette, Verdikte) · K2 Feedback im UI ❌ · K3 Metadaten/„für KI ausschließen" ❌ · K4
+Kontextparameter/Störfall-Modus ❌ · K5 KPI-Auswertung ❌ (Rohdaten im Protokoll vorhanden).
+
+## K — Demonstrator-Anforderungen aus dem Leitfaden (bis 27.08.)
+
+Diese fünf schließen die Lücken aus der Tabelle oben. **K1 und K2 sind Gate-Bedingungen**
+des Leitfadens, keine Komfortfunktionen: ohne Logging kein bestandenes Audit Gate (S. 100).
+
+| | Was | Warum |
+|---|---|---|
+| **K1** | **Audit-Trail**: jede Anfrage, jede herangezogene Quelle, jede Antwort, Zeitstempel, Konto, Bereich. Aufbewahrungsfrist konfigurierbar. Getrennt vom Chatverlauf, maschinenlesbar. | Audit Gate. Klärt zugleich die offene Frage aus den Rechteloch-Wellen: *was ist tatsächlich abgeflossen?* |
+| **K2** | **Feedback im UI**: „hilfreich / nicht hilfreich" plus „falsche Quelle melden". Rückfluss in eine Liste, die jemand ansieht. | Nutzungs-KPI und der einzige Weg, an dem sich Content-Lücken zeigen (S. 128). |
+| **K3** | **Metadatenebene je Dokument — Felder nicht erfinden, sie stehen fertig auf S. 86:** Relevanz · Gültigkeit · Aktualität · Freigabestatus · führende Quelle · dublettenfrei · Maschinenlesbarkeit · KI-Eignung · Rollenzuweisung. Dazu die sechs Zustände von S. 88 als Dokumentstatus: behalten · überarbeiten · konsolidieren · archivieren · löschen · **für KI ausschließen**. Retrieval filtert auf „freigegeben" **und** „für KI zugelassen". | Truth Gate + Freshness Gate. Ohne das ist jede Antwort so verbindlich wie der schlechteste Entwurf im Bestand. |
+| **K4** | **Kontextparameter statt freier Chat**: Anlage/Linie, Fehlercode, Symptom, Rolle werden als Felder mitgegeben und ins Retrieval gehängt. Der siebte Fall der Einordnung wird damit `stoerfall`. | S. 115. Ist zugleich der sichtbarste Unterschied zu „noch ein Chatbot" in der Vorführung. |
+| **K5** | **KPI-Erfassung** aus K1: Zeit bis zur ersten verwertbaren Quelle, Anteil quellenbasierter Antworten, Trefferquote, Eskalationsquote, Nutzungsquote. Eine Seite Auswertung. | Der Leitfaden macht die Go/No-Go-Entscheidung ausdrücklich an Zahlen fest (S. 124, 129). „Pilotbetrieb ohne Messung ist nur eine Demo" (S. 123). |
+
+**Wo n8n zurückkommt — und zwar begründet.** Der Leitfaden verlangt durchgehend
+*prozesseingebettete* Lösung, nicht Chatfenster: Anfrage aus dem Störfallkontext,
+Kontextübergabe, Anbindung an CMMS/DMS/Schichtbuch, geregelte Re-Indexierung bei
+Content-Änderungen, Feedback-Rückführung, Incident- und Supportprozess (S. 106–117, 139).
+Das ist **exakt die Schicht, für die n8n da ist** — und sie ist heute die dünnste.
+Die Hybrid-Festlegung vom 30.07. bleibt richtig: **Grafikkarte → Skripte, Anbindung und
+Zeitsteuerung → n8n.** ⚠ Zu prüfen, nicht anzunehmen: ob der n8n-Ablauf gerade läuft;
+laut Dokumentation ist er seit dem 30.07. wieder auf Stand (`mkmd-dienst`), nicht
+
+**Konsequenz für die Gesprächsführung (§4):** Für Handbücher, Fehlerberichte und Prüfprotokolle
+aus dem Labor braucht der Gesprächsmodus einen **Störfall-Weg**: Anlage/Fehlercode/Symptom als
+Felder oder aus dem Satz erkannt → Suche in Fehlerkatalogen/Handbüchern → Antwort als Tabelle
+Ursache · Maßnahme · Quelle (Seite) · Gültigkeit → bei Leerlauf **Eskalation** (Ansprechpartner)
+statt Schein-Sicherheit. Der Bestand entscheidet: **ein kleiner, geprüfter Störfall-Bestand vor
+dem Bau — nicht danach.**
