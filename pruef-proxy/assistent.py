@@ -169,13 +169,14 @@ class Verlauf:
 
     # ---- Schreiben ------------------------------------------------------
 
-    def merken(self, kennung, frage, art, quellen=None):
+    def merken(self, kennung, frage, art, quellen=None, antwort=None):
         with self._sperre:
             eintrag = self._neu(kennung)
             eintrag["schritte"].append({
                 "frage": frage,
                 "art": art,
                 "quellen": [q.get("title") or "" for q in (quellen or [])][:9],
+                "antwort": (str(antwort)[:1800] if antwort else ""),
                 "wann": time.time(),
             })
             eintrag["schritte"] = eintrag["schritte"][-SCHRITTE:]
@@ -305,8 +306,8 @@ class Verlauf:
         schritte = eintrag["schritte"][-hoechstens:]
         aus = []
         for i, s in enumerate(schritte):
-            ant = eintrag.get("antwort", "") if i == len(schritte) - 1 else ""
-            aus.append((s.get("frage", ""), s.get("art", ""), (ant or "")[:200]))
+            ant = s.get("antwort") or (eintrag.get("antwort", "") if i == len(schritte) - 1 else "")
+            aus.append((s.get("frage", ""), s.get("art", ""), (ant or "")[:1800]))
         return aus
 
     def letzte_frage(self, kennung):

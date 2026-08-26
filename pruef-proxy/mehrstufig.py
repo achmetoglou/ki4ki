@@ -83,8 +83,23 @@ def gemerkt(titel, text):
         return None
 
 
+def brauchbar(ergebnis):
+    """Nur brauchbare Zusammenfassungen kommen in den Speicher - sonst wird
+    eine schwache Fassung bei jeder weiteren Bitte erneut ausgeliefert
+    (gemessen 26.08.: dreimal dieselbe duenne Zusammenfassung mit
+    'unlesbar'-Warnung)."""
+    t = (ergebnis or {}).get("text") or ""
+    if len(t) < 1200:
+        return False
+    if re.search(r"nicht lesbar|unlesbar", t, re.I) and len(t) < 2500:
+        return False
+    return True
+
+
 def merken(titel, text, ergebnis):
     """Die Zusammenfassung ablegen. Fehler hier duerfen nichts kosten."""
+    if not brauchbar(ergebnis):
+        return False
     try:
         os.makedirs(SPEICHER, exist_ok=True)
         p = os.path.join(SPEICHER, _kennung(titel, text))
@@ -167,17 +182,26 @@ def gesamt_auftrag(teile, titel, auftrag=None):
             "„%s“ - es wurde vollstaendig gelesen. %s\n\n"
             "AUFGABE: %s\n\n%s" % (len(teile), titel, AUFTRAG_REGEL,
                                     auftrag, zusammen))
+    # Gemessen 26.08.: Die strukturierte Fassung (Zwischenueberschriften,
+    # Kennzahlen-Tabelle) war der reinen Aufzaehlung deutlich ueberlegen -
+    # und der Satz "Mehrere Teile melden unlesbare Stellen" verunsicherte,
+    # ohne zu erklaeren (es sind Formel- und Tabellenseiten).
     return (
         "Unten stehen die Zusammenfassungen ALLER %d Teile des Dokuments "
-        "„%s“. Verbinde sie zu einer einzigen Zusammenfassung auf Deutsch.\n\n"
-        "1. Beginne mit einem Satz, worum es insgesamt geht.\n"
-        "2. Danach die wichtigsten Punkte als Aufzaehlung, in der "
+        "„%s“ - es wurde vollstaendig gelesen. Verbinde sie zu EINER "
+        "strukturierten Zusammenfassung auf Deutsch:\n\n"
+        "1. Ein Satz: worum es geht und was das zentrale Ergebnis ist.\n"
+        "2. Dann 4-6 Abschnitte mit Zwischenueberschrift (z.B. Fragestellung, "
+        "Methodik, Ergebnisse, Empfehlungen), je 2-4 Stichpunkte, in der "
         "Reihenfolge des Dokuments.\n"
-        "3. Nenne nur, was in den Teilen steht. Erfinde nichts.\n"
-        "4. Wiederhole dich nicht - was in mehreren Teilen vorkommt, "
-        "gehoert einmal genannt.\n"
-        "5. Melden mehrere Teile unlesbare Stellen, sage das am Ende in "
-        "einem Satz.\n\n%s" % (len(teile), titel, zusammen))
+        "3. Zum Schluss eine kleine Tabelle 'Wichtige Kennzahlen' (Groesse | "
+        "Wert | Einheit), nur mit Werten, die in den Teilen stehen.\n"
+        "4. Nenne nur, was in den Teilen steht. Erfinde nichts. Wiederhole "
+        "dich nicht.\n"
+        "5. Melden Teile unlesbare Stellen, schreibe am Ende genau: "
+        "'Hinweis: Einige Formel- oder Tabellenseiten sind im PDF-Text "
+        "zerlegt und wurden uebersprungen.' - sonst nichts dazu.\n\n%s"
+        % (len(teile), titel, zusammen))
 
 
 def zusammenfassen(volltext, titel, frage_modell, melden=None, auftrag=None):

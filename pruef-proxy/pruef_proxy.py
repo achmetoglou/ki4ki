@@ -44,6 +44,7 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import assistent
 import absicht
 import fadenfrage
+import gespraech
 import mehrstufig
 import pdfstelle
 import pruefprotokoll
@@ -3316,6 +3317,15 @@ class Griff(BaseHTTPRequestHandler):
                 return
         except Exception:
             traceback.print_exc(file=sys.stderr)
+        # ⭐ STUFE 2 (ARCHITEKTUR-GESPRAECH §4): Das Modell fuehrt das Gespraech
+        #   selbst - mit Werkzeugen und dem ganzen Faden. Faellt es aus, laeuft
+        #   der bisherige Weg (Absicht/Regeln) weiter.
+        if gespraech.AN and not assistent.export_frage(frage):
+            try:
+                if self._gespraech_antwort(frage):
+                    return
+            except Exception:
+                traceback.print_exc(file=sys.stderr)
         # KI4KI-META: Begruessung / "Was kannst du?" freundlich beantworten
         try:
             if self._meta_antwort(frage):
@@ -4149,7 +4159,8 @@ class Griff(BaseHTTPRequestHandler):
                 if art in ("bestand", "zusammenfassung", "rueckfrage",
                            "wahl-alle", "e2b", "anhang", "meta", "allgemein",
                            "bild", "faden", "fakten", "beschwerde", "zweifel",
-                           "anlage", "vergleich", "abkuerzung", "export"):
+                           "anlage", "vergleich", "abkuerzung", "export",
+                           "gespraech"):
                     import time as _t
                     _ws = (m.group(1) if m else "") or ""
                     _th = (m.group(2) if (m and m.group(2)) else "default")
@@ -4934,6 +4945,297 @@ class Griff(BaseHTTPRequestHandler):
         _dokus = {d for d, _ in gute}
         if gewaehlt or len(_dokus) == 1:
             GESPRAECHE.dokument_merken(gespraech, gewaehlt or _dokus.pop())
+        return True
+
+    # ------------------------------------------------ Stufe 2: Gespraech
+
+    def _abbildungen_liste(self, dok):
+        """[(nummer, seite, unterschrift)] - nur Seiten, auf denen wirklich
+        ein Bild liegt. Einmal je Dokument berechnet, dann gemerkt."""
+        cache = getattr(self.__class__, "_abb_cache", None)
+        if cache is None:
+            cache = self.__class__._abb_cache = {}
+        schluessel = _pdf_schluessel(dok)
+        if not schluessel:
+            return []
+        if schluessel in cache:
+            return cache[schluessel]
+        try:
+            seiten = pdfstelle.seitentexte(schluessel) or []
+        except Exception:
+            seiten = []
+        try:
+            import abbildung
+        except Exception:
+            abbildung = None
+        pfad = PDFS.get(schluessel, "")
+        muster = re.compile(r"(?m)^\s*(?:Bild|Abbildung|Abb\.?|Figure|Fig\.?)\s*(\d{1,2}[.\-]\d{1,3})\b[:\s]*([^\n]{0,160})")
+        aus, gesehen = [], set()
+        for i, s in enumerate(seiten, 1):
+            for m in muster.finditer(s or ""):
+                n = m.group(1).replace("-", ".")
+                if n in gesehen:
+                    continue
+                try:
+                    if abbildung and pfad and not abbildung.hat_abbildung(pfad, i):
+                        continue
+                except Exception:
+                    pass
+                gesehen.add(n)
+                aus.append((n, i, re.sub(r"\s+", " ", m.group(2)).strip()[:160]))
+        cache[schluessel] = aus
+        return aus
+
+    def _bild_block(self, dok, nummer, seite, unterschrift):
+        schluessel = _pdf_schluessel(dok) or dok
+        dq = quote(str(schluessel), safe="")
+        stelle = "/stelle?dok=%s&seite=%d" % (dq, seite)
+        return ("**Bild %s** — %s, [Seite %d](%s)\n\n*%s*\n\n"
+                "[![Abbildung aus %s, Seite %d](/abbildung?dok=%s&seite=%d)](%s)"
+                % (nummer, assistent._titel_saubern(dok), seite, stelle,
+                   ("Bild %s: %s" % (nummer, unterschrift)) if unterschrift else "Bild %s" % nummer,
+                   assistent._titel_saubern(dok), seite, dq, seite, stelle))
+
+    def _werkzeug(self, name, args, zustand):
+        """Ein Werkzeugaufruf des Modells. Liefert Text fuers Modell."""
+        namen = zustand["namen"]
+
+        def dok_von(kennung):
+            n = absicht._kennung_finden(kennung, namen)
+            if not n:
+                try:
+                    n, _ = assistent.dokument_gemeint(str(kennung or ""), namen)
+                except Exception:
+                    n = None
+            if n and n not in zustand["dokumente"]:
+                zustand["dokumente"].append(n)
+            return n
+
+        if name == "dokument_finden":
+            g, kand = assistent.dokument_gemeint(str(args.get("suche") or ""), namen)
+            if g:
+                zustand["dokumente"].append(g) if g not in zustand["dokumente"] else None
+                return "Gefunden: %s" % assistent.dokument_zeile(g)
+            if kand:
+                return "Mehrere passen: " + "; ".join(assistent.dokument_zeile(k) for k in kand[:5])
+            return "Nichts gefunden. Bestand: " + "; ".join(assistent._titel_saubern(n) for n in sorted(namen)[:20])
+        if name == "bestand":
+            thema = str(args.get("thema") or "").strip()
+            frage = ("Welche Dokumente haben wir zum Thema %s?" % thema) if thema else "Welche Dokumente haben wir?"
+            t = assistent.bestandsauskunft(frage, namen, bereich=True)
+            return t or "\n".join(assistent.dokument_zeile(n) for n in sorted(namen))
+        if name == "exportieren":
+            if args.get("format") == "bibtex":
+                return assistent.bibtex_eintraege(sorted(namen)) or "kein Katalog"
+            csv = assistent.tabelle_zu_csv(GESPRAECHE.letzte_antwort(zustand["gespraech"]))
+            return csv or "Keine Tabelle in der letzten Antwort."
+        dok = dok_von(args.get("dokument"))
+        if not dok:
+            return ("Dokument '%s' unbekannt. Nutze dokument_finden oder eine Kennung aus der Liste."
+                    % args.get("dokument"))
+        schluessel = _pdf_schluessel(dok)
+        if not schluessel or not dokument_erlaubt(schluessel, self.headers):
+            return "Dieses Dokument liegt nicht vor."
+        if name == "seiten_lesen":
+            try:
+                seiten = pdfstelle.seitentexte(schluessel) or []
+            except Exception:
+                seiten = []
+            such = str(args.get("frage") or "")
+            nummern, terme = fadenfrage.seiten_waehlen(such, seiten)
+            if not nummern:
+                return ("Zu '%s' keine passende Seite in %s gefunden (gesucht: %s). Andere Begriffe "
+                        "probieren oder zusammenfassen nutzen." % (such, assistent._titel_saubern(dok), ", ".join(terme) or "-"))
+            zustand["seiten"].setdefault(dok, []).extend(n for n in nummern if n not in zustand["seiten"].get(dok, []))
+            return "\n\n".join("=== %s, Seite %d ===\n%s" % (assistent._titel_saubern(dok), n, (seiten[n - 1] or "")[:3500])
+                                 for n in nummern if 0 < n <= len(seiten))
+        if name == "abbildungen_auflisten":
+            liste = self._abbildungen_liste(dok)
+            zustand["abbildungen"][dok] = liste
+            ab = int(args.get("ab") or 0)
+            teil = liste[ab:ab + 12]
+            if not liste:
+                return "Keine Abbildung mit nummerierter Unterschrift in %s." % assistent._titel_saubern(dok)
+            aus = json.dumps([{"nummer": n, "seite": s, "unterschrift": u} for n, s, u in teil], ensure_ascii=False)
+            if len(liste) > ab + 12:
+                aus += " (insgesamt %d; weitere mit ab=%d)" % (len(liste), ab + 12)
+            return aus
+        if name == "abbildung_zeigen":
+            liste = self._abbildungen_liste(dok)
+            zustand["abbildungen"][dok] = liste
+            nummer = str(args.get("nummer") or "").replace("-", ".").strip()
+            for n, s, u in liste:
+                if n == nummer:
+                    zustand["gezeigt"].append((dok, n, s, u))
+                    return "[[BILD:%s:%d:%s]] — Bild %s, S. %d: %s. Setze den Platzhalter in deine Antwort." % (
+                        assistent._titel_saubern(dok), s, n, n, s, u)
+            return "Bild %s gibt es in %s nicht. Vorhanden: %s" % (
+                nummer, assistent._titel_saubern(dok), ", ".join(n for n, _, _ in liste[:30]) or "keine")
+        if name == "zusammenfassen":
+            d = BESTAND.hol(bestandsschluessel(dok)) if bestandsschluessel(dok) else None
+            if not d or not (d.text or "").strip():
+                return "Kein Volltext zu %s." % dok
+            auftrag = str(args.get("auftrag") or "").strip() or None
+            try:
+                text, _g, _z = self._zusammenfassung_ganz(
+                    d, dok, lambda m: self._stand(zustand["stand"], m), auftrag=auftrag)
+            except Exception as e:
+                return "Zusammenfassung nicht moeglich: %s" % str(e)[:100]
+            zustand["zusammengefasst"].append(dok)
+            return text or "Zusammenfassung nicht moeglich."
+        if name == "zaehlen":
+            w = self._fakten_zaehlen(dok, str(args.get("was") or "seiten"))
+            return "%s: %s" % (args.get("was"), w if w not in (None, "") else "unbekannt")
+        if name == "abkuerzung":
+            try:
+                seiten = pdfstelle.seitentexte(schluessel) or []
+            except Exception:
+                seiten = []
+            t = assistent.abkuerzung_aufloesen(str(args.get("kurz") or ""), seiten)
+            if not t:
+                return "Abkuerzung %s wird in %s nicht ausgeschrieben eingefuehrt." % (args.get("kurz"), dok)
+            return "; ".join("%s = %s (S. %d)" % (args.get("kurz"), lang, s) for s, lang, _ in t[:3])
+        return "Unbekanntes Werkzeug " + name
+
+    def _gespraech_antwort(self, frage):
+        """Stufe 2: Das Modell fuehrt den Zug - mit Werkzeugen und Faden.
+        True = beantwortet. False = alter Weg."""
+        if not bereich_sichtbar(self.path, self.headers):
+            self._json({"error": "Workspace does not exist."}, code=404)
+            return True
+        gespraech_k = GESPRAECHE.kennung(self.path, self.headers)
+        BESTAND.aktualisiere()
+        namen = (titel_im_bereich(self.path, self.headers)
+                 or nur_erlaubte(BESTAND.titel(), self.headers) or [])
+        if not namen:
+            return False
+        faden_dok = GESPRAECHE.letztes_dokument(gespraech_k)
+        zeilen = [assistent.dokument_zeile(n) for n in sorted(namen)[:40]]
+        begonnen = time.time()
+        self._strom_beginnen()
+        stand = "gespraech-%d" % id(self)
+        self._stand(stand, "Denke nach …")
+        zustand = {"namen": namen, "dokumente": [], "seiten": {}, "abbildungen": {},
+                   "gezeigt": [], "zusammengefasst": [], "stand": stand, "gespraech": gespraech_k}
+        _melde = {"seiten_lesen": "Lese Seiten in %s …", "abbildungen_auflisten": "Suche Abbildungen in %s …",
+                  "abbildung_zeigen": "Hole Bild aus %s …", "zusammenfassen": "Lese %s vollständig …",
+                  "zaehlen": "Zähle in %s …", "bestand": "Sehe im Katalog nach …",
+                  "dokument_finden": "Suche das Dokument …", "abkuerzung": "Suche die Abkürzung in %s …",
+                  "exportieren": "Stelle den Export zusammen …"}
+
+        def melden(name, args):
+            t = _melde.get(name, name)
+            self._stand(stand, t % args.get("dokument") if "%s" in t else t)
+
+        e = gespraech.fuehren(
+            frage, GESPRAECHE.verlauf_kurz(gespraech_k), assistent._titel_saubern(faden_dok) if faden_dok else None,
+            zeilen, lambda n, a: self._werkzeug(n, a, zustand), kontakt=assistent.kontakt_zeile(),
+            melden=melden)
+        self._stand_weg(stand)
+        text = e.get("text") or ""
+        if e.get("fehler") and not text:
+            print("[Gespraech] ausgefallen: %s" % e["fehler"], file=sys.stderr, flush=True)
+            self._strom_stueck({"uuid": _neue_marke("gespraech"), "type": "textResponseChunk",
+                                "textResponse": "Die Antwort ist nicht zustande gekommen (%s). Bitte noch einmal."
+                                % e["fehler"], "sources": [], "close": True, "error": False})
+            self._strom_schliessen()
+            return True
+        # ---- Pruefen und einbetten: Bilder nur, wenn es sie gibt ----------
+        gezeigt = set()
+
+        def _platzhalter(m):
+            k, seite, nummer = m.group(1), int(m.group(2)), m.group(3)
+            dok = absicht._kennung_finden(k, namen) or k
+            for n, s, u in self._abbildungen_liste(dok):
+                if n == nummer or s == seite:
+                    gezeigt.add((dok, n))
+                    return "\n\n" + self._bild_block(dok, n, s, u) + "\n\n"
+            return ""
+        text = gespraech.BILD_MARKE.sub(_platzhalter, text)
+        # Genannte Abbildungen ohne Platzhalter: echte einbetten, erfundene streichen
+        dok_fuer_bilder = zustand["dokumente"][-1] if zustand["dokumente"] else faden_dok
+        gestrichen = []
+        if dok_fuer_bilder:
+            liste = {n: (s, u) for n, s, u in self._abbildungen_liste(dok_fuer_bilder)}
+            for nummer in gespraech.bildnennungen(text)[:6]:
+                if (dok_fuer_bilder, nummer) in gezeigt:
+                    continue
+                if nummer in liste and len(gezeigt) < 3:
+                    s, u = liste[nummer]
+                    text += "\n\n" + self._bild_block(dok_fuer_bilder, nummer, s, u)
+                    gezeigt.add((dok_fuer_bilder, nummer))
+                elif nummer not in liste:
+                    gestrichen.append(nummer)
+            if gestrichen:
+                text = re.sub(r"\[?\b(?:Abbildung|Abb\.?|Bild)\s*(%s)\b\]?" % "|".join(re.escape(g) for g in gestrichen),
+                              lambda m: "~~Bild %s~~ (gibt es nicht)" % m.group(1), text)
+                echte = self._abbildungen_liste(dok_fuer_bilder)[:8]
+                if echte:
+                    dq = quote(str(_pdf_schluessel(dok_fuer_bilder) or dok_fuer_bilder), safe="")
+                    text += ("\n\n**Die echten Abbildungen in %s** (die ersten %d von %d):\n"
+                             % (assistent._titel_saubern(dok_fuer_bilder), len(echte), len(self._abbildungen_liste(dok_fuer_bilder))))
+                    text += "\n".join("- Bild %s — [S. %d](/stelle?dok=%s&seite=%d): %s" % (n, s_, dq, s_, u)
+                                       for n, s_, u in echte)
+                    text += "\n\n*„Zeig mir Bild %s“ holt eine davon.*" % echte[0][0]
+        # ---- Jede Aussage mit Seitenangabe gegen die Seite pruefen --------
+        # Gemessen 26.08.: Das Modell schrieb "die Klemmung erhoeht die
+        # Lebensdauer (DS-24-005, S. 12)" - erfunden, Gegenteil der Arbeit.
+        # Deckt die genannte Seite (oder eine andere) die Aussage nicht,
+        # bleibt die Aussage stehen, aber als "nicht belegt" markiert.
+        unbelegt = 0
+
+        def _beleg(m):
+            nonlocal unbelegt
+            k, n = m.group(1), int(m.group(2))
+            anfang = max(text.rfind(x, 0, m.start()) for x in (". ", "\n", "! ", "? ", "• ", "- "))
+            satz = text[anfang + 1:m.start()].strip(" *:„“\"")
+            if len(satz) < 25:
+                return m.group(0)
+            try:
+                seite = _verifizierte_seite(k, satz, bevorzugt=n)
+            except Exception:
+                seite = None
+            if seite is None:
+                unbelegt += 1
+                return "(%s, S. %d — nicht belegt)" % (k, n)
+            return "(%s, S. %d)" % (k, seite)
+        text = gespraech._BELEG.sub(_beleg, text)
+        # ---- Zitate und Seiten pruefen ------------------------------------
+        beruehrt = {}
+        for dok in zustand["dokumente"] or ([faden_dok] if faden_dok else []):
+            sch = _pdf_schluessel(dok)
+            if sch:
+                try:
+                    beruehrt[assistent._titel_saubern(dok)] = (sch, pdfstelle.seitentexte(sch) or [])
+                except Exception:
+                    pass
+        ok = nein = 0
+        if beruehrt:
+            text, ok, nein = fadenfrage.verlinken_mehrfach(text, beruehrt)
+        # ---- Fuss --------------------------------------------------------
+        werk = ", ".join("%s(%s)" % (n, a.get("dokument") or a.get("suche") or a.get("format") or "")
+                         for n, a, _ in e["aufrufe"] if n != "waechter")
+        fuss = ["*Gespräch mit Werkzeugen%s." % ((": " + werk) if werk else " — ohne Nachschlagen (nur aus dem Verlauf)")]
+        if ok or nein:
+            fuss.append("%d Zitat(e) wörtlich im Original geprüft%s." % (ok, (", %d nicht gefunden" % nein) if nein else ""))
+        if gestrichen:
+            fuss.append("Erfundene Abbildungsnummern gestrichen: %s." % ", ".join(gestrichen))
+        if unbelegt:
+            fuss.append("%d Aussage(n) ließen sich auf der genannten Seite nicht belegen — als „nicht belegt“ markiert." % unbelegt)
+        text += "\n\n---\n" + " ".join(fuss) + _modell_zeile(gespraech.MODELL, time.time() - begonnen)
+        # ---- Merken und senden -------------------------------------------
+        if zustand["dokumente"]:
+            GESPRAECHE.dokument_merken(gespraech_k, zustand["dokumente"][-1])
+        self._festhalten("gespraech", frage, text)
+        GESPRAECHE.merken(gespraech_k, frage, "gespraech",
+                          [{"title": d} for d in zustand["dokumente"][:3]], antwort=text)
+        self._strom_stueck({"uuid": _neue_marke("gespraech"), "type": "textResponseChunk",
+                            "textResponse": text, "sources": [], "close": True, "error": False})
+        self._strom_schliessen()
+        print("[Gespraech] %d Werkzeuge in %d ms, Zitate %d/%d, unbelegt %d, Bilder %d%s <- %r"
+              % (len(e["aufrufe"]), e["ms"], ok, ok + nein, unbelegt, len(gezeigt),
+                 (", gestrichen " + ",".join(gestrichen)) if gestrichen else "", frage[:60]),
+              file=sys.stderr, flush=True)
         return True
 
     def _absicht_ausfuehren(self, frage):

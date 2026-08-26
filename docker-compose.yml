@@ -318,6 +318,11 @@ services:
     # KI4KI_ABSICHT_MODELL=0 in der .env schaltet auf den Regel-Router zurueck.
     - KI4KI_ABSICHT_MODELL=${KI4KI_ABSICHT_MODELL:-1}
     - KI4KI_ABSICHT_MODELL_NAME=${KI4KI_ABSICHT_MODELL_NAME:-gemma4:12b}
+    # ⭐ STUFE 2: Das Modell fuehrt das Gespraech selbst (Werkzeuge, ganzer
+    # Faden, Rueckmeldungen, zwei Aufgaben in einem Zug). Standard 0 bis zur
+    # Abnahme; 1 = an (Stufe 1 laeuft dann nur noch als Rueckfall).
+    - KI4KI_GESPRAECH=${KI4KI_GESPRAECH:-0}
+    - KI4KI_GESPRAECH_MODELL=${KI4KI_GESPRAECH_MODELL:-gemma4:12b}
     - KI4KI_ZWISCHENSPEICHER=/daten/pruefung/vorauswahl.pickle
     # Der Katalog (Titel/Verfasser/Jahr je Dokument) - dauerhaft im
     # Daten-Volume, nicht im Abbild: Was das Modell vom Deckblatt liest,

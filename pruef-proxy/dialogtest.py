@@ -366,6 +366,59 @@ def szenario_18_absichts_modell():
     pruefe(vk == [("Fasse Becker zusammen", "zusammenfassung", "Die Arbeit untersucht ...")], "verlauf_kurz: %r" % vk)
 
 
+def szenario_19_gespraechsmodus():
+    print("\n[19] Stufe 2: Gespraechsmodus - Werkzeugkette, Waechter-Runde, Bereinigung (Modell simuliert)")
+    import gespraech
+    pruefe(gespraech.bereinigen("thought\n<channel|>[[BILD:DS-24-005:141:6.12]] Text") == "[[BILD:DS-24-005:141:6.12]] Text", "Template-Reste entfernt")
+    pruefe(gespraech.bildnennungen("Siehe Abbildung 6.12 und Bild 3-2, [Abbildung 6.12]") == ["6.12", "3.2"], "Bildnennungen erkannt, ohne Doppelte")
+    w = gespraech.waechter_bilder("Die Abbildungen sind: Abbildung 3.1 (S. 68)", [], "DS-24-005")
+    pruefe(w and w["werkzeug"] == "abbildungen_auflisten" and w["args"]["dokument"] == "DS-24-005", "Waechter: Bilder ohne Werkzeug -> Liste selbst holen")
+    pruefe(gespraech.waechter_bilder("Die Abbildungen sind: Abbildung 3.1", [("abbildungen_auflisten", {}, 5)]) is None, "Waechter: mit Werkzeug -> ok")
+    pruefe(gespraech.waechter_bilder("Wir reden ueber Grafiken allgemein.", []) is None, "Waechter: ohne Nummern -> ok")
+    b = gespraech.waechter_belege("Die Klemmung erhoeht die Lebensdauer (DS-24-005, S. 12).", [("abbildungen_auflisten", {"dokument": "DS-24-005"}, 1)], "DS-24-005", "wie sieht es aus", [], [])
+    pruefe(b and b["werkzeug"] == "seiten_lesen" and b["args"]["dokument"] == "DS-24-005", "Waechter: Seitenbeleg ohne Lesen -> Seiten selbst holen")
+    pruefe(gespraech.waechter_belege("Es sinkt (DS-24-005, S. 141).", [("seiten_lesen", {"dokument": "DS-24-005"}, 1)], "DS-24-005", "", ["=== DS-24-005, Seite 141 ===\nText"], []) is None, "Beleg aus gelesener Seite -> ok")
+    pruefe(gespraech.waechter_belege("Es sinkt (DS-24-005, S. 141).", [], "DS-24-005", "", [], ["... (DS-24-005, S. 141) ..."]) is None, "Beleg aus dem bisherigen Gespraech -> ok")
+    pruefe(gespraech.waechter_belege("Es sinkt (DS-24-005, S. 77).", [("zusammenfassen", {"dokument": "DS-24-005"}, 1)], "DS-24-005", "", ["..."], []) is None, "nach Zusammenfassung sind Seiten des Dokuments erlaubt")
+    # Simuliertes Modell: Runde 1 ruft zwei Werkzeuge, Runde 2 antwortet
+    lauf = {"n": 0}
+    def rufen(msgs):
+        lauf["n"] += 1
+        if lauf["n"] == 1:
+            return {"content": "", "tool_calls": [{"function": {"name": "zusammenfassen", "arguments": {"dokument": "DS-24-005"}}},
+                                                  {"function": {"name": "abbildung_zeigen", "arguments": {"dokument": "DS-24-005", "nummer": "6.12"}}}]}
+        letzte = msgs[-1]["content"]
+        pruefe("Zusammenfassung-Text" in "".join(m.get("content", "") for m in msgs if m.get("role") == "tool"), "Werkzeugergebnis kam beim Modell an")
+        return {"content": "Kernergebnis: 40 % (DS-24-005, S. 141). [[BILD:DS-24-005:141:6.12]]", "tool_calls": []}
+    def werkzeug(name, args):
+        return {"zusammenfassen": "Zusammenfassung-Text", "abbildung_zeigen": "[[BILD:DS-24-005:141:6.12]]"}.get(name, "?")
+    e = gespraech.fuehren("Fasse zusammen und zeig das wichtigste Bild", [("Hallo", "gespraech", "Hallo!")], "DS-24-005", ["DS-24-005 — Becker"], werkzeug, rufen=rufen)
+    pruefe(e["runden"] == 2 and [n for n, _, _ in e["aufrufe"]] == ["zusammenfassen", "abbildung_zeigen"], "zwei Werkzeuge in einer Runde ausgefuehrt: %r" % [n for n, _, _ in e["aufrufe"]])
+    pruefe("[[BILD:DS-24-005:141:6.12]]" in e["text"] and e["dokumente"] == ["DS-24-005"], "Antwort mit Platzhalter, Dokument beruehrt")
+    # Waechter-Runde: Modell erfindet Bilder ohne Werkzeug, dann nachgebessert
+    lauf2 = {"n": 0}
+    def rufen2(msgs):
+        lauf2["n"] += 1
+        if lauf2["n"] == 1:
+            return {"content": "Abbildung 3.1 (S. 68), Abbildung 4.1 (S. 92)", "tool_calls": []}
+        pruefe(msgs[-2]["role"] == "tool" and "6.12" in msgs[-2]["content"] and "ECHTE Liste" in msgs[-1]["content"], "Waechter hat die Liste selbst geholt und vorgelegt")
+        return {"content": "Es gibt Bild 1.1 (S. 12) und 6.12 (S. 141).", "tool_calls": []}
+    e2 = gespraech.fuehren("andere Grafiken?", [], "DS-24-005", [], lambda n, a: '[{"nummer":"1.1","seite":12},{"nummer":"6.12","seite":141}]', rufen=rufen2)
+    pruefe(e2["text"].startswith("Es gibt Bild 1.1") and any(n == "waechter" for n, _, _ in e2["aufrufe"]) and e2["dokumente"] == ["DS-24-005"], "Waechter-Runde: erfundene Liste verworfen, Dokument beruehrt")
+    # Ausfall des Modells -> Fehler, kein Absturz
+    e3 = gespraech.fuehren("x", [], None, [], lambda n, a: "", rufen=lambda m: (_ for _ in ()).throw(RuntimeError("weg")))
+    pruefe(e3["fehler"] and not e3["text"], "Modell weg -> fehler gesetzt")
+    # Verlauf mit Antworten je Schritt
+    v = assistent.Verlauf(); k = "wissensdatenbank|t19"
+    v.merken(k, "Fasse Becker zusammen", "gespraech", [], antwort="Die Arbeit ..."); v.merken(k, "und Bilder?", "gespraech", [], antwort="Bild 6.12 ...")
+    vk = v.verlauf_kurz(k)
+    pruefe(vk[0][2] == "Die Arbeit ..." and vk[1][2] == "Bild 6.12 ...", "verlauf_kurz traegt Antworten je Schritt")
+    n = gespraech.nachrichten("SYS", vk, "weiter")
+    pruefe([m["role"] for m in n] == ["system", "user", "assistant", "user", "assistant", "user"], "Nachrichtenfolge fuer das Modell")
+    import mehrstufig
+    pruefe(not mehrstufig.brauchbar({"text": "kurz"}) and mehrstufig.brauchbar({"text": "x" * 3000}), "schwache Zusammenfassung wird nicht gespeichert")
+
+
 if __name__ == "__main__":
     for s in (szenario_1_verfasser_und_folgefragen, szenario_2_beschwerde_reparatur,
               szenario_3_themenwechsel, szenario_4_rueckkehr, szenario_5_nicht_im_dokument,
@@ -374,7 +427,7 @@ if __name__ == "__main__":
               szenario_11_dieses_dokument_kein_bestand, szenario_12_zielfrage_und_reparatur,
               szenario_13_zweifel_und_anlage, szenario_14_selbes_thema,
               szenario_15_vergleich, szenario_16_kennwerte_abkuerzung, szenario_17_export_kontakt_tippfehler,
-              szenario_18_absichts_modell):
+              szenario_18_absichts_modell, szenario_19_gespraechsmodus):
         try:
             s()
         except Exception as e:
