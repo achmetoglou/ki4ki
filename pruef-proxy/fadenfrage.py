@@ -53,9 +53,24 @@ def suchwoerter(frage):
                 or kl in assistent._UNSPEZIFISCH or kl in assistent._FUELLWORT):
             continue
         stamm = f[:6] if len(f) >= 8 else f
+        if stamm in _UNSPEZIFISCH_STAEMME:
+            continue
         if stamm not in raus:
             raus.append(stamm)
     return raus[:8]
+
+
+def _staemme(woerter):
+    aus = set()
+    for w in woerter:
+        f = _falte(w).replace(" ", "")
+        if len(f) >= 4:
+            aus.add(f[:6] if len(f) >= 8 else f)
+    return aus
+
+
+_UNSPEZIFISCH_STAEMME = _staemme(assistent._UNSPEZIFISCH | set(wortsuche.HAEUFIG)) | {
+    "kerner", "kernau", "kernfa", "wichti", "zentra", "haupta", "aussag", "ergebn"}
 
 
 def seiten_waehlen(frage, seiten, hoechstens=HOECHSTENS_SEITEN):
@@ -248,8 +263,11 @@ def fuss(titel, nummern, ok, nein, sekunden=None):
     return " ".join(teile)
 
 
-def nichts_gefunden(titel, terme):
-    such = ", ".join(terme[:4]) if terme else "die Frage"
+def nichts_gefunden(titel, terme, frage=""):
+    # Dem Menschen die Woerter zeigen, nicht die Wortstaemme ("kerner").
+    woerter = [w for w in re.findall(r"[A-Za-zÄÖÜäöüß][A-Za-zÄÖÜäöüß\-]{3,}", frage or "")
+               if any((_falte(w).replace(" ", ""))[:6].startswith(t[:5]) for t in (terme or []))]
+    such = ", ".join(woerter[:4]) if woerter else (", ".join(terme[:4]) if terme else "die Frage")
     text = ("In **%s** finde ich zu %s keine Seite. Das heißt: Dazu steht in "
             "diesem Dokument nichts — ich weiche nicht auf andere Dokumente "
             "aus. Anders formulieren, ein anderes Dokument nennen (Kennung "

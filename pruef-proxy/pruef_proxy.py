@@ -3569,7 +3569,11 @@ class Griff(BaseHTTPRequestHandler):
                            % assistent._titel_saubern(_dok)
                     GESPRAECHE.merken(gespraech, frage, art, [])
                     if _la == "bild" or _ist_bildwunsch(_lf):
-                        if self._bild_antwort(_lf, erzwinge=_dok, vorspann=_vor):
+                        # Nicht dieselben drei noch einmal: die naechsten zeigen,
+                        # bei "letzte/Kern..." in der Rueckmeldung danach waehlen.
+                        _ab = 0 if re.search(r"letzte|kern|ergebnis|wichtig", frage, re.I) else 3
+                        _fr = frage if _ab == 0 else _lf
+                        if self._bild_antwort(_fr, erzwinge=_dok, vorspann=_vor, ab=_ab):
                             return
                     elif fadenfrage.suchwoerter(_lf):
                         if self._faden_antwort(_lf, _dok, vorspann=_vor):
@@ -4797,7 +4801,30 @@ class Griff(BaseHTTPRequestHandler):
               file=sys.stderr, flush=True)
         return True
 
-    def _bild_antwort(self, frage, erzwinge=None, vorspann=""):
+    def _bilder_auswaehlen(self, dok, frage, aspekt="", ab=0, hoechstens=3):
+        """Welche Abbildungen? 'die letzte' -> letzte; 'weitere' -> ab Offset;
+        Aspekt ('Kernergebnis', 'Steifigkeit') -> Unterschriften, die dazu
+        passen, sonst bei Ergebnis-Woertern die Abbildungen aus dem hinteren
+        Drittel (Ergebniskapitel). Gemessen 26.08.: immer die ersten drei."""
+        liste = self._abbildungen_liste(dok)
+        if not liste:
+            return []
+        f = (frage or "").lower() + " " + (aspekt or "").lower()
+        if re.search(r"\bletzte[snr]?\b", f):
+            return liste[-hoechstens:] if "letzten" in f else liste[-1:]
+        if re.search(r"\berste[snr]?\b", f) and not aspekt:
+            return liste[:1]
+        terme = fadenfrage.suchwoerter(aspekt or "")
+        if terme:
+            passend = [x for x in liste if any(t in fadenfrage._falte(x[2]) for t in terme)]
+            if passend:
+                return passend[ab:ab + hoechstens]
+        if re.search(r"kern|ergebnis|wichtigst|zentral|haupt|fazit|schluss", f):
+            hinten = liste[int(len(liste) * 0.6):] or liste
+            return hinten[ab:ab + hoechstens]
+        return liste[ab:ab + hoechstens]
+
+    def _bild_antwort(self, frage, erzwinge=None, vorspann="", ab=0, aspekt=""):
         """KI4KI-BILD: Bildwunsch direkt aus dem Dokument beantworten.
 
         Gemessen (Demo 24.08.): "Zeig mir Bild 2.1" - die Aehnlichkeitssuche
@@ -4863,6 +4890,13 @@ class Griff(BaseHTTPRequestHandler):
                 continue
             if len(gute) >= 3:
                 break
+        # ⭐ Auswahl nach Aspekt/Position, wenn ein Dokument feststeht und keine
+        #   Bildnummer genannt ist (sonst gilt die Nummer).
+        if gewaehlt and not _BILDNUMMER.search(frage or ""):
+            _aspekt = aspekt or ((getattr(self, "_absicht", None) or {}).get("aspekt") or "")
+            _wahl = self._bilder_auswaehlen(gewaehlt, frage, _aspekt, ab=ab)
+            if _wahl:
+                gute = [(gewaehlt, s_) for _, s_, _ in _wahl]
         if not gute and nur_faden:
             # Ehrlich bleiben statt in fremde Dokumente auszuweichen.
             _leer = vorspann + (
@@ -4921,8 +4955,9 @@ class Griff(BaseHTTPRequestHandler):
         if nummer:
             text = "\n\n".join(bloecke)
         else:
-            text = ("Abbildungen mit Bildunterschrift im Dokument (die ersten %d):\n\n"
-                    % len(bloecke) + "\n\n---\n\n".join(bloecke)
+            text = ("Abbildungen mit Bildunterschrift im Dokument (%d ausgewählt%s):\n\n"
+                    % (len(bloecke), (" ab Position %d" % (ab + 1)) if ab else "")
+                    + "\n\n---\n\n".join(bloecke)
                     + "\n\n*Für ein bestimmtes Bild: „Zeig mir Bild 2.3“ — "
                     "die Nummer steht in der Bildunterschrift.*")
         text += "\n\n---\n*Direkt aus dem Dokument geholt — Klick auf ein Bild "
@@ -5269,7 +5304,9 @@ class Griff(BaseHTTPRequestHandler):
             self._direkt_senden("meta", frage, META_TEXT_GRUSS)
             return True
         if aktion == "bild":
-            return self._bild_antwort(frage, erzwinge=dok)
+            _ab = 3 if re.search(r"\b(?:andere|weitere|mehr|noch)\b", frage, re.I) and \
+                GESPRAECHE.letzte_art(gespraech) == "bild" else 0
+            return self._bild_antwort(frage, erzwinge=dok, ab=_ab, aspekt=a.get("aspekt") or "")
         if aktion == "fakten":
             return self._fakten_antwort(frage, dok)
         if aktion == "abkuerzung":
@@ -5289,6 +5326,10 @@ class Griff(BaseHTTPRequestHandler):
                 return False
             if assistent.dokument_fakten_frage(frage):
                 return self._fakten_antwort(frage, dok)
+            # "welches Diagramm ist das Kernergebnis?" ist eine Bildfrage mit Aspekt.
+            if re.search(r"\b(?:diagramm|grafik|abbildung|bild|figur|plot|kurve)\w*", frage, re.I):
+                if self._bild_antwort(frage, erzwinge=dok, aspekt=a.get("aspekt") or ""):
+                    return True
             # "Worum geht es?" traegt keine Inhaltswoerter - dann ist die
             # Zusammenfassung die richtige Antwort, nicht "keine Seite gefunden".
             if not fadenfrage.suchwoerter(frage_um) and not fadenfrage.suchwoerter(frage):
@@ -5572,7 +5613,7 @@ class Griff(BaseHTTPRequestHandler):
         begonnen = time.time()
         nummern, terme = fadenfrage.seiten_waehlen(frage, seiten)
         if not nummern:
-            text = vorspann + fadenfrage.nichts_gefunden(titel, terme)
+            text = vorspann + fadenfrage.nichts_gefunden(titel, terme, frage)
             self._festhalten("faden", frage, text)
             GESPRAECHE.merken(gespraech, frage, "normal", [{"title": dok}])
             self._sende_strom([
