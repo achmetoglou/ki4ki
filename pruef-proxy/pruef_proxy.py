@@ -44,7 +44,7 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import assistent
 import absicht
 import fadenfrage
-import gespraech
+import gespraech as gespraechsmodus   # nicht 'gespraech': so heisst die Faden-Kennung in _chat
 import mehrstufig
 import pdfstelle
 import pruefprotokoll
@@ -3320,7 +3320,7 @@ class Griff(BaseHTTPRequestHandler):
         # ⭐ STUFE 2 (ARCHITEKTUR-GESPRAECH §4): Das Modell fuehrt das Gespraech
         #   selbst - mit Werkzeugen und dem ganzen Faden. Faellt es aus, laeuft
         #   der bisherige Weg (Absicht/Regeln) weiter.
-        if gespraech.AN and not assistent.export_frage(frage):
+        if gespraechsmodus.AN and not assistent.export_frage(frage):
             try:
                 if self._gespraech_antwort(frage):
                     return
@@ -5127,7 +5127,7 @@ class Griff(BaseHTTPRequestHandler):
             t = _melde.get(name, name)
             self._stand(stand, t % args.get("dokument") if "%s" in t else t)
 
-        e = gespraech.fuehren(
+        e = gespraechsmodus.fuehren(
             frage, GESPRAECHE.verlauf_kurz(gespraech_k), assistent._titel_saubern(faden_dok) if faden_dok else None,
             zeilen, lambda n, a: self._werkzeug(n, a, zustand), kontakt=assistent.kontakt_zeile(),
             melden=melden)
@@ -5151,13 +5151,13 @@ class Griff(BaseHTTPRequestHandler):
                     gezeigt.add((dok, n))
                     return "\n\n" + self._bild_block(dok, n, s, u) + "\n\n"
             return ""
-        text = gespraech.BILD_MARKE.sub(_platzhalter, text)
+        text = gespraechsmodus.BILD_MARKE.sub(_platzhalter, text)
         # Genannte Abbildungen ohne Platzhalter: echte einbetten, erfundene streichen
         dok_fuer_bilder = zustand["dokumente"][-1] if zustand["dokumente"] else faden_dok
         gestrichen = []
         if dok_fuer_bilder:
             liste = {n: (s, u) for n, s, u in self._abbildungen_liste(dok_fuer_bilder)}
-            for nummer in gespraech.bildnennungen(text)[:6]:
+            for nummer in gespraechsmodus.bildnennungen(text)[:6]:
                 if (dok_fuer_bilder, nummer) in gezeigt:
                     continue
                 if nummer in liste and len(gezeigt) < 3:
@@ -5199,7 +5199,7 @@ class Griff(BaseHTTPRequestHandler):
                 unbelegt += 1
                 return "(%s, S. %d — nicht belegt)" % (k, n)
             return "(%s, S. %d)" % (k, seite)
-        text = gespraech._BELEG.sub(_beleg, text)
+        text = gespraechsmodus._BELEG.sub(_beleg, text)
         # ---- Zitate und Seiten pruefen ------------------------------------
         beruehrt = {}
         for dok in zustand["dokumente"] or ([faden_dok] if faden_dok else []):
@@ -5222,7 +5222,7 @@ class Griff(BaseHTTPRequestHandler):
             fuss.append("Erfundene Abbildungsnummern gestrichen: %s." % ", ".join(gestrichen))
         if unbelegt:
             fuss.append("%d Aussage(n) ließen sich auf der genannten Seite nicht belegen — als „nicht belegt“ markiert." % unbelegt)
-        text += "\n\n---\n" + " ".join(fuss) + _modell_zeile(gespraech.MODELL, time.time() - begonnen)
+        text += "\n\n---\n" + " ".join(fuss) + _modell_zeile(gespraechsmodus.MODELL, time.time() - begonnen)
         # ---- Merken und senden -------------------------------------------
         if zustand["dokumente"]:
             GESPRAECHE.dokument_merken(gespraech_k, zustand["dokumente"][-1])

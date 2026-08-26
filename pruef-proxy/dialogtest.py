@@ -419,6 +419,39 @@ def szenario_19_gespraechsmodus():
     pruefe(not mehrstufig.brauchbar({"text": "kurz"}) and mehrstufig.brauchbar({"text": "x" * 3000}), "schwache Zusammenfassung wird nicht gespeichert")
 
 
+def szenario_20_proxy_statisch():
+    print("\n[20] Proxy statisch: kein Modulname wird von einer lokalen Variable verdeckt (Absturz 26.08.)")
+    import ast
+    tree = ast.parse(open(os.path.join(HIER, "pruef_proxy.py"), encoding="utf-8").read())
+    module_names = set()
+    for n in tree.body:
+        if isinstance(n, (ast.Import, ast.ImportFrom)):
+            for a in n.names:
+                module_names.add((a.asname or a.name).split(".")[0])
+    treffer = []
+    for fn in ast.walk(tree):
+        if not isinstance(fn, ast.FunctionDef):
+            continue
+        lokal = set()
+        for x in ast.walk(fn):
+            if isinstance(x, ast.Name) and isinstance(x.ctx, ast.Store):
+                lokal.add(x.id)
+            elif isinstance(x, ast.arg):
+                lokal.add(x.arg)
+        for x in ast.walk(fn):
+            if isinstance(x, ast.Attribute) and isinstance(x.value, ast.Name) \
+                    and x.value.id in module_names and x.value.id in lokal:
+                treffer.append("%s:%d %s" % (fn.name, x.lineno, x.value.id))
+    pruefe(not treffer, "Modul-Schatten: %s" % (treffer[:3] or "keine"))
+    import py_compile
+    for f in ("pruef_proxy.py", "assistent.py", "fadenfrage.py", "gespraech.py", "absicht.py", "mehrstufig.py", "wortsuche.py", "bestand.py"):
+        try:
+            py_compile.compile(os.path.join(HIER, f), doraise=True)
+            pruefe(True, "kompiliert: %s" % f)
+        except Exception as e:
+            pruefe(False, "kompiliert NICHT: %s (%s)" % (f, e))
+
+
 if __name__ == "__main__":
     for s in (szenario_1_verfasser_und_folgefragen, szenario_2_beschwerde_reparatur,
               szenario_3_themenwechsel, szenario_4_rueckkehr, szenario_5_nicht_im_dokument,
@@ -427,7 +460,7 @@ if __name__ == "__main__":
               szenario_11_dieses_dokument_kein_bestand, szenario_12_zielfrage_und_reparatur,
               szenario_13_zweifel_und_anlage, szenario_14_selbes_thema,
               szenario_15_vergleich, szenario_16_kennwerte_abkuerzung, szenario_17_export_kontakt_tippfehler,
-              szenario_18_absichts_modell, szenario_19_gespraechsmodus):
+              szenario_18_absichts_modell, szenario_19_gespraechsmodus, szenario_20_proxy_statisch):
         try:
             s()
         except Exception as e:
