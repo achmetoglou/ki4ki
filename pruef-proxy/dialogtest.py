@@ -279,13 +279,70 @@ def szenario_14_selbes_thema():
     pruefe(all(n != "DS-24-005.md" for n, _ in a), "sich selbst nicht")
 
 
+def szenario_15_vergleich():
+    print("\n[15] Vergleich zweier Dokumente als Tabelle mit Seitenbeleg")
+    for f in ("Vergleiche die Methodik von Becker und Müller", "Was ist der Unterschied zwischen Becker und Kramer?",
+              "Vergleiche Becker mit Köbel"):
+        v = assistent.vergleichs_dokumente(f, NAMEN)
+        pruefe(v is not None and v[0] == "DS-24-005.md", "beide Dokumente erkannt: %r -> %r" % (f, v and (v[0], v[1], v[2])))
+    v = assistent.vergleichs_dokumente("Vergleiche die Methodik von Becker und Müller", NAMEN)
+    pruefe(v and "methodik" in v[2].lower(), "Aspekt herausgeloest: %r" % (v and v[2]))
+    pruefe(assistent.vergleichs_dokumente("Vergleiche Becker und Meier", NAMEN) is None, "unbekannter Name -> kein Vergleichsweg")
+    pruefe(assistent.ist_widerspruchsfrage("Widersprechen sich Becker und Müller beim Ermüdungsverhalten?"), "Widerspruch erkannt")
+    seitenA = ["", "Becker: Die Steifigkeit sinkt um 12 %."]; seitenB = ["", "Müller: Die Steifigkeit steigt um 5 %."]
+    roh = 'Tabelle | Steifigkeit | „Die Steifigkeit sinkt um 12 %“ (DS-24-005, S. 2) | „Die Steifigkeit steigt um 5 %“ (DS-23-005, S. 2) |\nEinordnung (DS-24-005, S. 2).'
+    text, ok, nein = fadenfrage.verlinken_mehrfach(roh, {"DS-24-005": ("DS-24-005", seitenA), "DS-23-005": ("DS-23-005", seitenB)})
+    pruefe(ok == 2 and nein == 0 and "dok=DS-23-005&seite=2" in text and "[DS-24-005, S. 2](/stelle?dok=DS-24-005&seite=2)" in text, "beide Dokumente verlinkt, Zitate geprueft (ok=%d)" % ok)
+    a = fadenfrage.vergleichs_auftrag("Vergleiche", "Methodik", ("DS-24-005", "Becker", [2], seitenA), ("DS-23-005", "Müller", [2], seitenB), modus="widerspruch")
+    pruefe("DOKUMENT DS-24-005" in a and "DOKUMENT DS-23-005" in a and "WIDERSPRUCH" in a, "Widerspruchs-Auftrag enthaelt beide Dokumente")
+    pruefe(fadenfrage.uebersichtsseiten(["Deckblatt", "1 Einleitung " * 20, "Text " * 30, "7 Zusammenfassung " * 10]) == [2, 4], "Uebersichtsseiten: Einleitung + Zusammenfassung")
+
+
+def szenario_16_kennwerte_abkuerzung():
+    print("\n[16] Kennwerte als Tabelle; Abkuerzungen aus dem Dokument")
+    pruefe(assistent.ist_kennwertfrage("Welche E-Modul-Werte nennt die Arbeit?"), "Kennwertfrage E-Modul")
+    pruefe(assistent.ist_kennwertfrage("Wie hoch ist die Schmelzviskosität bei 260 °C?"), "Kennwertfrage Viskositaet")
+    pruefe(not assistent.ist_kennwertfrage("Was ist das Ziel der Arbeit?"), "Zielfrage ist keine Kennwertfrage")
+    a = fadenfrage.auftrag("Welche Werte?", "X", [1], ["Text"], modus="kennwerte")
+    pruefe("Messbedingung" in a and "fehlt" in a, "Kennwert-Regel im Auftrag")
+    for f, e in [("Wofür steht GFK?", "GFK"), ("Was heißt FVK?", "FVK"), ("GFK?", "GFK"), ("Was ist Mastizieren?", None), ("Was bedeutet REM", "REM")]:
+        r = assistent.abkuerzungs_frage(f); pruefe(r == e, "Abkuerzung %r -> %r" % (f, r))
+    seiten = ["", "Für glasfaserverstärkte Kunststoffe (GFK) gilt ...", "REM: Rasterelektronenmikroskop. Später GFK erneut."]
+    t = assistent.abkuerzung_aufloesen("GFK", seiten)
+    pruefe(t and t[0][0] == 2 and "glasfaserverstärkte Kunststoffe" in t[0][1], "GFK aufgeloest auf S. 2: %r" % (t[:1],))
+    t2 = assistent.abkuerzung_aufloesen("REM", seiten)
+    pruefe(t2 and t2[0][0] == 3 and t2[0][1].startswith("Rasterelektronenmikroskop"), "REM per Doppelpunkt: %r" % (t2[:1],))
+    pruefe(assistent.abkuerzung_aufloesen("XYZ", seiten) == [], "unbekannt -> leer, kein Raten")
+
+
+def szenario_17_export_kontakt_tippfehler():
+    print("\n[17] Export, Ansprechpartner, Tippfehler bei Verfassern")
+    pruefe(assistent.export_frage("Exportiere das als CSV") == "csv" and assistent.export_frage("Gib mir den Bestand als BibTeX") == "bibtex", "Export erkannt")
+    pruefe(assistent.export_frage("Welche Werte hat die Tabelle?") is None, "keine Export-Frage")
+    b = assistent.bibtex_eintraege(["DS-24-005.md"])
+    pruefe("@phdthesis{becker2024" in b and "author = {Fabian Becker}" in b, "BibTeX-Eintrag: %s" % b.split("\n")[0])
+    csv = assistent.tabelle_zu_csv("Text\n| Kennung | Wert |\n|---|---|\n| [DS-24-005](/pdf/x) | 12; 5 |\n")
+    pruefe(csv == 'Kennung;Wert\nDS-24-005;"12; 5"', "Markdown-Tabelle -> CSV: %r" % csv)
+    v = assistent.Verlauf(); k = "wissensdatenbank|t17"; v.antwort_merken(k, "| a | b |\n|---|---|\n| 1 | 2 |")
+    pruefe(assistent.Verlauf().letzte_antwort(k).startswith("| a |"), "letzte Antwort persistiert")
+    os.environ["KI4KI_KONTAKT"] = "Max Mustermann, max@institut.de"
+    pruefe("Max Mustermann" in assistent.anlage_antwort("DS-24-005.md", 11) and "Max Mustermann" in fadenfrage.nichts_gefunden("X", ["zeug"]), "Kontakt erscheint")
+    os.environ["KI4KI_KONTAKT"] = ""
+    g, _ = assistent.dokument_gemeint("Fasse die Arbeit von Beker zusammen", NAMEN)
+    pruefe(g == "DS-24-005.md", "Tippfehler 'Beker' -> Becker: %r" % g)
+    g, _ = assistent.dokument_gemeint("Was sagt Mueller dazu?", NAMEN)
+    pruefe(g == "DS-23-005.md", "'Mueller' (ue) -> Müller: %r" % g)
+    pruefe("Weiter:" in assistent.naechste_schritte("faden", "DS-24-005.md"), "naechste Schritte vorhanden")
+
+
 if __name__ == "__main__":
     for s in (szenario_1_verfasser_und_folgefragen, szenario_2_beschwerde_reparatur,
               szenario_3_themenwechsel, szenario_4_rueckkehr, szenario_5_nicht_im_dokument,
               szenario_6_zitate_pruefen, szenario_7_fachwort_vs_alltag, szenario_8_bestand_tippfehler,
               szenario_9_klaerfrage, szenario_10_gedaechtnis_dauerhaft,
               szenario_11_dieses_dokument_kein_bestand, szenario_12_zielfrage_und_reparatur,
-              szenario_13_zweifel_und_anlage, szenario_14_selbes_thema):
+              szenario_13_zweifel_und_anlage, szenario_14_selbes_thema,
+              szenario_15_vergleich, szenario_16_kennwerte_abkuerzung, szenario_17_export_kontakt_tippfehler):
         try:
             s()
         except Exception as e:

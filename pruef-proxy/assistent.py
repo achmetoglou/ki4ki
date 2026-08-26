@@ -206,6 +206,20 @@ class Verlauf:
             if eintrag and eintrag.pop("wahl", None) is not None:
                 self._sichern()
 
+    def antwort_merken(self, kennung, text):
+        """Die letzte Antwort (gekuerzt) - fuer "exportiere das als CSV"."""
+        if not text:
+            return
+        with self._sperre:
+            eintrag = self._neu(kennung)
+            eintrag["antwort"] = str(text)[-8000:]
+            eintrag["zuletzt"] = time.time()
+            self._sichern()
+
+    def letzte_antwort(self, kennung):
+        eintrag = self._hol(kennung)
+        return (eintrag.get("antwort") or "") if eintrag else ""
+
     def dokument_merken(self, kennung, name):
         """Welches Dokument in diesem Faden gerade Thema ist.
 
@@ -752,6 +766,10 @@ def vergleichsteile(text):
         return _saubern(m.group(1)), _saubern(m.group(2))
     m = re.search(r"^(.{2,70}?)\s+(?:gegenueber|gegenüber|versus|vs\.?)\s+(.{2,70}?)"
                   r"\s*[\?\.,;]?\s*$", text, re.I)
+    if m:
+        return _saubern(m.group(1)), _saubern(m.group(2))
+    m = re.search(r"vergleich(?:e|en|t)?\s+(?:mir\s+)?(?:bitte\s+)?(?:die\s+|den\s+|das\s+)?"
+                  r"(.{2,70}?)\s+(?:und|mit)\s+(.{2,70}?)\s*[\?\.,;]?\s*$", text, re.I)
     if m:
         return _saubern(m.group(1)), _saubern(m.group(2))
     return None
@@ -1562,6 +1580,9 @@ def anlage_antwort(dokument=None, anzahl=None):
                  "- **Übersicht:** „Welche Dokumente haben wir?“%s\n"
                  "- **Neu anfangen:** neuen Gesprächsfaden öffnen."
                  % (" (%d im Bereich)" % anzahl if anzahl else ""))
+    k = kontakt_zeile()
+    if k:
+        teile.append("*%s*" % k)
     return "\n\n".join(teile)
 
 
@@ -1575,6 +1596,196 @@ def rueckfrage_welche_aussage(dokument):
             "**%s**. **Welche Aussage ist falsch?** Zitiere sie oder nenne das "
             "Stichwort — dann prüfe ich genau diese Stelle Satz für Satz an den "
             "Seiten, mit wörtlichen Belegen." % _titel_saubern(dokument))
+
+
+# ------------------------------------------ Vergleich, Kennwerte, Abkuerzungen
+
+_WIDERSPRUCH = re.compile(
+    r"widerspr(?:e|i|u|ü)ch|widersprechen|(?:stimmen|passen)\s+.{0,20}(?:überein|ueberein|zusammen)|"
+    r"\beinig\b|\buneinig\b|\bgegens(?:ae|ä)tz", re.I)
+
+
+def ist_widerspruchsfrage(frage):
+    return bool(_WIDERSPRUCH.search(frage or ""))
+
+
+def vergleichs_dokumente(frage, namen):
+    """Zwei Dokumente aus einer Vergleichsfrage - (dokA, dokB, aspekt) oder
+    None. "Vergleiche die Methodik von Becker und Mueller" -> Becker, Mueller,
+    "Methodik". Nur wenn BEIDE Seiten ein Dokument sind."""
+    teile = vergleichsteile(frage)
+    if not teile:
+        return None
+    a, b = teile
+    da, _ = dokument_gemeint(a, namen)
+    db, _ = dokument_gemeint(b, namen)
+    if not da or not db or da == db:
+        return None
+    # Aspekt = die Inhaltswoerter der Frage ohne die Namen der Dokumente
+    # und ohne Fuellwoerter ("Methodik" aus "Vergleiche die Methodik von
+    # Becker und Mueller").
+    namen_flach = set()
+    try:
+        import bestand as _b
+        for d in (da, db):
+            ang = _b.angaben(d) or {}
+            namen_flach |= {_flach(x) for x in re.findall(r"[A-Za-zÄÖÜäöüß\-]{2,}", ang.get("verfasser") or "")}
+            namen_flach.add(_flach(_titel_saubern(d)))
+    except Exception:
+        pass
+    fueller = {"vergleiche", "vergleich", "vergleichen", "vergleicht", "unterschied", "unterschiede",
+               "zwischen", "von", "und", "mit", "mir", "bitte", "die", "der", "das", "den", "dem",
+               "des", "was", "ist", "sind", "wie", "sich", "unterscheiden", "unterscheidet",
+               "arbeit", "arbeiten", "dissertation", "dissertationen", "dokument", "dokumente",
+               "bei", "beim", "in", "im", "zu", "zur", "zum", "widersprechen", "widerspricht",
+               "gegenüber", "gegenueber", "versus", "vs", "einig", "uneinig", "beide", "beiden"}
+    woerter = []
+    for w in re.findall(r"[A-Za-zÄÖÜäöüß0-9\-]{2,}", frage):
+        f = _flach(w)
+        if w.lower() in fueller or f in namen_flach or f in _FUELLWORT:
+            continue
+        if any(f in n or n in f for n in namen_flach if len(n) >= 4):
+            continue
+        woerter.append(w)
+    aspekt = " ".join(woerter).strip()
+    return da, db, aspekt
+
+
+_KENNWERT = re.compile(
+    r"\b(?:kennwert\w*|messwert\w*|zahlenwert\w*|werte?\b|wie\s+(?:hoch|gro(?:ss|ß)|viel|schnell|schwer|dick|lang)\b|"
+    r"modul\b|e-modul|festigkeit\w*|viskosit(?:ae|ä)t\w*|temperatur\w*|dichte|"
+    r"dehnung\w*|spannung\w*|druck\b|kraft\b|zyklen|lebensdauer|"
+    r"\d+\s*(?:mpa|gpa|°c|k\b|mm|µm|%|pa·s|n\b|kn))", re.I)
+
+
+def ist_kennwertfrage(frage):
+    """Fragen nach Zahlen: Antwort als Tabelle Wert | Einheit | Bedingung |
+    Seite - und "Bedingung fehlt" statt stillschweigend (GESPRAECH-
+    ANFORDERUNGEN §2.18: nur 9 % der Tabellen nennen Messbedingungen)."""
+    return bool(_KENNWERT.search(frage or ""))
+
+
+_ABKUERZUNG = re.compile(
+    r"(?:\b(?:was\s+(?:heisst|heißt|bedeutet|ist)|wof(?:ue|ü)r\s+steht|"
+    r"was\s+ist\s+(?:die\s+)?abk(?:ue|ü)rzung)\s+(?:die\s+abk(?:ue|ü)rzung\s+)?"
+    r"([A-ZÄÖÜ][A-Za-z0-9ÄÖÜäöü\-]{1,9})\b|^\s*([A-ZÄÖÜ]{2,8})\s*\??\s*$)", re.I)
+
+
+def abkuerzungs_frage(frage):
+    """"Wofuer steht GFK?" / "Was heisst FVK?" / "GFK?" -> "GFK", sonst None.
+    Aufgeloest wird aus DIESEM Dokument (SciAD: 732 mehrdeutige Akronyme)."""
+    m = _ABKUERZUNG.search((frage or "").strip())
+    if not m:
+        return None
+    k = m.group(1) or m.group(2)
+    if not k or k.lower() in _UNSPEZIFISCH or k.lower() in _FUELLWORT:
+        return None
+    # Eine Abkuerzung hat mindestens zwei Grossbuchstaben ("GFK", "E-Modul"
+    # nicht) - "Was ist Mastizieren" oder "kleben?" sind keine.
+    if sum(1 for c in k if c.isupper()) < 2:
+        return None
+    return k
+
+
+def abkuerzung_aufloesen(kurz, seiten):
+    """[(seite, ausgeschrieben, zeile)] - Stellen, an denen die Abkuerzung
+    eingefuehrt wird: "glasfaserverstaerkter Kunststoff (GFK)" oder
+    "GFK (glasfaserverstaerkter Kunststoff)"."""
+    k = re.escape(kurz)
+    m1 = re.compile(r"((?:[A-Za-zÄÖÜäöüß\-]+\s+){1,6}[A-Za-zÄÖÜäöüß\-]+)\s*\(\s*%s\s*\)" % k)
+    m2 = re.compile(r"\b%s\s*[\(:=–\-]\s*([A-Za-zÄÖÜäöüß][^)\n]{4,90})" % k)
+    treffer = []
+    for i, s in enumerate(seiten or [], 1):
+        for m in m1.finditer(s or ""):
+            lang = re.sub(r"\s+", " ", m.group(1)).strip()
+            # Nur die Woerter, deren Anfangsbuchstaben zur Abkuerzung passen
+            woerter = lang.split(" ")
+            if len(woerter) > len(kurz) + 2:
+                woerter = woerter[-(len(kurz) + 2):]
+            treffer.append((i, " ".join(woerter), m.group(0)))
+        for m in m2.finditer(s or ""):
+            treffer.append((i, re.sub(r"\s+", " ", m.group(1)).strip(" )"), m.group(0)))
+        if len(treffer) >= 3:
+            break
+    return treffer
+
+
+# ------------------------------------------------------------- Export
+
+_EXPORT = re.compile(r"\b(?:export\w*|als\s+(?:csv|bibtex|ris|excel|tabelle\s+zum\s+download)|"
+                     r"(?:csv|bibtex|ris)[\s\-]?(?:datei|format|export)?)\b", re.I)
+
+
+def export_frage(frage):
+    """'bibtex' | 'csv' | None."""
+    f = (frage or "")
+    if not _EXPORT.search(f):
+        return None
+    if re.search(r"bibtex|ris\b|literatur|zitier|zotero|citavi", f, re.I):
+        return "bibtex"
+    return "csv"
+
+
+def bibtex_eintraege(namen):
+    try:
+        import bestand as _b
+    except Exception:
+        return ""
+    aus = []
+    for n in namen:
+        ang = _b.angaben(n) or {}
+        kurz = _titel_saubern(n)
+        wer = (ang.get("verfasser") or "").strip()
+        nach = wer.split()[-1] if wer else kurz
+        schl = re.sub(r"[^A-Za-z0-9]", "", _flach(nach)) + str(ang.get("jahr") or "")
+        art = (ang.get("art") or "").lower()
+        typ = "phdthesis" if "dissertation" in art else "mastersthesis" if "arbeit" in art else "misc"
+        felder = ["  title = {%s}" % (ang.get("titel") or kurz)]
+        if wer:
+            felder.append("  author = {%s}" % wer)
+        if ang.get("jahr"):
+            felder.append("  year = {%s}" % ang["jahr"])
+        felder.append("  note = {%s}" % kurz)
+        aus.append("@%s{%s,\n%s\n}" % (typ, schl or kurz, ",\n".join(felder)))
+    return "\n\n".join(aus)
+
+
+def tabelle_zu_csv(markdown):
+    """Die erste Markdown-Tabelle im Text als CSV (Semikolon) - oder ""."""
+    zeilen = [z for z in (markdown or "").split("\n") if z.strip().startswith("|")]
+    if len(zeilen) < 2:
+        return ""
+    aus = []
+    for z in zeilen:
+        if re.match(r"^\s*\|?\s*:?-{2,}", z):
+            continue
+        zellen = [re.sub(r"\[([^\]]*)\]\([^)]*\)", r"\1", c).replace("**", "").strip()
+                  for c in z.strip().strip("|").split("|")]
+        aus.append(";".join('"%s"' % c.replace('"', '""') if (";" in c or '"' in c) else c
+                            for c in zellen))
+    return "\n".join(aus)
+
+
+def kontakt_zeile():
+    k = (os.environ.get("KI4KI_KONTAKT") or "").strip()
+    return ("Ansprechpartner: %s" % k) if k else ""
+
+
+def naechste_schritte(art, dokument=None):
+    """Zwei, drei konkrete Anschlussfragen - Laien wissen sonst nicht, was
+    die Anlage noch kann (NN/g G4)."""
+    if dokument:
+        d = _titel_saubern(dokument)
+        if art == "zusammenfassung":
+            v = ["„Was ist das Ziel der Arbeit?“", "„Zeig mir ein Diagramm“", "„Welche Kennwerte werden genannt?“"]
+        elif art == "bild":
+            v = ["„Zeig mir Bild 2.1“", "„Wie viele Abbildungen hat die Arbeit?“", "„Was zeigt das Diagramm?“"]
+        elif art == "fakten":
+            v = ["„Fasse die Arbeit zusammen“", "„Zeig mir ein Diagramm“"]
+        else:
+            v = ["„Fasse %s zusammen“" % d, "„Zeig mir ein Diagramm“", "„Vergleiche %s mit …“" % d]
+        return "*Weiter: %s · Anderes Dokument: Kennung oder Verfasser nennen.*" % " · ".join(v)
+    return "*Weiter: „Welche Dokumente haben wir?“ · „Fasse <Kennung> zusammen“*"
 
 
 def _aus_katalog(frage, titel):
@@ -1613,8 +1824,15 @@ def _aus_katalog(frage, titel):
         verfasser = {_flach(x) for x in
                      re.findall(r"[A-Za-zÄÖÜäöüß\-]{2,}", ang.get("verfasser") or "")}
         for n in namen:
-            if _flach(n) in verfasser:
+            fn = _flach(n)
+            if fn in verfasser:
                 p += 10
+            elif len(fn) >= 5:
+                # Tippfehler dulden: "Beker", "Mueler" - Aehnlichkeit >= 0,85
+                import difflib
+                if any(difflib.SequenceMatcher(None, fn, v).ratio() >= 0.85
+                       for v in verfasser if len(v) >= 5):
+                    p += 8
         ft = _flach(ang.get("titel") or "")
         if ft:
             getroffen = [w for w in titelwoerter if _flach(w) in ft]
@@ -1626,7 +1844,7 @@ def _aus_katalog(frage, titel):
         return None, []
     sortiert = sorted(punkte.items(), key=lambda x: -x[1])
     beste = [t for t, p in sortiert if p == sortiert[0][1]]
-    if sortiert[0][1] < 10:
+    if sortiert[0][1] < 8:
         return None, []
     if len(beste) == 1:
         return beste[0], beste

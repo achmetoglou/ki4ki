@@ -307,6 +307,10 @@ services:
     # Zeitstempel in aussortiert.log/claim.log in Ortszeit (gemessen 25.08.:
     # UTC, zwei Stunden daneben). Gleiche Quelle wie n8n.
     - TZ=${TZ:-Europe/Berlin}
+    # Weg zum Menschen (GESPRAECH-ANFORDERUNGEN §1.14): Name/Mail des
+    # Verantwortlichen, erscheint bei "steht nicht drin" und Anlage-Fragen.
+    # Leer = kein Hinweis. Beispiel in .env: KI4KI_KONTAKT=Max Mustermann, m.mustermann@institut.de
+    - KI4KI_KONTAKT=${KI4KI_KONTAKT:-}
     - KI4KI_ZWISCHENSPEICHER=/daten/pruefung/vorauswahl.pickle
     # Der Katalog (Titel/Verfasser/Jahr je Dokument) - dauerhaft im
     # Daten-Volume, nicht im Abbild: Was das Modell vom Deckblatt liest,

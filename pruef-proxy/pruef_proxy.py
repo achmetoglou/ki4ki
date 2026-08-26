@@ -534,7 +534,20 @@ META_TEXT_KANN = (
     "- **Bestandsfragen** wie \u201eWelche Dissertationen habt ihr zum Thema "
     "Kleben?\u201c beantworte ich direkt aus dem Katalog.\n"
     "- Du kannst im Chat eine **PDF anh\u00e4ngen** \u2013 dann lese ich sie "
-    "komplett und erledige deine Aufgabe (z.\u202fB. eine Gliederung erstellen)."
+    "komplett und erledige deine Aufgabe (z.\u202fB. eine Gliederung erstellen).\n"
+    "- **Ein Dokument im Blick:** Nenn Kennung oder Verfasser (\u201edie Arbeit von "
+    "Becker\u201c) \u2013 danach beziehen sich Folgefragen, Zusammenfassungen, "
+    "\u201eZeig mir ein Diagramm\u201c, \u201eWie viele Seiten?\u201c und \u201eWof\u00fcr "
+    "steht GFK?\u201c auf genau dieses Dokument, mit w\u00f6rtlich gepr\u00fcften Zitaten.\n"
+    "- **Vergleichen:** \u201eVergleiche die Methodik von Becker und M\u00fcller\u201c "
+    "\u2192 Tabelle mit Seite je Zelle; \u201eWidersprechen sich \u2026?\u201c pr\u00fcft "
+    "Gegens\u00e4tze.\n"
+    "- **Kennwerte:** \u201eWelche E-Modul-Werte nennt die Arbeit?\u201c \u2192 Tabelle "
+    "Wert \u00b7 Einheit \u00b7 Messbedingung \u00b7 Seite.\n"
+    "- **Export:** \u201eals CSV\u201c / \u201eals BibTeX\u201c.\n"
+    "- **Korrigieren:** \u201edas ist falsch\u201c oder \u201esicher?\u201c \u2013 ich "
+    "pr\u00fcfe die letzte Antwort Satz f\u00fcr Satz am Original.\n"
+    "- **Alles durchsuchen:** Frage mit \u201eim ganzen Bestand:\u201c beginnen."
     "\n\nStell mir einfach eine Frage zu deinen Dokumenten!")
 META_TEXT_GRUSS = (
     "Hallo! \U0001F642 Mir geht\u2019s gut, danke der Nachfrage. Ich bin die "
@@ -3447,6 +3460,18 @@ class Griff(BaseHTTPRequestHandler):
                 # Kein Abbruch - die Frage geht dann eben den normalen Weg.
                 traceback.print_exc(file=sys.stderr)
 
+        if art in ("vergleich", "normal", "folgefrage") and gespraech:
+            # ⭐ VERGLEICH ZWEIER DOKUMENTE als Tabelle mit Seitenbeleg je Zelle
+            #   (GESPRAECH-ANFORDERUNGEN §2.17/§2.22) - Denken eingeschaltet.
+            try:
+                _namen = (titel_im_bereich(self.path, self.headers)
+                          or nur_erlaubte(BESTAND.titel(), self.headers) or [])
+                _vgl = assistent.vergleichs_dokumente(frage, _namen)
+                if _vgl and self._vergleich_antwort(frage, _vgl[0], _vgl[1], _vgl[2]):
+                    return
+            except Exception:
+                traceback.print_exc(file=sys.stderr)
+
         if art == "anlage":
             # Fragen an die Anlage selbst beantwortet der Proxy - ehrlich und
             # mit dem echten Faden-Zustand. Das Modell weiss davon nichts.
@@ -3562,6 +3587,15 @@ class Griff(BaseHTTPRequestHandler):
                         print("[Assistent] Dokumentwechsel: %r" % _hit,
                               file=sys.stderr, flush=True)
                         _dok = _hit
+                # Export ("als CSV", "als BibTeX") - aus Katalog oder letzter Tabelle.
+                if assistent.export_frage(frage):
+                    if self._export_antwort(frage, _dok):
+                        return
+                # Abkuerzung aus DIESEM Dokument aufloesen ("Wofuer steht GFK?").
+                _abk = assistent.abkuerzungs_frage(frage)
+                if _abk and _dok and not _gesamt:
+                    if self._abkuerzung_antwort(frage, _abk, _dok):
+                        return
                 # Zaehlbares (Seiten, Abbildungen, Tabellen, Verfasser, Jahr)
                 # braucht kein Modell - PDF und Katalog wissen es.
                 if assistent.dokument_fakten_frage(frage) and (
@@ -3897,6 +3931,18 @@ class Griff(BaseHTTPRequestHandler):
         except Exception:
             traceback.print_exc(file=sys.stderr)
 
+        # ⭐ KONFIDENZ KALIBRIEREN: "Konfidenz: Hoch" ohne ein einziges
+        #   woertlich geprueftes Zitat ist der Vertrauens-Killer "plausibel,
+        #   aber falsch" (GESPRAECH-ANFORDERUNGEN §3). Dann hoechstens Mittel.
+        try:
+            if HINWEIS_OHNE.strip() in geprueft and re.search(
+                    r"\*?\*?Konfidenz:?\*?\*?\s*\*?\*?Hoch", geprueft, re.I):
+                geprueft = re.sub(r"(\*?\*?Konfidenz:?\*?\*?\s*)\*?\*?Hoch\*?\*?",
+                                  r"\1**Mittel** (kein wörtliches Zitat geprüft)",
+                                  geprueft, count=1, flags=re.I)
+        except Exception:
+            pass
+
         # Fuer die naechste Folgefrage festhalten, worum es ging.
         try:
             if gespraech:
@@ -4046,13 +4092,19 @@ class Griff(BaseHTTPRequestHandler):
         Antwort verhindern.
         """
         try:
+            GESPRAECHE.antwort_merken(
+                GESPRAECHE.kennung(self.path, self.headers), antwort)
+        except Exception:
+            pass
+        try:
             m = re.match(r"^/api/(?:v1/)?workspace/([^/]+)"
                          r"(?:/thread/([^/]+))?", self.path or "")
             fund = []
             try:
                 if art in ("bestand", "zusammenfassung", "rueckfrage",
                            "wahl-alle", "e2b", "anhang", "meta", "allgemein",
-                           "bild"):
+                           "bild", "faden", "fakten", "beschwerde", "zweifel",
+                           "anlage", "vergleich", "abkuerzung", "export"):
                     import time as _t
                     _ws = (m.group(1) if m else "") or ""
                     _th = (m.group(2) if (m and m.group(2)) else "default")
@@ -4499,7 +4551,7 @@ class Griff(BaseHTTPRequestHandler):
         _auftrag, _ = assistent.zusammenfassungs_auftrag(ganz, titel)
         return self._modell_fragen(_auftrag), min(len(ganz), 48000), len(ganz)
 
-    def _modell_fragen(self, auftrag, zeitgrenze=900, modell=None):
+    def _modell_fragen(self, auftrag, zeitgrenze=900, modell=None, denken=False):
         """Das Sprachmodell direkt fragen - ohne Suche, ohne AnythingLLM.
 
         Nur fuer Faelle, in denen der Text schon feststeht und gar nicht
@@ -4511,7 +4563,10 @@ class Griff(BaseHTTPRequestHandler):
             "model": modell or MODELL_NAME,
             "messages": [{"role": "user", "content": auftrag}],
             "stream": False,
-            "think": False,
+            # Denken nur fuer die schweren Aufgaben (Vergleich, Widerspruch,
+            # Kennwerte) - dort lohnt es; fuer "was steht auf S. 12" kostet
+            # es nur Zeit. Die Denkspur kommt getrennt und landet nicht im Text.
+            "think": bool(denken),
             "options": {"temperature": 0.2, "num_ctx": 65536},
             "keep_alive": "24h",
         }).encode()
@@ -4663,7 +4718,8 @@ class Griff(BaseHTTPRequestHandler):
 
         text += "\n".join(["", "---",
                            zusammenfassungs_fuss(gewaehlt, _ganz, _gelesen,
-                                                 auftrag=bool(_auftrag))])
+                                                 auftrag=bool(_auftrag)),
+                           assistent.naechste_schritte("zusammenfassung", gewaehlt)])
 
         self._festhalten("zusammenfassung", frage, text)
         GESPRAECHE.dokument_merken(gespraech, gewaehlt)
@@ -4812,6 +4868,8 @@ class Griff(BaseHTTPRequestHandler):
                     "die Nummer steht in der Bildunterschrift.*")
         text += "\n\n---\n*Direkt aus dem Dokument geholt — Klick auf ein Bild "
         text += "oder die Seite öffnet das Original.*"
+        if gewaehlt:
+            text += "\n" + assistent.naechste_schritte("bild", gewaehlt)
         text = vorspann + text
         if modell_benutzt:
             text += _modell_zeile(MODELL_NAME, time.time() - begonnen)
@@ -4828,6 +4886,146 @@ class Griff(BaseHTTPRequestHandler):
         _dokus = {d for d, _ in gute}
         if gewaehlt or len(_dokus) == 1:
             GESPRAECHE.dokument_merken(gespraech, gewaehlt or _dokus.pop())
+        return True
+
+    def _direkt_senden(self, art, frage, text, merk_art=None, dok=None):
+        """Eine fertige Antwort senden, festhalten, merken. Wirft nie."""
+        gespraech = GESPRAECHE.kennung(self.path, self.headers)
+        self._festhalten(art, frage, text)
+        GESPRAECHE.merken(gespraech, frage, merk_art or art,
+                          [{"title": dok}] if dok else [])
+        self._sende_strom([
+            {"uuid": _neue_marke(art), "type": "textResponseChunk",
+             "textResponse": text, "sources": [], "close": False, "error": False},
+            {"uuid": _neue_marke(art), "type": "textResponseChunk",
+             "textResponse": "", "sources": [], "close": True, "error": False},
+        ])
+
+    def _vergleich_antwort(self, frage, dok_a, dok_b, aspekt):
+        """Zwei Dokumente nebeneinander - Tabelle, jede Zelle mit Seite."""
+        ka, kb = _pdf_schluessel(dok_a), _pdf_schluessel(dok_b)
+        if not ka or not kb:
+            return False
+        if not (dokument_erlaubt(ka, self.headers) and dokument_erlaubt(kb, self.headers)):
+            return False
+        try:
+            sa = pdfstelle.seitentexte(ka) or []
+            sb = pdfstelle.seitentexte(kb) or []
+        except Exception:
+            return False
+        if not sa or not sb:
+            return False
+        modus = "widerspruch" if assistent.ist_widerspruchsfrage(frage) else "vergleich"
+        such = aspekt or ""
+        na, _ = fadenfrage.seiten_waehlen(such, sa, hoechstens=4) if such else ([], [])
+        nb, _ = fadenfrage.seiten_waehlen(such, sb, hoechstens=4) if such else ([], [])
+        if not na:
+            na = fadenfrage.uebersichtsseiten(sa)
+        if not nb:
+            nb = fadenfrage.uebersichtsseiten(sb)
+        ta, tb = assistent._titel_saubern(dok_a), assistent._titel_saubern(dok_b)
+        begonnen = time.time()
+        self._strom_beginnen()
+        stand = "vergleich-%d" % id(self)
+        self._stand(stand, "Vergleiche *%s* (S. %s) mit *%s* (S. %s) — mit Bedenkzeit …"
+                    % (ta, ", ".join(map(str, na)), tb, ", ".join(map(str, nb))))
+        try:
+            roh = self._modell_fragen(
+                fadenfrage.vergleichs_auftrag(frage, such, (ta, ta, na, sa), (tb, tb, nb, sb), modus=modus),
+                zeitgrenze=600, denken=True)
+        except Exception:
+            traceback.print_exc(file=sys.stderr)
+            roh = ""
+        self._stand_weg(stand)
+        if not (roh or "").strip():
+            text = "Der Vergleich ist nicht zustande gekommen (Modell antwortete nicht). Bitte noch einmal."
+            ok = nein = 0
+        else:
+            text, ok, nein = fadenfrage.verlinken_mehrfach(roh.strip(), {ta: (ka, sa), tb: (kb, sb)})
+        text += ("\n\n---\n*%s von **%s** und **%s** — nur aus den geprüften Seiten "
+                 "(%s: S. %s · %s: S. %s). %s*"
+                 % ("Widerspruchsprüfung" if modus == "widerspruch" else "Vergleich", ta, tb,
+                    ta, ", ".join(map(str, na)), tb, ", ".join(map(str, nb)),
+                    ("%d Zitat(e) wörtlich geprüft%s." % (ok, ", %d nicht gefunden" % nein if nein else ""))
+                    if (ok or nein) else "Seitenangaben verlinkt, Zitate nicht wörtlich geprüft."))
+        text += "\n*Weiter: „Exportiere das als CSV“ · anderer Aspekt: „Vergleiche die Methodik von %s und %s“*" % (ta, tb)
+        text += _modell_zeile(MODELL_NAME, time.time() - begonnen)
+        gespraech = GESPRAECHE.kennung(self.path, self.headers)
+        self._festhalten("vergleich", frage, text)
+        GESPRAECHE.merken(gespraech, frage, "vergleich", [{"title": dok_a}, {"title": dok_b}])
+        self._strom_stueck({"uuid": _neue_marke("vergleich"), "type": "textResponseChunk",
+                            "textResponse": text, "sources": [], "close": True, "error": False})
+        self._strom_schliessen()
+        print("[Vergleich] %s vs %s (%s), %d ok / %d nicht" % (dok_a, dok_b, modus, ok, nein),
+              file=sys.stderr, flush=True)
+        return True
+
+    def _abkuerzung_antwort(self, frage, kurz, dok):
+        schluessel = _pdf_schluessel(dok)
+        if not schluessel or not dokument_erlaubt(schluessel, self.headers):
+            return False
+        try:
+            seiten = pdfstelle.seitentexte(schluessel) or []
+        except Exception:
+            seiten = []
+        if not seiten:
+            return False
+        titel = assistent._titel_saubern(dok)
+        treffer = assistent.abkuerzung_aufloesen(kurz, seiten)
+        dq = quote(str(schluessel), safe="")
+        if treffer:
+            zeilen = []
+            gesehen = set()
+            for s, lang, roh in treffer:
+                if lang.lower() in gesehen:
+                    continue
+                gesehen.add(lang.lower())
+                zeilen.append("- **%s** = %s — [S. %d](/stelle?dok=%s&seite=%d&zitat=%s)"
+                              % (kurz, lang, s, dq, s, quote(roh[:200], safe="")))
+            text = "So wird **%s** in **%s** eingeführt:\n\n%s" % (kurz, titel, "\n".join(zeilen))
+            if len(gesehen) > 1:
+                text += "\n\n*Mehrere Auflösungen im selben Dokument — die Seite entscheidet.*"
+        else:
+            text = ("In **%s** wird **%s** nirgends ausgeschrieben eingeführt (Muster „Langform (%s)“ "
+                    "oder „%s: Langform“). Möglich: im Abkürzungsverzeichnis anders gesetzt — "
+                    "„Zeig mir das Abkürzungsverzeichnis“ — oder Fachbegriff: „Was ist %s?“"
+                    % (titel, kurz, kurz, kurz, kurz))
+        text += "\n\n📇 *Direkt aus dem Dokumenttext — ohne Sprachmodell.*"
+        self._direkt_senden("abkuerzung", frage, text, merk_art="normal", dok=dok)
+        print("[Abkuerzung] %s in %s: %d" % (kurz, dok, len(treffer)), file=sys.stderr, flush=True)
+        return True
+
+    def _export_antwort(self, frage, dok):
+        was = assistent.export_frage(frage)
+        gespraech = GESPRAECHE.kennung(self.path, self.headers)
+        namen = (titel_im_bereich(self.path, self.headers)
+                 or nur_erlaubte(BESTAND.titel(), self.headers) or [])
+        if was == "bibtex":
+            ziel = [dok] if (dok and re.search(r"\b(?:diese|dieses|das|die|der)\s+(?:arbeit|dokument|dissertation)\b", frage, re.I)) else namen
+            inhalt = assistent.bibtex_eintraege(ziel)
+            if not inhalt:
+                return False
+            text = ("BibTeX für %d Dokument(e) — markieren, kopieren, in Zotero/Citavi/LaTeX einfügen:\n\n```bibtex\n%s\n```"
+                    % (len(ziel), inhalt))
+        else:
+            letzte = GESPRAECHE.letzte_antwort(gespraech)
+            csv = assistent.tabelle_zu_csv(letzte)
+            if csv:
+                text = "Die letzte Tabelle als CSV (Semikolon-getrennt, Excel-tauglich):\n\n```csv\n%s\n```" % csv
+            else:
+                try:
+                    import bestand as _b
+                    zeilen = ["Kennung;Verfasser;Jahr;Titel"]
+                    for n in sorted(namen):
+                        ang = _b.angaben(n) or {}
+                        zeilen.append(";".join('"%s"' % str(x).replace('"', '""') for x in
+                                               (assistent._titel_saubern(n), ang.get("verfasser") or "", ang.get("jahr") or "", ang.get("titel") or "")))
+                    text = "Keine Tabelle in der letzten Antwort — hier der Bestand als CSV:\n\n```csv\n%s\n```" % "\n".join(zeilen)
+                except Exception:
+                    return False
+        text += "\n\n📇 *Direkt zusammengestellt — ohne Sprachmodell. Datei-Download gibt es im Chat nicht; Text kopieren.*"
+        self._direkt_senden("export", frage, text, merk_art="normal", dok=dok)
+        print("[Export] %s" % was, file=sys.stderr, flush=True)
         return True
 
     def _fakten_zaehlen(self, dok, was):
@@ -4984,8 +5182,10 @@ class Griff(BaseHTTPRequestHandler):
         self._stand(stand, "Lese in *%s* die Seiten %s …"
                     % (titel, ", ".join(str(n) for n in nummern)))
         try:
+            _modus = "kennwerte" if assistent.ist_kennwertfrage(frage) else "frage"
             roh = self._modell_fragen(
-                fadenfrage.auftrag(frage, titel, nummern, seiten), zeitgrenze=300)
+                fadenfrage.auftrag(frage, titel, nummern, seiten, modus=_modus),
+                zeitgrenze=300, denken=(_modus == "kennwerte"))
         except Exception as e:
             traceback.print_exc(file=sys.stderr)
             roh = ""
@@ -5000,6 +5200,7 @@ class Griff(BaseHTTPRequestHandler):
                                                   seiten, nummern)
             text = vorspann + text
         text += "\n\n---\n" + fadenfrage.fuss(titel, nummern, ok, nein)
+        text += "\n" + assistent.naechste_schritte("faden", dok)
         text += _modell_zeile(MODELL_NAME, time.time() - begonnen)
         self._festhalten("faden", frage, text)
         GESPRAECHE.merken(gespraech, frage, "normal", [{"title": dok}])

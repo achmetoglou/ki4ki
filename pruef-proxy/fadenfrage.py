@@ -89,7 +89,14 @@ def seiten_waehlen(frage, seiten, hoechstens=HOECHSTENS_SEITEN):
     return gute[:hoechstens], terme
 
 
-def auftrag(frage, titel, nummern, seiten, je_seite=ZEICHEN_JE_SEITE):
+KENNWERT_REGEL = (
+    "6. Die Frage zielt auf ZAHLENWERTE. Gib sie als Markdown-Tabelle mit den Spalten "
+    "| Größe | Wert | Einheit | Messbedingung | Seite | aus. Steht die Messbedingung "
+    "(Temperatur, Rate, Feuchte, Probekörper) nicht auf der Seite, schreibe in die "
+    "Spalte genau: fehlt. Übernimm Werte und Einheiten wörtlich, rechne nichts um.\n")
+
+
+def auftrag(frage, titel, nummern, seiten, je_seite=ZEICHEN_JE_SEITE, modus="frage"):
     """Der Auftrag ans Modell - die Seiten stehen woertlich darin."""
     regel = (
         "Du beantwortest eine Frage AUSSCHLIESSLICH aus den unten stehenden "
@@ -103,6 +110,8 @@ def auftrag(frage, titel, nummern, seiten, je_seite=ZEICHEN_JE_SEITE):
         "5. Antworte auf Deutsch, knapp; Zwischenüberschriften nur bei "
         "mehreren Punkten; keine Einleitung, keine Schlussfloskel.\n"
         % (titel, NICHTS))
+    if modus == "kennwerte":
+        regel += KENNWERT_REGEL
     teile = [regel, "FRAGE: %s" % frage.strip()]
     for n in nummern:
         if 0 < n <= len(seiten):
@@ -159,6 +168,72 @@ def verlinken(text, schluessel, seiten, geprueft=None):
     return text, zaehler["ok"], zaehler["nein"]
 
 
+def vergleichs_auftrag(frage, aspekt, a, b, modus="vergleich", je_seite=3000):
+    """a, b = (kennung, titel, nummern, seiten). Tabelle mit Seitenbelegen je
+    Zelle; bei modus 'widerspruch' zusaetzlich die Spalte Bewertung."""
+    ka, ta, na, sa = a
+    kb, tb, nb, sb = b
+    regel = (
+        "Du vergleichst ZWEI Dokumente AUSSCHLIESSLICH anhand der unten stehenden Seiten.\n"
+        "Regeln:\n"
+        "1. Nichts erfinden, nichts aus anderem Wissen ergänzen.\n"
+        "2. Antworte als Markdown-Tabelle: | Aspekt | %s | %s |%s. In jede Zelle gehört "
+        "die Aussage UND die Seitenangabe in der Form (%s, S. 12) bzw. (%s, S. 7).\n"
+        "3. Fehlt zu einem Aspekt in einem Dokument etwas, schreibe in die Zelle: nicht auf den geprüften Seiten.\n"
+        "4. Nach der Tabelle höchstens drei Sätze Einordnung, jede mit Seitenangabe.\n"
+        "5. Deutsch, knapp, keine Einleitung.\n"
+        % (ka, kb, " Bewertung (Übereinstimmung / Widerspruch / nicht vergleichbar) |" if modus == "widerspruch" else "", ka, kb))
+    if modus == "widerspruch":
+        regel += ("6. Ein WIDERSPRUCH liegt nur vor, wenn beide Dokumente zur gleichen Größe unter "
+                  "vergleichbaren Bedingungen Gegenteiliges sagen. Zitiere dann beide Stellen wörtlich in „…“.\n")
+    teile = [regel, "FRAGE: %s" % frage.strip(), "ASPEKT: %s" % (aspekt or "allgemein: Ziel, Methode, Ergebnis")]
+    for k, t, nummern, seiten in ((ka, ta, na, sa), (kb, tb, nb, sb)):
+        teile.append("##### DOKUMENT %s — %s" % (k, t))
+        for n in nummern:
+            if 0 < n <= len(seiten):
+                teile.append("=== %s, Seite %d ===\n%s" % (k, n, (seiten[n - 1] or "")[:je_seite]))
+    return "\n\n".join(teile)
+
+
+def verlinken_mehrfach(text, dokumente):
+    """(Kennung, S. n) -> Link, fuer mehrere Dokumente. dokumente = {kennung:
+    (schluessel, seiten)}. Zitate direkt davor werden geprueft."""
+    gesamt_ok, gesamt_nein = 0, 0
+    aus = text or ""
+    for kennung, (schluessel, seiten) in dokumente.items():
+        dq = quote(str(schluessel), safe="")
+        k = re.escape(kennung)
+        zit = re.compile(r"[„\"“]([^„“\"]{8,400}?)[“\"”]\s*\(\s*%s\s*,\s*S\.?\s*(\d{1,4})\s*\)" % k)
+
+        def _z(m, seiten=seiten, dq=dq):
+            nonlocal gesamt_ok, gesamt_nein
+            zitat, s = m.group(1).strip(), int(m.group(2))
+            if 0 < s <= len(seiten) and _steht_auf(zitat, seiten[s - 1]):
+                gesamt_ok += 1
+                return "„%s“ [%s, S. %d](/stelle?dok=%s&seite=%d&zitat=%s)" % (
+                    zitat, kennung, s, dq, s, quote(zitat[:400], safe=""))
+            gesamt_nein += 1
+            return "„%s“ (%s, S. %d — nicht wörtlich gefunden)" % (zitat, kennung, s)
+        aus = zit.sub(_z, aus)
+        aus = re.sub(r"(?<!\[)\(\s*%s\s*,\s*S\.?\s*(\d{1,4})\s*\)" % k,
+                     lambda m: "[%s, S. %s](/stelle?dok=%s&seite=%s)" % (kennung, m.group(1), dq, m.group(1)), aus)
+    return aus, gesamt_ok, gesamt_nein
+
+
+def uebersichtsseiten(seiten, hoechstens=4):
+    """Seiten mit Zusammenfassung/Einleitung/Fazit - fuer Vergleiche ohne
+    konkreten Aspekt."""
+    marker = re.compile(r"(?im)^\s*(?:\d+(?:\.\d+)?\s+)?(?:Zusammenfassung|Kurzfassung|Abstract|Einleitung|"
+                        r"Fazit|Schlussfolgerung(?:en)?|Ausblick|Summary|Conclusion)\b")
+    aus = []
+    for i, s in enumerate(seiten or [], 1):
+        if len(s or "") >= MINDEST_SEITENLAENGE and marker.search(s or ""):
+            aus.append(i)
+        if len(aus) >= hoechstens:
+            break
+    return aus or [n for n in range(1, min(len(seiten or []), 3) + 1)]
+
+
 def fuss(titel, nummern, ok, nein, sekunden=None):
     teile = ["*Antwort nur aus **%s** — geprüft auf S. %s."
              % (titel, ", ".join(str(n) for n in nummern))]
@@ -175,11 +250,15 @@ def fuss(titel, nummern, ok, nein, sekunden=None):
 
 def nichts_gefunden(titel, terme):
     such = ", ".join(terme[:4]) if terme else "die Frage"
-    return ("In **%s** finde ich zu %s keine Seite. Das heißt: Dazu steht in "
+    text = ("In **%s** finde ich zu %s keine Seite. Das heißt: Dazu steht in "
             "diesem Dokument nichts — ich weiche nicht auf andere Dokumente "
             "aus. Anders formulieren, ein anderes Dokument nennen (Kennung "
             "oder Verfasser) oder mit „im ganzen Bestand:“ überall suchen."
             % (titel, "„%s“" % such if terme else such))
+    k = assistent.kontakt_zeile()
+    if k:
+        text += " *%s*" % k
+    return text
 
 
 _GESAMT = re.compile(
