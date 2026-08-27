@@ -1899,13 +1899,19 @@ def _seitentexte_pdf(schluessel):
     except Exception:
         seiten = []
     duenn = [i for i, t in enumerate(seiten) if len((t or "").strip()) < 40]
-    if seiten and not duenn:
+    gesamt = sum(len((t or "").strip()) for t in seiten)
+    if seiten and not duenn and gesamt >= 200 * len(seiten):
         return seiten
     ocr = _seiten_ohne_pdf(schluessel)
     if not ocr:
         return seiten
     if not seiten:
         return ocr
+    # Ganzer Scan mit Text-Resten (Teil 1: 5 609 Zeichen pdftotext gegen 75 457 OCR):
+    # dann die OCR-Fassung fuer ALLE Seiten, nicht nur fuer die leeren.
+    ocr_gesamt = sum(len(t.strip()) for t in ocr)
+    if ocr_gesamt and gesamt < 0.3 * ocr_gesamt and len(ocr) >= len(seiten) - 2:
+        return ocr if len(ocr) == len(seiten) else (ocr + [""] * (len(seiten) - len(ocr)))[:len(seiten)]
     aus = list(seiten)
     for i in duenn:
         if i < len(ocr) and len(ocr[i].strip()) > len((seiten[i] or "").strip()):
@@ -4774,7 +4780,15 @@ class Griff(BaseHTTPRequestHandler):
         """Der Weg fuer Maschinen: eine JSON-Antwort, geprueft zurueck."""
         koerper = self._koerper()
         try:
-            frage_roh = (json.loads(koerper or b"{}") or {}).get("message") or ""
+            _leib = json.loads(koerper or b"{}") or {}
+            frage_roh = _leib.get("message") or ""
+            # sessionId (AnythingLLM-API) = eigener Gespraechsfaden mit Gedaechtnis,
+            # wie ein Thread im Browser. Ohne sessionId teilen sich alle Aufrufe mit
+            # demselben Schluessel EIN Gedaechtnis (gemessen 27.08.: der Selbst-Check
+            # schleppte das Faden-Dokument der vorigen Frage mit).
+            _sitzung = str(_leib.get("sessionId") or "").strip()
+            if _sitzung and self.headers.get("X-KI4KI-Faden") is None:
+                self.headers["X-KI4KI-Faden"] = re.sub(r"[^A-Za-z0-9_.:-]", "_", _sitzung)[:80]
         except Exception:
             frage_roh = ""
 
@@ -5806,10 +5820,22 @@ class Griff(BaseHTTPRequestHandler):
                 self._stand(stand, "Störfall: suche in Fehlerkatalogen und Handbüchern …")
                 args = {"anlage": _kx.get("anlage", ""), "fehlercode": _kx.get("fehlercode", ""), "symptom": _kx.get("symptom", "")}
                 vorwissen.append(("stoerfall_suchen", args, self._werkzeug("stoerfall_suchen", args, zustand)))
-            elif not faden_dok and not assistent.ist_anlagefrage(frage) and not assistent._ist_bestandsfrage(frage) \
+            elif not assistent.ist_anlagefrage(frage) and not assistent._ist_bestandsfrage(frage) \
                     and fadenfrage.suchwoerter(frage) and not assistent.dokument_gemeint(frage, namen)[0]:
-                self._stand(stand, "Durchsuche alle Dokumente …")
-                vorwissen.append(("bestand_durchsuchen", {"begriffe": frage}, self._werkzeug("bestand_durchsuchen", {"begriffe": frage}, zustand)))
+                # Gemessen 27.08. (Selbst-Check): Mit Faden-Dokument bekam das Modell
+                # keine Belege vorab, rief kein Werkzeug und schrieb in 1,7 s "nicht
+                # enthalten" - bei 'Laminieren' in einem Laminier-Bestand. Deshalb:
+                # erst im Faden-Dokument lesen; findet sich dort nichts, der ganze Bestand.
+                gefunden = False
+                if faden_dok:
+                    self._stand(stand, "Lese Seiten in %s …" % assistent._titel_saubern(faden_dok))
+                    erg = self._werkzeug("seiten_lesen", {"dokument": faden_dok, "frage": frage}, zustand)
+                    if erg and not erg.startswith(("Zu '", "Dokument '", "Dieses Dokument")):
+                        vorwissen.append(("seiten_lesen", {"dokument": assistent._titel_saubern(faden_dok), "frage": frage}, erg))
+                        gefunden = True
+                if not gefunden:
+                    self._stand(stand, "Durchsuche alle Dokumente …")
+                    vorwissen.append(("bestand_durchsuchen", {"begriffe": frage}, self._werkzeug("bestand_durchsuchen", {"begriffe": frage}, zustand)))
         except Exception:
             traceback.print_exc(file=sys.stderr)
         e = gespraechsmodus.fuehren(
@@ -5970,7 +5996,7 @@ class Griff(BaseHTTPRequestHandler):
         self._festhalten("gespraech", frage, text)
         GESPRAECHE.merken(gespraech_k, frage, "gespraech",
                           [{"title": d} for d in zustand["dokumente"][:3]],
-                          antwort=text.split("\n\n---\n")[0])
+                          antwort=re.sub(r"\s*<sub>.*?</sub>\s*", " ", text.split("\n\n---\n")[0], flags=re.S).strip())
         self._strom_stueck({"uuid": _neue_marke("gespraech"), "type": "textResponseChunk",
                             "textResponse": text, "sources": [], "close": True, "error": False})
         self._strom_schliessen()

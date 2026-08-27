@@ -84,7 +84,11 @@ def fachwoerter(texte, n):
             if w not in gesehen:
                 je_dok[w] = je_dok.get(w, 0) + 1
                 gesehen.add(w)
-    kand = [w for w, c in zaehl.items() if (je_dok.get(w, 0) >= 2 or c >= 4) and w.lower() not in FUELL]
+    allgemein = {"forschung", "lehrgang", "verbesserung", "digitale", "beschreibung", "bedeutung", "grundlagen",
+                 "anwendung", "anwendungen", "einleitung", "uebersicht", "übersicht", "zusammenfassung", "ergebnisse",
+                 "erfahrungen", "hinweise", "allgemeines", "einführung", "einfuehrung", "beispiele", "vorschriften"}
+    kand = [w for w, c in zaehl.items() if (je_dok.get(w, 0) >= 2 or c >= 4) and w.lower() not in FUELL
+            and w.lower() not in allgemein and c >= 3]
     random.shuffle(kand)
     return kand[:n]
 
@@ -144,10 +148,13 @@ def belege_pruefen(text):
     return sorted(set(gedeckt)), sorted(set(offen))
 
 
-def pruefen(slug, frage, erwartet):
+def pruefen(slug, frage, erwartet, lauf="", nr=0):
     t0 = time.time()
     try:
-        res = ruf("/workspace/%s/chat" % slug, {"message": frage, "mode": "query"})
+        # eigener Faden je Frage - sonst schleppt die Anlage das Dokument der
+        # vorigen Frage als Gespraechskontext mit
+        res = ruf("/workspace/%s/chat" % slug, {"message": frage, "mode": "query",
+                                               "sessionId": "selbstcheck-%s-%d" % (lauf, nr)})
     except Exception as e:
         return {"frage": frage, "art": erwartet, "urteil": "FEHLER", "detail": str(e)[:80], "gedeckt": [], "offen": [], "s": round(time.time() - t0, 1)}
     text = res.get("textResponse") or ""
@@ -160,14 +167,17 @@ def pruefen(slug, frage, erwartet):
                 "detail": "Index-Tabelle geliefert" if tabelle else ("ehrlich: kein Titel zum Thema" if ehrlich else "keine Tabelle"),
                 "gedeckt": [], "offen": [], "s": dauer, "antwort": kurz}
     gedeckt, offen = belege_pruefen(text)
-    if offen and not gedeckt:
+    verneint = re.search(r"nicht enthalten|nichts Belegtes|keine (?:belegte|passende) Stelle|nicht im Bestand|liegt nicht vor", text, re.I) is not None
+    if verneint and not gedeckt:
+        # Der Begriff wurde AUS dem Bestand gezogen - er steht dort. "Nicht
+        # enthalten" ist dann keine ehrliche Absage, sondern ein Fehlschlag.
+        urteil, detail = "WARN", "Begriff steht im Bestand, Antwort sagt 'nicht enthalten'"
+    elif offen and not gedeckt:
         urteil, detail = "WARN", "Beleg(e) ohne Deckung"
     elif offen:
         urteil, detail = "WARN", "%d gedeckt, %d ohne Deckung" % (len(gedeckt), len(offen))
     elif gedeckt:
         urteil, detail = "PASS", "%d Beleg(e) gedeckt" % len(gedeckt)
-    elif re.search(r"nicht im Bestand|keine (?:belegte|passende) Stelle|nicht belegt|liegt nicht vor", text, re.I):
-        urteil, detail = "PASS", "ehrlich: nichts Belegtes gefunden"
     else:
         urteil, detail = "INFO", "Antwort ohne pruefbaren Beleg"
     return {"frage": frage, "art": erwartet, "urteil": urteil, "detail": detail, "gedeckt": gedeckt, "offen": offen, "s": dauer, "antwort": kurz}
@@ -233,8 +243,9 @@ def main():
             print("-- %s: kein Bestand, uebersprungen" % slug)
             continue
         print("== %s (%d Dokumente)" % (slug, len(texte)))
-        for frage, erw in fragen_bauen(texte, anzahl):
-            r = pruefen(slug, frage, erw)
+        lauf = time.strftime("%Y%m%d%H%M%S")
+        for nr, (frage, erw) in enumerate(fragen_bauen(texte, anzahl), 1):
+            r = pruefen(slug, frage, erw, lauf, nr)
             r["bereich"] = slug
             alle.append(r)
             print("  %s %-50s [%s] %s (%s s)" % ({"PASS": "OK ", "WARN": "!! ", "FEHLER": "XX ", "INFO": ".. "}.get(r["urteil"], "?? "),

@@ -99,6 +99,11 @@ class Verlauf:
                      pfad or "")
         bereich = m.group(1) if m else "?"
         faden = (m.group(2) if m else None) or ""
+        if not faden and kopfzeilen:
+            try:
+                faden = (kopfzeilen.get("X-KI4KI-Faden") or "").strip()   # JSON-Weg: sessionId
+            except Exception:
+                faden = ""
         if faden:
             return "%s|%s" % (bereich, faden)
         sitzung = ""
