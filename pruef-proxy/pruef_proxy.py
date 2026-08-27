@@ -1277,6 +1277,28 @@ def _konten_laden():
         pass
 
 
+def _konto_merken(kopfzeilen):
+    """Bei JEDER Anfrage, die Anmeldungskopfzeile UND Cookie-Marke traegt
+    (alles, was die Oberflaeche tut), das Konto zur Marke merken - damit ein
+    spaeterer Tab mit nur dem Cookie (/kpi, /selbstcheck) das Konto kennt.
+    Gemessen 27.08.: nur beim Laden des Verlaufs zu merken reichte nicht."""
+    try:
+        if not (kopfzeilen.get("Authorization") or "").strip():
+            return
+        k = marke_kennung(marke_aus_kopf(kopfzeilen))
+        if not k or k in _KONTEN_JE_MARKE:
+            return
+        konto = pruefprotokoll.konto_aus(kopfzeilen)
+        if not konto or konto.startswith(("sitzung-", "dienst-", "unbekannt")):
+            return
+        _KONTEN_JE_MARKE[k] = (konto, time.time())
+        _konten_speichern()
+        print("[Einsicht] Marke %s gehoert zu Konto %s" % (k[:6], pruefprotokoll.pseudonym(konto)),
+              file=sys.stderr, flush=True)
+    except Exception:
+        pass
+
+
 def konto_aus_anfrage(kopfzeilen):
     """Das Konto hinter einer Anfrage - aus der Anmeldungskopfzeile, sonst
     ueber die Marke im Cookie (Browser-Tab ohne Kopfzeile)."""
@@ -7655,6 +7677,7 @@ class Griff(BaseHTTPRequestHandler):
         self.wfile.write(roh)
 
     def do_GET(self):
+        _konto_merken(self.headers)
         pfad = self.path.split("?")[0].split("#")[0]
         felder = parse_qs(urlparse(self.path).query)
         if VERLAUF.match(pfad):
@@ -8257,6 +8280,7 @@ class Griff(BaseHTTPRequestHandler):
         return True
 
     def do_POST(self):
+        _konto_merken(self.headers)
         pfad = self.path.split("?")[0]
         if ANSTOSS.match(pfad):
             # KI4KI-ANSTOSS-ROUTE: n8n stoesst die Verarbeitung an. Nur mit
