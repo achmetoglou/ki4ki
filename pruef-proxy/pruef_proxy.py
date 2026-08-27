@@ -1885,15 +1885,40 @@ def _seiten_ohne_pdf(name):
     return pruefungskatalog.seiten_aus_text((getattr(d, "text", "") or "") if d else "")
 
 
+def _seitentexte_pdf(schluessel):
+    """Seitentexte eines PDFs - pdftotext, und bei SCANS je Seite der OCR-Text
+    aus dem Bestand (Docling). Gemessen 27.08. (AuW): Testfragen DVS 2290 =
+    98 Zeichen auf 7 Seiten per pdftotext, 18 292 per OCR; DVS 2213-1 Teil 1 =
+    5 609 gegen 75 457. Die Belegpruefung las nur pdftotext - jedes Zitat aus
+    einem Scan galt als "nicht gefunden", jeder Beleg als "ohne Deckung".
+    Regel: Seite unter 40 Zeichen -> OCR-Seite, wenn sie mehr hat."""
+    if not schluessel:
+        return []
+    try:
+        seiten = pdfstelle.seitentexte(schluessel) or []
+    except Exception:
+        seiten = []
+    duenn = [i for i, t in enumerate(seiten) if len((t or "").strip()) < 40]
+    if seiten and not duenn:
+        return seiten
+    ocr = _seiten_ohne_pdf(schluessel)
+    if not ocr:
+        return seiten
+    if not seiten:
+        return ocr
+    aus = list(seiten)
+    for i in duenn:
+        if i < len(ocr) and len(ocr[i].strip()) > len((seiten[i] or "").strip()):
+            aus[i] = ocr[i]
+    return aus
+
+
 def _seitentexte_von(name):
-    """(pdf_schluessel oder None, Seitentexte) - PDF ueber pdfstelle, sonst
-    aus dem Bestandstext. EINE Stelle fuer alle Werkzeuge."""
+    """(pdf_schluessel oder None, Seitentexte) - PDF ueber pdfstelle (+OCR bei
+    Scans), sonst aus dem Bestandstext. EINE Stelle fuer alle Werkzeuge."""
     sch = _pdf_schluessel(name)
     if sch:
-        try:
-            return sch, (pdfstelle.seitentexte(sch) or [])
-        except Exception:
-            return sch, []
+        return sch, _seitentexte_pdf(sch)
     return None, _seiten_ohne_pdf(name)
 
 
@@ -5871,6 +5896,9 @@ class Griff(BaseHTTPRequestHandler):
                     text += "\n".join("- Bild %s — [S. %d](/stelle?dok=%s&seite=%d): %s" % (n, s_, dq, s_, u)
                                        for n, s_, u in echte)
                     text += "\n\n*„Zeig mir Bild %s“ holt eine davon.*" % echte[0][0]
+        # Kennungen mit Endung ("(X.md, S. 32)") auf die nackte Kennung bringen -
+        # sonst greifen Belegpruefung und Verlinkung nicht (gemessen 27.08.).
+        text = re.sub(r"\(\s*([^(),\n]{2,90}?)\.(?:md|pdf)\s*,\s*S\.", r"(\1, S.", text)
         # ---- Jede Aussage mit Seitenangabe gegen die Seite pruefen --------
         # Gemessen 26.08.: Das Modell schrieb "die Klemmung erhoeht die
         # Lebensdauer (DS-24-005, S. 12)" - erfunden, Gegenteil der Arbeit.
@@ -5904,7 +5932,7 @@ class Griff(BaseHTTPRequestHandler):
             sch = _pdf_schluessel(dok)
             if sch:
                 try:
-                    beruehrt[assistent._titel_saubern(dok)] = (sch, pdfstelle.seitentexte(sch) or [])
+                    beruehrt[assistent._titel_saubern(dok)] = (sch, _seitentexte_pdf(sch) or [])
                 except Exception:
                     pass
         ok = nein = 0
@@ -6324,8 +6352,8 @@ class Griff(BaseHTTPRequestHandler):
         if not (dokument_erlaubt(ka, self.headers) and dokument_erlaubt(kb, self.headers)):
             return False
         try:
-            sa = pdfstelle.seitentexte(ka) or []
-            sb = pdfstelle.seitentexte(kb) or []
+            sa = _seitentexte_pdf(ka) or []
+            sb = _seitentexte_pdf(kb) or []
         except Exception:
             return False
         if not sa or not sb:

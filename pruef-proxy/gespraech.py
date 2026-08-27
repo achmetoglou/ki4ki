@@ -284,8 +284,9 @@ def waechter_belege(text, aufrufe, faden_dok=None, frage="", tool_texte=None, ve
         return None
     if kennungen:
         # Nur Belege auf Dokumente des Bereichs pruefen - alles andere ist Text in Klammern.
-        bekannt = {k.lower() for k in kennungen if k}
-        belege = [(k, s) for k, s in belege if k.strip().lower() in bekannt or _KENNUNG.fullmatch(k.strip())]
+        bekannt = {re.sub(r"\.(?:md|pdf)$", "", k.lower()) for k in kennungen if k}
+        belege = [(re.sub(r"\.(?:md|pdf)$", "", k.strip(), flags=re.I), s) for k, s in belege]
+        belege = [(k, s) for k, s in belege if k.lower() in bekannt or _KENNUNG.fullmatch(k)]
         if not belege:
             return None
     gelesen = set(n for n, _, _ in (aufrufe or []))

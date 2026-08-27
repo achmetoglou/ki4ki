@@ -128,7 +128,7 @@ def seiten_von(name):
 def belege_pruefen(text):
     gedeckt, offen = [], []
     for m in BELEG.finditer(text or ""):
-        kennung, seite = m.group(1).strip(), int(m.group(2))
+        kennung, seite = re.sub(r"\.(?:md|pdf)$", "", m.group(1).strip(), flags=re.I), int(m.group(2))
         satz = text[max(0, m.start() - 260):m.start()]
         ziel = _worte(satz)
         if len(ziel) < 3:
