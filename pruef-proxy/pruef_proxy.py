@@ -1779,7 +1779,8 @@ def _archivdatei(name):
     for bereich in bereiche:
         archiv = os.path.join(EINGANG_ORDNER, bereich, "archiv")
         try:
-            for d in os.listdir(archiv):
+            # Die Nicht-PDF-Datei zuerst (Original neben einer gewandelten PDF)
+            for d in sorted(os.listdir(archiv), key=lambda x: x.lower().endswith(".pdf")):
                 if not d.startswith(".") and _loesch_grund(_stamm(d)) == ziel:
                     return os.path.join(archiv, d)
         except Exception:
@@ -5862,7 +5863,12 @@ class Griff(BaseHTTPRequestHandler):
             sch = _pdf_schluessel(n)
             if sch:
                 seiten = _seitenzahl_schnell(PDFS.get(sch, ""))
-                teile.append("PDF · %d S." % seiten if seiten else "PDF")
+                # Word/PowerPoint, das die Aufnahme nach PDF gewandelt hat (Phase 0)
+                original = _archivdatei(anzeige) or ""
+                herkunft = {".docx": "Word", ".doc": "Word", ".odt": "Word", ".rtf": "Word",
+                            ".pptx": "PowerPoint", ".ppt": "PowerPoint", ".odp": "PowerPoint"}.get(
+                    os.path.splitext(original)[1].lower(), "")
+                teile.append(("%s → " % herkunft if herkunft else "") + ("PDF · %d S." % seiten if seiten else "PDF"))
             else:
                 datei = _archivdatei(anzeige) or _archivdatei(n) or ""
                 endung = os.path.splitext(datei)[1].lower()

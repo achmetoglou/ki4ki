@@ -24,7 +24,7 @@ if [ "$1" != "--nach-pull" ]; then
 fi
 
 echo "→ Belegpruefung und mkmd-Dienst neu bauen (falls Code geaendert) ..."
-docker compose build pruef-proxy mkmd-dienst
+docker compose build pruef-proxy mkmd-dienst office-dienst
 
 # Gruppe des Server-Nutzers in die .env (falls die Anlage vor diesem Stand
 # installiert wurde): rechte-init gibt ./dokumente an 1000:<Gruppe> mit

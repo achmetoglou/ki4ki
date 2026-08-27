@@ -231,3 +231,9 @@ daraus, gilt die Tabelle. **Belege-Wächter für alle Kennungen** („(DVS 2213-
 Prüfung: `dialogtest.py` Szenario 24 (26 Prüfungen), Replay des Parsers gegen die echten AuW-Texte auf
 der A40 (Testfragen-Scan: 12 Fragen erkannt, Werkzeugliste/Leitfaden: kein Katalog). Offen: Excel neu
 aufnehmen (in `loeschen/`, dann wieder nach `input/`), Live-Faden mit dem echten Katalog.
+
+**Nachtrag Phase 0 (Emrach: „auf der T4 wurden doc/pptx/xlsx vorher nach PDF gewandelt — geschieht das noch?"):**
+Nein, das fehlte im Paket. Jetzt `office-dienst` (LibreOffice Writer+Impress, nur im Docker-Netz):
+WF2 wandelt Word/PowerPoint vor Docling nach PDF und legt die PDF neben das Original ins Archiv
+(`X-Ziel`, Rechte 664 · 1000:GID); der Original-Dateiname bleibt der Schlüssel (Paarung in WF1).
+Excel/CSV wie auf der T4 **nicht** — Tabellen bleiben Tabellen. Index-Spalte „Art" zeigt „Word → PDF · n S.".

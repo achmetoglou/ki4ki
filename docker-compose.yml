@@ -373,6 +373,21 @@ services:
   # benutzt: von der Verarbeitungskette direkt und von n8n ueber diesen
   # Dienst. Ohne ihn muesste n8n dieselbe Umformung nachbauen - und wuerde
   # bei jeder Verbesserung zurueckfallen.
+  # --- Office nach PDF (Phase 0) ------------------------------------------
+  # Word/PowerPoint werden VOR Docling nach PDF gewandelt: eine Folie wird
+  # eine Seite, Fundstellen-Links und Markierungen zeigen ins Original.
+  # Die PDF landet neben dem Original im Archiv des Bereichs. Excel/CSV
+  # bleiben Tabellen (Spaltenbedeutung!). Kein veroeffentlichter Anschluss.
+  office-dienst:
+    build: ./office-dienst
+    image: ki4ki-office:1
+    container_name: ki4ki-office
+    restart: unless-stopped
+    environment:
+    - KI4KI_GID=${KI4KI_GID:-1000}
+    volumes:
+    - ./dokumente:/files/dokumente
+
   mkmd-dienst:
     build: ./mkmd-dienst
     image: ki4ki-mkmd:1

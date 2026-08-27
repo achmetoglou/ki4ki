@@ -69,11 +69,15 @@ Fundstelle (Frage-Nr., Thema, LE). „weiter" = nächste noch nicht gestellte Fr
 Dokumenten. Enthält der Katalog keine Lösungen (gescannte Testbögen), sagt die Anlage das statt zu urteilen.
 Das läuft ohne Sprachmodell — Fragen und Optionen kommen wörtlich aus der Datei.
 
-**Andere Dateiformate.** PDF geht durch Docling (Layout, OCR, Tabellen). Excel/CSV werden zu einer Tabelle
-mit Kopfzeile plus Klartext je Zeile, HTML/Text direkt, **alles andere (Word, PowerPoint, ODT …) über Tika**.
-Jede Datei kommt als genau ein Eintrag in den Bestand; die Zuordnung Datei ↔ Text läuft über den Dateinamen.
-Dokumente ohne PDF haben keine Seitenbilder — Lesen, Suchen und Zitieren funktionieren trotzdem
-(Seitenmarken aus der Aufnahme, sonst „S. 1").
+**Andere Dateiformate.** PDF geht durch Docling (Layout, OCR, Tabellen). **Word und PowerPoint
+(doc/docx/odt/rtf, ppt/pptx/odp) wandelt die Anlage zuerst nach PDF** (LibreOffice im Container
+`ki4ki-office`, Phase 0): eine Folie wird eine Seite, die PDF liegt neben dem Original im Archiv —
+Fundstellen-Links, Seitenbilder und die gelbe Markierung zeigen ins Original. **Excel/CSV bleiben
+bewusst Tabellen** (eine nach PDF gedruckte Tabelle verliert, welche Spalte was bedeutet — und
+Prüfungskataloge brauchen genau das): Tabelle mit Kopfzeile plus Klartext je Zeile. HTML/Text direkt,
+alles andere über Tika. Jede Datei kommt als genau ein Eintrag in den Bestand; die Zuordnung Datei ↔
+Text läuft über den Dateinamen. Dokumente ohne PDF haben keine Seitenbilder — Lesen, Suchen und
+Zitieren funktionieren trotzdem.
 
 ## 3 · Aktualisieren
 

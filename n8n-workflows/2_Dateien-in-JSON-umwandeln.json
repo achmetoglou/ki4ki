@@ -348,7 +348,7 @@
     },
     {
       "parameters": {
-        "jsCode": "// Docling liefert JSON; der restliche Workflow erwartet den Text in $json.data.\n//\n// ⚠ STATUS PRUEFEN (gemessen 25.08., DS-25-001): Docling meldete\n//   status \"failure\" (\"pipeline terminated early\", S. 33 und 96 - kaputte\n//   Zeichenkodierung in der PDF) und lieferte LEEREN Text. Der Workflow\n//   lief mit leerem Text weiter, bis ganz hinten \"im Arbeitsbereich nicht\n//   wiedergefunden\" im Protokoll stand - der wahre Grund war unsichtbar.\n//   Deshalb hier: Fehler benennen und (bei leerem Text) den Zweitversuch\n//   mit anderem PDF-Backend anstossen.\nreturn $input.all().map(item => {\n  const j = item.json || {};\n  const doc = j.document || {};\n  const md = doc.md_content || doc.text_content || '';\n  const kaputt = (j.status && j.status !== 'success') || !md.trim();\n  const gruende = (j.errors || []).slice(0, 3).map(e =>\n    (e.error_message || JSON.stringify(e)) + (e.page_no ? ' (S. ' + e.page_no + ')' : '')\n  ).join('; ');\n  const fehler = kaputt\n    ? ('Docling ' + (j.status || 'ohne Status') + ': ' + (gruende || 'kein Text geliefert'))\n    : '';\n  return { json: { data: md.trim() ? md : '', docling_filename: doc.filename || null,\n                   seiten: (md.match(/\\[\\[SEITE\\]\\]/g) || []).length + 1,\n                   fehler: fehler, versuch: 1,\n                   // Ohne Bildbeschreibung aufgenommen? Dann auf die Vormerkliste\n                   // (Massenlauf ODER Schalter KI4KI_BILDBESCHREIBUNG=aus, der Standard).\n                   ohne_bilder: (() => { try {\n                     const ml = $('Start').first().json.massenlauf;\n                     if (ml === true || ml === 'true') return true;\n                     const bilder = String(($env && $env.KI4KI_BILDBESCHREIBUNG) || 'aus');\n                     const formeln = String(($env && $env.KI4KI_FORMELN) || 'aus');\n                     return bilder === 'aus' || formeln === 'aus';\n                   } catch (e) { return true; } })() },\n           // ⚠ Der Docling-Baustein gibt die PDF NICHT weiter (gemessen 26.08.: der\n           //   Zweitversuch fand keine Datei). Deshalb die Datei vom Start holen.\n           binary: (item.binary && Object.keys(item.binary).length) ? item.binary\n                   : (() => { try { return $('Start').first().binary; } catch (e) { return undefined; } })() };\n});\n"
+        "jsCode": "// Docling liefert JSON; der restliche Workflow erwartet den Text in $json.data.\n//\n// ⚠ STATUS PRUEFEN (gemessen 25.08., DS-25-001): Docling meldete\n//   status \"failure\" (\"pipeline terminated early\", S. 33 und 96 - kaputte\n//   Zeichenkodierung in der PDF) und lieferte LEEREN Text. Der Workflow\n//   lief mit leerem Text weiter, bis ganz hinten \"im Arbeitsbereich nicht\n//   wiedergefunden\" im Protokoll stand - der wahre Grund war unsichtbar.\n//   Deshalb hier: Fehler benennen und (bei leerem Text) den Zweitversuch\n//   mit anderem PDF-Backend anstossen.\nreturn $input.all().map(item => {\n  const j = item.json || {};\n  const doc = j.document || {};\n  const md = doc.md_content || doc.text_content || '';\n  const kaputt = (j.status && j.status !== 'success') || !md.trim();\n  const gruende = (j.errors || []).slice(0, 3).map(e =>\n    (e.error_message || JSON.stringify(e)) + (e.page_no ? ' (S. ' + e.page_no + ')' : '')\n  ).join('; ');\n  const fehler = kaputt\n    ? ('Docling ' + (j.status || 'ohne Status') + ': ' + (gruende || 'kein Text geliefert'))\n    : '';\n  return { json: { data: md.trim() ? md : '', docling_filename: (() => { try { return $('Start').first().binary.data.fileName || doc.filename || null; } catch (e) { return doc.filename || null; } })(),\n                   seiten: (md.match(/\\[\\[SEITE\\]\\]/g) || []).length + 1,\n                   fehler: fehler, versuch: 1,\n                   // Ohne Bildbeschreibung aufgenommen? Dann auf die Vormerkliste\n                   // (Massenlauf ODER Schalter KI4KI_BILDBESCHREIBUNG=aus, der Standard).\n                   ohne_bilder: (() => { try {\n                     const ml = $('Start').first().json.massenlauf;\n                     if (ml === true || ml === 'true') return true;\n                     const bilder = String(($env && $env.KI4KI_BILDBESCHREIBUNG) || 'aus');\n                     const formeln = String(($env && $env.KI4KI_FORMELN) || 'aus');\n                     return bilder === 'aus' || formeln === 'aus';\n                   } catch (e) { return true; } })() },\n           // ⚠ Der Docling-Baustein gibt die PDF NICHT weiter (gemessen 26.08.: der\n           //   Zweitversuch fand keine Datei). Deshalb die Datei vom Start holen.\n           binary: (item.binary && Object.keys(item.binary).length) ? item.binary\n                   : (() => { try { return $('Office nach PDF').first().binary; } catch (e) {\n                       try { return $('Start').first().binary; } catch (e2) { return undefined; } } })() };\n});\n"
       },
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
@@ -464,7 +464,7 @@
     },
     {
       "parameters": {
-        "jsCode": "\n// Zweitversuch: Ergebnis mit dem Grund des Erstversuchs verknuepfen, damit\n// das Protokoll beide Anlaeufe nennt, falls auch dieser scheitert.\n// Docling liefert JSON; der restliche Workflow erwartet den Text in $json.data.\n//\n// ⚠ STATUS PRUEFEN (gemessen 25.08., DS-25-001): Docling meldete\n//   status \"failure\" (\"pipeline terminated early\", S. 33 und 96 - kaputte\n//   Zeichenkodierung in der PDF) und lieferte LEEREN Text. Der Workflow\n//   lief mit leerem Text weiter, bis ganz hinten \"im Arbeitsbereich nicht\n//   wiedergefunden\" im Protokoll stand - der wahre Grund war unsichtbar.\n//   Deshalb hier: Fehler benennen und (bei leerem Text) den Zweitversuch\n//   mit anderem PDF-Backend anstossen.\nreturn $input.all().map(item => {\n  const j = item.json || {};\n  const doc = j.document || {};\n  const md = doc.md_content || doc.text_content || '';\n  const kaputt = (j.status && j.status !== 'success') || !md.trim();\n  const gruende = (j.errors || []).slice(0, 3).map(e =>\n    (e.error_message || JSON.stringify(e)) + (e.page_no ? ' (S. ' + e.page_no + ')' : '')\n  ).join('; ');\n  const fehler = kaputt\n    ? ('Docling ' + (j.status || 'ohne Status') + ': ' + (gruende || 'kein Text geliefert'))\n    : '';\n  const vorher = (() => { try { return $('Docling-Antwort auspacken').first().json.fehler || ''; } catch (e) { return ''; } })();\n  const fehlerGesamt = kaputt ? (vorher + ' | Zweitversuch pypdfium2: ' + fehler) : '';\n  return { json: { data: md.trim() ? md : '', docling_filename: doc.filename || null,\n                   seiten: (md.match(/\\[\\[SEITE\\]\\]/g) || []).length + 1,\n                   fehler: fehlerGesamt, versuch: 2, ohne_bilder: true },\n           binary: undefined };\n});\n"
+        "jsCode": "\n// Zweitversuch: Ergebnis mit dem Grund des Erstversuchs verknuepfen, damit\n// das Protokoll beide Anlaeufe nennt, falls auch dieser scheitert.\n// Docling liefert JSON; der restliche Workflow erwartet den Text in $json.data.\n//\n// ⚠ STATUS PRUEFEN (gemessen 25.08., DS-25-001): Docling meldete\n//   status \"failure\" (\"pipeline terminated early\", S. 33 und 96 - kaputte\n//   Zeichenkodierung in der PDF) und lieferte LEEREN Text. Der Workflow\n//   lief mit leerem Text weiter, bis ganz hinten \"im Arbeitsbereich nicht\n//   wiedergefunden\" im Protokoll stand - der wahre Grund war unsichtbar.\n//   Deshalb hier: Fehler benennen und (bei leerem Text) den Zweitversuch\n//   mit anderem PDF-Backend anstossen.\nreturn $input.all().map(item => {\n  const j = item.json || {};\n  const doc = j.document || {};\n  const md = doc.md_content || doc.text_content || '';\n  const kaputt = (j.status && j.status !== 'success') || !md.trim();\n  const gruende = (j.errors || []).slice(0, 3).map(e =>\n    (e.error_message || JSON.stringify(e)) + (e.page_no ? ' (S. ' + e.page_no + ')' : '')\n  ).join('; ');\n  const fehler = kaputt\n    ? ('Docling ' + (j.status || 'ohne Status') + ': ' + (gruende || 'kein Text geliefert'))\n    : '';\n  const vorher = (() => { try { return $('Docling-Antwort auspacken').first().json.fehler || ''; } catch (e) { return ''; } })();\n  const fehlerGesamt = kaputt ? (vorher + ' | Zweitversuch pypdfium2: ' + fehler) : '';\n  return { json: { data: md.trim() ? md : '', docling_filename: (() => { try { return $('Start').first().binary.data.fileName || doc.filename || null; } catch (e) { return doc.filename || null; } })(),\n                   seiten: (md.match(/\\[\\[SEITE\\]\\]/g) || []).length + 1,\n                   fehler: fehlerGesamt, versuch: 2, ohne_bilder: true },\n           binary: undefined };\n});\n"
       },
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
@@ -520,6 +520,89 @@
             }
           },
           "timeout": 300000
+        }
+      }
+    },
+    {
+      "id": "0f1c3a52-9b7e-4d2a-8c11-office-frage00",
+      "name": "Office?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        -1104,
+        -176
+      ],
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 3
+          },
+          "conditions": [
+            {
+              "id": "a1",
+              "leftValue": "={{ $json.fileExtension }}",
+              "rightValue": "word",
+              "operator": {
+                "type": "string",
+                "operation": "equals",
+                "name": "filter.operator.equals"
+              }
+            },
+            {
+              "id": "a2",
+              "leftValue": "={{ $json.fileExtension }}",
+              "rightValue": "praesentation",
+              "operator": {
+                "type": "string",
+                "operation": "equals",
+                "name": "filter.operator.equals"
+              }
+            }
+          ],
+          "combinator": "or"
+        },
+        "options": {}
+      }
+    },
+    {
+      "id": "3e7d9b10-5a2c-4f6e-9d8b-office-pdf0001",
+      "name": "Office nach PDF",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        -880,
+        -352
+      ],
+      "parameters": {
+        "method": "POST",
+        "url": "http://office-dienst:5060/pdf",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "X-Dateiname",
+              "value": "={{ $binary.data.fileName }}"
+            },
+            {
+              "name": "X-Ziel",
+              "value": "={{ String($binary.data.directory || '').replace(/\\/input\\/?$/, '/archiv') + '/' + String($binary.data.fileName || 'dokument').replace(/\\.[^.]+$/, '') + '.pdf' }}"
+            }
+          ]
+        },
+        "sendBody": true,
+        "contentType": "binaryData",
+        "inputDataFieldName": "data",
+        "options": {
+          "response": {
+            "response": {
+              "responseFormat": "file",
+              "outputPropertyName": "data"
+            }
+          },
+          "timeout": 900000
         }
       }
     }
@@ -663,7 +746,7 @@
       "main": [
         [
           {
-            "node": "If",
+            "node": "Office?",
             "type": "main",
             "index": 0
           }
@@ -750,6 +833,35 @@
             "node": "Merge",
             "type": "main",
             "index": 1
+          }
+        ]
+      ]
+    },
+    "Office?": {
+      "main": [
+        [
+          {
+            "node": "Office nach PDF",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "If",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Office nach PDF": {
+      "main": [
+        [
+          {
+            "node": "Docling PDF-Extraktion",
+            "type": "main",
+            "index": 0
           }
         ]
       ]
