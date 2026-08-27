@@ -328,7 +328,9 @@ services:
     # ⭐ STUFE 2: Das Modell fuehrt das Gespraech selbst (Werkzeuge, ganzer
     # Faden, Rueckmeldungen, zwei Aufgaben in einem Zug). Standard 0 bis zur
     # Abnahme; 1 = an (Stufe 1 laeuft dann nur noch als Rueckfall).
-    - KI4KI_GESPRAECH=${KI4KI_GESPRAECH:-0}
+    # Stufe 2 (Gespraechsmodus mit Werkzeugen) ist seit 27.08. der geprueftete
+    # Standard; KI4KI_GESPRAECH=0 in der .env schaltet auf Stufe 1 zurueck.
+    - KI4KI_GESPRAECH=${KI4KI_GESPRAECH:-1}
     - KI4KI_GESPRAECH_MODELL=${KI4KI_GESPRAECH_MODELL:-gemma4:12b}
     - KI4KI_ZWISCHENSPEICHER=/daten/pruefung/vorauswahl.pickle
     # Der Katalog (Titel/Verfasser/Jahr je Dokument) - dauerhaft im

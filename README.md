@@ -177,3 +177,33 @@ ausführliche Fassung §9.
 - Platte voll ist die häufigste Ursache: `df -h`
 - Alles Weitere, Schalter und Hintergründe: **`README-ausfuehrlich.md`** · Lizenzen: `LIZENZEN.md`
 - Wie das Gespräch funktioniert und wohin es sich entwickelt: **`ARCHITEKTUR-GESPRAECH.md`** · Anforderungen aus der Recherche: `GESPRAECH-ANFORDERUNGEN.md`
+
+## 7 · Abnahme von null (Wipe-Test)
+
+Die Lieferzusage ist: ein Partner wird mit dem Paket allein startklar. Deshalb einmal alles
+wegwerfen und von vorn — ohne Erinnerung an die vorige Installation.
+
+**Wegwerfen** (auf dem Server, als der Benutzer, dem `~/ki4ki` gehört):
+```bash
+cd ~/ki4ki && docker compose down -v          # Container UND Datenvolumes (Bestand, n8n, Protokoll)
+docker volume ls | grep ki4ki                  # muss leer sein; die Modelle darf man behalten:
+                                               #   ki4ki_modelle stehen lassen spart ~20 Minuten
+cd ~ && mv ki4ki ki4ki.alt-$(date +%F)         # Ordner beiseite (Dokumente liegen darin unter dokumente/)
+```
+Nichts sichern außer den Dokumenten, die wieder hochgeladen werden sollen. `.secrets.env` wird neu erzeugt.
+
+**Aufbauen** — genau wie ein Partner: `git clone … ~/ki4ki && cd ~/ki4ki && ./start.sh`, ein Passwort.
+
+**Prüfen, in dieser Reihenfolge** (jede Zeile ein Häkchen):
+1. `http://<server>:3001` — Anmeldung `admin`, Bereich „Wissensdatenbank" vorhanden, `dokumente/wissensdatenbank/{input,archiv,…}` da.
+2. Bereich **AuW** anlegen, dabei Fachgebiet/Wer fragt/Worauf achten ausfüllen, Modus Abfrage → Chat-Einstellungen: Modus, Prompt mit „Rolle dieses Bereichs".
+3. Nach `dokumente/auw/input/` legen: 3 PDFs (eine Norm, ein Scan, ein Leitfaden), die Prüfungs-Excel, eine `.docx`, eine `.pptx`, und eine PDF in `input/Normen/`. Nach 5–10 Minuten: alles in `archiv/`, `aussortiert.log` leer.
+4. „Was haben wir im Bestand" (zweimal) → Index mit Kategorie/Themen/Datei; die `input/Normen/`-Datei steht als Norm/Richtlinie; Word/PowerPoint als „Word → PDF · n S.".
+5. „Stell mir eine Prüfungsfrage" → Antwort → „weiter" → „warum?".
+6. „Was ist Laminieren?" → belegte Antwort, Zitat-Link klicken, gelbe Markierung. „Zeig mir ein Diagramm aus …".
+7. „Welche Normen haben wir?", „Was habt ihr zum Thema Laminieren?".
+8. Daumen runter mit Grund → `/rueckmeldungen` zeigt den Eintrag; `/kpi` lädt; `/selbstcheck` nach `docker exec ki4ki-pruef-proxy python3 /app/selbstcheck.py auw 10`.
+9. Bereich löschen → Ordner verschwindet; Datei nach `loeschen/` → verschwindet aus Bestand und Archiv.
+10. `./aktualisiere.sh` einmal durchlaufen lassen (kein Fehler, alle Container „Up").
+
+Erst wenn alle zehn Punkte stehen, bekommt der Stand das Tag `stabil-<datum>` und darf an Partner.
