@@ -109,6 +109,8 @@ def aus_kopf(text):
     aus = {"dokumenttyp": "", "sprache": "", "domain": "", "subdomain": "", "tags": [], "keywords": [], "methoden": []}
     m = re.search(r"(?m)^Kategorie \(Vorgabe\):\s*(.+)$", kopf)
     aus["vorgabe"] = m.group(1).strip() if m else ""
+    m = re.search(r"(?m)^Themen \(Vorgabe\):\s*(.+)$", kopf)
+    aus["themen_vorgabe"] = [t.strip() for t in m.group(1).split("/") if t.strip()] if m else []
     for feld, schl in (("Dokumenttyp", "dokumenttyp"), ("Sprache", "sprache"), ("Domain", "domain"), ("Subdomain", "subdomain")):
         m = re.search(r"(?m)^%s:\s*(.+)$" % feld, kopf)
         if m:
@@ -159,7 +161,7 @@ def themen(kopf, hoechstens=6):
     """Themen = die Keywords der Aufnahme (deutsch bevorzugt), sonst Tags."""
     k = kopf or {}
     aus = []
-    for w in (k.get("keywords") or []) + (k.get("tags") or []):
+    for w in (k.get("themen_vorgabe") or []) + (k.get("keywords") or []) + (k.get("tags") or []):
         w = w.strip().strip(".")
         if 2 < len(w) <= 40 and w.lower() not in {x.lower() for x in aus}:
             aus.append(w)

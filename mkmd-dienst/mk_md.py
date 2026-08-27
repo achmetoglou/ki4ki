@@ -113,6 +113,8 @@ def baue_markdown(rohtext, tagging, basisname, jetzt=None):
             meta.append(label + ": " + str(tags[key]))
     if tags.get("kategorie_vorgabe"):
         meta.append("Kategorie (Vorgabe): " + str(tags["kategorie_vorgabe"]))   # Unterordner im Eingang
+    if tags.get("themen_vorgabe"):
+        meta.append("Themen (Vorgabe): " + str(tags["themen_vorgabe"]))         # tiefere Unterordner
     meta.append("Verarbeitet am: "
                 + (jetzt or datetime.datetime.now().isoformat()))
 

@@ -510,10 +510,13 @@ def _liegengebliebene_einraeumen():
                           if d.endswith(".json")}
         except Exception:
             continue
-        for d in sorted(os.listdir(eingang)):
+        dateien = []
+        for w, _dirs, ds in os.walk(eingang):          # auch Unterordner (Kategorie-Vorgabe)
+            for d in ds:
+                dateien.append((d, os.path.join(w, d)))
+        for d, pfad in sorted(dateien):
             if d.startswith(".") or _stamm(d) == d:
                 continue          # keine Dokumentdatei
-            pfad = os.path.join(eingang, d)
             if _loesch_grund(_stamm(d)) not in im_bestand:
                 continue
             # ⭐ NEUE FASSUNG (26.08., T4 hatte dafuer ersetzen.py): Liegt im Archiv
