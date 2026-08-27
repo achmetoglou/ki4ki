@@ -228,6 +228,13 @@ def bereich_setzen(slug):
     if not (BEREICH_HEILEN and API_SCHLUESSEL and slug):
         return False
     werte = dict(GEPRUEFT_WERTE)
+    # Hat das Formular seinen Modus schon abgelegt (Wettlauf: die Oberflaeche
+    # schickt /rolle, waehrend hier noch abgesichert wird), gewinnt der Modus
+    # des Menschen - sonst stand "Vertreter" oder "Chat" kurz danach wieder
+    # auf "Abfrage" (gemessen 27.08.).
+    _modus = (_bereich_konf(slug).get("rolle") or {}).get("modus")
+    if _modus in rolle.MODI:
+        werte["chatMode"] = _modus
     sp = _prompt_fuer_bereich(slug)
     if sp:
         werte["openAiPrompt"] = sp
@@ -611,13 +618,8 @@ def bereich_ordner_aufraeumen(slug):
         for d in dateien:
             if d == "bereich.json":
                 continue
-            if d == rolle.DATEI:
-                try:
-                    with open(os.path.join(w, d), encoding="utf-8") as fh:
-                        if not rolle.ist_eingerichtet(fh.read()):
-                            continue          # nur der Platzhalter - kein Inhalt
-                except Exception:
-                    pass
+            if d == rolle.DATEI or d.endswith(".neu"):
+                continue          # Rolle/Verwaltung - kein Inhalt (Emrach 27.08.: Ordner soll weg)
             try:
                 if os.path.getsize(os.path.join(w, d)) > 0:
                     inhalt.append(os.path.relpath(os.path.join(w, d), wurzel))
@@ -2555,7 +2557,7 @@ EINHAENGER = """
     var optionen = [
       ["query", "Abfrage", "antwortet nur aus den Dokumenten, jede Aussage mit Beleg — Standard"],
       ["chat", "Chat", "zusätzlich Allgemeinwissen des Modells; Antworten dann nicht mehr vollständig belegbar"],
-      ["agent", "Vertreter", "Werkzeugmodus ohne Quellenangaben — für die Wissensdatenbank nicht empfohlen"]
+      ["automatic", "Vertreter", "die Anlage entscheidet je Frage selbst zwischen Chat und Werkzeugen — ohne verlässliche Belege, nicht empfohlen"]
     ];
     optionen.forEach(function (o) {
       var z = document.createElement("label");

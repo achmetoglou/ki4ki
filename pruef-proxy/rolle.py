@@ -132,7 +132,9 @@ def schritt(zustand, eingabe):
 MODI = {
     "query": ("Abfrage", "antwortet nur aus den Dokumenten des Bereichs, jede Aussage mit Beleg — Standard"),
     "chat": ("Chat", "zusätzlich Allgemeinwissen des Modells; Antworten sind dann nicht mehr vollständig belegbar"),
-    "agent": ("Vertreter", "Werkzeugmodus ohne Quellenangaben — für die Wissensdatenbank nicht empfohlen"),
+    # AnythingLLM kennt genau: chat, query, automatic ("Vertreter" in der deutschen
+    # Oberflaeche = automatic). Ein anderer Wert faellt still auf automatic zurueck.
+    "automatic": ("Vertreter", "die Anlage entscheidet je Frage selbst zwischen Chat und Werkzeugen — ohne verlässliche Belege, nicht empfohlen"),
 }
 
 
