@@ -4884,9 +4884,9 @@ class Griff(BaseHTTPRequestHandler):
             self._json({"kennzahlen": z})
             return
 
-        def zeile(k, v, hinweis=""):
+        def zeile(k, v, hinweis="", roh=False):
             return "<tr><td>%s</td><td><b>%s</b></td><td style='color:#666'>%s</td></tr>" % (
-                html.escape(k), html.escape(str(v)), html.escape(hinweis))
+                html.escape(k), html.escape(str(v)), hinweis if roh else html.escape(hinweis))
         if not z.get("vorgaenge"):
             self._sende_html("<h1>Kennzahlen</h1><p>Noch keine Vorgänge im Zeitraum.</p>")
             return
@@ -4896,7 +4896,7 @@ class Griff(BaseHTTPRequestHandler):
             zeile("Vorgänge (Fragen)", z["vorgaenge"], "Zeitraum: %s – %s" % (seit or "Anfang", bis or "heute")),
             zeile("Gesprächsfäden", z.get("faeden", "-")),
             zeile("Fragende (Kennungen, pseudonym)", z.get("fragende", "-")),
-            zeile("Anteil quellenbasierter Antworten", "%s %%" % z["belegt_anteil"], "Leitfaden-KPI: Antwort mit Quellenbezug"),
+            zeile("Anteil belegter Antworten", "%s %%" % z["belegt_anteil"], "Antworten mit mindestens einem im Original nachgeschlagenen Zitat oder Beleg (Leitfaden-KPI)"),
             zeile("Trefferquote", "%s %%" % z.get("trefferquote", "-"), "Anteil der Fragen mit einer Antwort aus dem Bestand"),
             zeile("Eskalationsquote", "%s %% (%d)" % (z.get("eskalationsquote", "-"), z.get("eskaliert", 0)), "ehrlich „nicht gefunden“ statt Schein-Sicherheit"),
             zeile("Zeit bis zur ersten verwertbaren Quelle (Median)", ("%.0f s" % (ms / 1000.0)) if ms else "-", "je Faden die erste belegte Antwort"),
@@ -4904,12 +4904,16 @@ class Griff(BaseHTTPRequestHandler):
                 round((z.get("dauer_median_ms") or 0) / 1000.0), round((z.get("dauer_langsamste_ms") or 0) / 1000.0))),
             zeile("Störfall-Anfragen (mit Kontext)", z.get("stoerfaelle", 0), "Anlage / Fehlercode / Symptom erkannt"),
             zeile("Rückmeldungen", "%d hilfreich · %d nicht hilfreich / falsche Quelle" % (r.get("hilfreich", 0), r.get("nicht_hilfreich", 0)),
-                  "<a href='/rueckmeldungen'>Liste</a>"),
+                  "<a href='/rueckmeldungen'>Liste</a> — Daumen in der Oberfläche oder „Feedback: …“ im Chat", roh=True),
             zeile("Nutzung je Tag (Kennungen)", ", ".join("%s: %d" % (t, n) for t, n in list((z.get("nutzung_je_tag") or {}).items())[-14:]) or "-"),
             zeile("Wege", ", ".join("%s: %d" % kv for kv in (z.get("regeln") or {}).items())),
             zeile("Meistgenutzte Quellen", ", ".join("%s (%d)" % kv for kv in (z.get("meistgenutzte_quellen") or [])[:8])),
         ])
-        seite = ("<h1>KI4KI — Kennzahlen</h1><p>Ohne Personenbezug (Kennungen pseudonym). "
+        seite = ("<h1>KI4KI — Kennzahlen</h1>"
+                 "<p style='font-family:sans-serif;font-size:14px;max-width:900px'><b>Lesehilfe:</b> Trefferquote = Frage bekam eine Antwort aus dem "
+                 "Bestand · Eskalation = ehrliches „nicht gefunden“ · belegt = Zitat/Beleg im Original nachgeschlagen · "
+                 "Wege = welcher Antwortweg (gespraech = Gesprächsmodus, pruefung = Prüfungskatalog, bestand = Index-Tabelle).</p>"
+                 "<p>Ohne Personenbezug (Kennungen pseudonym). "
                  "<a href='/rueckmeldungen'>Rückmeldungen</a> · <a href='/protokoll'>Protokoll (JSON)</a> · "
                  "<a href='/kpi?format=json'>JSON</a> · Zeitraum: <code>/kpi?seit=2026-08-01&bis=2026-08-31</code></p>"
                  "<table border=1 cellpadding=6 style='border-collapse:collapse;font-family:sans-serif;font-size:14px'>%s</table>" % zeilen)
@@ -5032,7 +5036,7 @@ class Griff(BaseHTTPRequestHandler):
                            "wahl-alle", "e2b", "anhang", "meta", "allgemein",
                            "bild", "faden", "fakten", "beschwerde", "zweifel",
                            "anlage", "vergleich", "abkuerzung", "export",
-                           "gespraech"):
+                           "gespraech", "pruefung", "rolle"):
                     import time as _t
                     _ws = (m.group(1) if m else "") or ""
                     _th = (m.group(2) if (m and m.group(2)) else "default")
@@ -6280,10 +6284,11 @@ class Griff(BaseHTTPRequestHandler):
         # Deckt die genannte Seite (oder eine andere) die Aussage nicht,
         # bleibt die Aussage stehen, aber als "nicht belegt" markiert.
         unbelegt = 0
+        belegt_z = 0
         _bekannt = {assistent._titel_saubern(n).strip().lower(): n for n in namen}
 
         def _beleg(m):
-            nonlocal unbelegt
+            nonlocal unbelegt, belegt_z
             k, n = m.group(1).strip(), int(m.group(2))
             if k.lower() not in _bekannt and not re.fullmatch(r"[A-Z]{1,4}-\d{2}-\d{3}", k):
                 return m.group(0)          # Klammertext, kein Dokument des Bereichs
@@ -6299,6 +6304,7 @@ class Griff(BaseHTTPRequestHandler):
             if seite is None:
                 unbelegt += 1
                 return "(%s, S. %d — nicht belegt)" % (k, n)
+            belegt_z += 1
             return "(%s, S. %d)" % (k, seite)
         text = gespraechsmodus._BELEG.sub(_beleg, text)
         # ---- Zitate und Seiten pruefen ------------------------------------
@@ -6342,7 +6348,13 @@ class Griff(BaseHTTPRequestHandler):
         # ---- Merken und senden -------------------------------------------
         if zustand["dokumente"]:
             GESPRAECHE.dokument_merken(gespraech_k, zustand["dokumente"][-1])
-        self._festhalten("gespraech", frage, text)
+        # Protokoll (K5): geprüfte Zitate und verifizierte Belege zaehlen als
+        # "belegt" - vorher stand jede Stufe-2-Antwort als "eigen" da und die
+        # Kennzahl "quellenbasiert" zeigte 2,9 % bei 91 % Trefferquote (27.08.).
+        _pruef = ([{"urteil": "woertlich"}] * ok + [{"urteil": "geglaettet"}] * belegt_z
+                  + [{"urteil": "ungedeckt"}] * (nein + unbelegt))
+        self._festhalten("gespraech", frage, text, quellen=[{"title": d} for d in zustand["dokumente"][:5]],
+                         pruefungen=_pruef or None, seit=begonnen)
         GESPRAECHE.merken(gespraech_k, frage, "gespraech",
                           [{"title": d} for d in zustand["dokumente"][:3]],
                           antwort=re.sub(r"\s*<sub>.*?</sub>\s*", " ", text.split("\n\n---\n")[0], flags=re.S).strip())
@@ -6815,10 +6827,12 @@ class Griff(BaseHTTPRequestHandler):
         self.wfile.write(daten)
         return True
 
-    def _direkt_senden(self, art, frage, text, merk_art=None, dok=None):
+    def _direkt_senden(self, art, frage, text, merk_art=None, dok=None, pruefungen=None):
         """Eine fertige Antwort senden, festhalten, merken. Wirft nie."""
         gespraech = GESPRAECHE.kennung(self.path, self.headers)
-        self._festhalten(art, frage, text)
+        if art == "pruefung" and dok and pruefungen is None:
+            pruefungen = [{"urteil": "woertlich"}]        # Frage/Loesung woertlich aus dem Katalog
+        self._festhalten(art, frage, text, quellen=[{"title": dok}] if dok else None, pruefungen=pruefungen)
         GESPRAECHE.merken(gespraech, frage, merk_art or art,
                           [{"title": dok}] if dok else [])
         self._sende_strom([
