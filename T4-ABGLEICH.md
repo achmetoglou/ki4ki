@@ -104,7 +104,7 @@ heute dieses Repo ist).
 ## Stand nach Emrachs Entscheidung (26.08., abends)
 - **L1 umgesetzt:** topN 25 / Temp 0,2 für neue Bereiche; `bereiche_nachziehen.sh` für bestehende. Emrach: „dann messen wir nochmal."
 - **L2 bewusst NICHT:** Notizspalten bleiben im Text („vielleicht sind das auch Anweisungen für die KI"). Der Prüfungskatalog wertet sie nicht als Antwortoption.
-- **L3 offen:** Erklärung an Emrach, Entscheidung ausstehend.
+- **L3 umgesetzt (28.08.):** `pruef-proxy/wegabgleich.py` portiert, in `dialogtest.py` (Szenario 27) mit Gegenprobe; Fund beim ersten Lauf: `/parse` nahm einen Bereich ohne Prüfung entgegen — geschlossen.
 - **L4 umgesetzt:** `pruef-proxy/selbstcheck.py` + `/selbstcheck`.
 - **L5 umgesetzt:** `_gpu_pruefen()` alle 10 min, `/pruef-status` → `gpu`.
 - **L6 umgesetzt:** neue Fassung gleichen Namens in `input/` ersetzt die alte automatisch.

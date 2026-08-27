@@ -358,3 +358,46 @@ def abbildungen_aus_seiten(seiten):
     # nach Seite ordnen, damit die Liste dem Buch folgt
     aus.sort(key=lambda t: (t[1], [int(x) for x in re.findall(r"\d+", t[0])]))
     return aus
+
+
+# ---- Bildarten aus dem Docling-Text (Bildklassifikation der Aufnahme) --------
+_BILDKLASSEN = {
+    "line chart": "Diagramm", "bar chart": "Diagramm", "pie chart": "Diagramm", "chart": "Diagramm", "plot": "Diagramm", "graph": "Diagramm",
+    "flow chart": "Flussdiagramm", "flowchart": "Flussdiagramm",
+    "engineering drawing": "Zeichnung", "technical drawing": "Zeichnung", "schematic": "Schema", "diagram": "Schema",
+    "photograph": "Foto", "picture": "Foto", "natural image": "Foto", "screenshot from computer": "Bildschirmfoto", "screenshot": "Bildschirmfoto",
+    "logo": "Logo", "icon": "Icon", "table": "Tabelle", "geographical map": "Karte", "map": "Karte",
+    "chemistry structure": "Strukturformel", "chemistry": "Strukturformel", "math formula": "Formel", "full page image": "Seite",
+}
+_BILDMARKE = re.compile(r"<!-- image -->\s*\n\s*([A-Za-z][A-Za-z /\-]{2,40})\s*\n")
+_BILDUNTERSCHRIFT = re.compile(r"(?m)^\s*(?:Bild|Abbildung|Abb\.?|Figure|Fig\.?)\s*(\d{1,2}[.\-]\d{1,3})\b")
+
+
+def bildart(label):
+    l = (label or "").strip().lower()
+    for k in sorted(_BILDKLASSEN, key=len, reverse=True):
+        if k in l:
+            return _BILDKLASSEN[k]
+    return ""
+
+
+def bildarten_aus_text(text):
+    """{bildnummer: Art} - die Bildklasse, die Docling der Abbildung direkt vor
+    der Unterschrift gegeben hat (Foto, Diagramm, Zeichnung, Logo ...).
+    Bisher erzeugt und nie genutzt (28.08.). Nur, wo eine Klasse steht;
+    Vektorgrafiken haben oft keine."""
+    aus, letzte = {}, None
+    stellen = []
+    for m in _BILDMARKE.finditer(text or ""):
+        stellen.append((m.start(), "marke", bildart(m.group(1))))
+    for m in _BILDUNTERSCHRIFT.finditer(text or ""):
+        stellen.append((m.start(), "unterschrift", m.group(1).replace("-", ".")))
+    stellen.sort()
+    for _, art, wert in stellen:
+        if art == "marke":
+            letzte = wert or None
+        else:
+            if letzte and wert not in aus and letzte not in ("Logo", "Icon"):
+                aus[wert] = letzte
+            letzte = None
+    return aus

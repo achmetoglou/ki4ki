@@ -444,7 +444,7 @@ def szenario_20_proxy_statisch():
                 treffer.append("%s:%d %s" % (fn.name, x.lineno, x.value.id))
     pruefe(not treffer, "Modul-Schatten: %s" % (treffer[:3] or "keine"))
     import py_compile
-    for f in ("pruef_proxy.py", "assistent.py", "fadenfrage.py", "gespraech.py", "absicht.py", "mehrstufig.py", "wortsuche.py", "bestand.py", "pruefungskatalog.py", "metadaten.py", "stoerfall.py", "selbstcheck.py", "rolle.py", "kategorie.py"):
+    for f in ("pruef_proxy.py", "assistent.py", "fadenfrage.py", "gespraech.py", "absicht.py", "mehrstufig.py", "wortsuche.py", "bestand.py", "pruefungskatalog.py", "metadaten.py", "stoerfall.py", "selbstcheck.py", "rolle.py", "kategorie.py", "wegabgleich.py"):
         try:
             py_compile.compile(os.path.join(HIER, f), doraise=True)
             pruefe(True, "kompiliert: %s" % f)
@@ -679,6 +679,28 @@ def szenario_26_kategorien():
     pruefe(bestand._englisch(["glass-fiber reinforced plastics", "leaf springs", "fatigue behavior"]) and not bestand._englisch(["Spritzgießverfahren", "Einspritzprofilierung", "Kunststoffverarbeitung"]), "englische Schlagworte erkannt")
 
 
+def szenario_27_wegabgleich_und_bildarten():
+    print("\n[27] A2 Rechtepruefung je Ausgabeweg (wegabgleich) · Bildarten · Kategorie-Vorgabe per Unterordner")
+    import wegabgleich
+    e = wegabgleich.pruefen(os.path.join(HIER, "pruef_proxy.py"))
+    pruefe(not e["offen"], "kein Ausgabeweg ohne Rechtepruefung: %s" % ([o[0] for o in e["offen"]] or "keiner"))
+    pruefe(not e["kaputt"], "keine scheinbare Pruefung (self.x): %s" % ([k[0] for k in e["kaputt"]] or "keine"))
+    pruefe(len(e["geprueft"]) >= 15, "%d geprueftete Wege, %d begruendet ausgenommen" % (len(e["geprueft"]), len(e["ausgenommen"])))
+    # Gegenprobe: eine Pruefung entfernen -> rot
+    import tempfile
+    quelle = open(os.path.join(HIER, "pruef_proxy.py"), encoding="utf-8").read()
+    kaputt = quelle.replace('if not dokument_erlaubt(name, self.headers):\n            self._fehler(404, "Dieses PDF liegt nicht vor.")', 'if False:\n            self._fehler(404, "x")', 1)
+    pruefe(kaputt != quelle, "Gegenprobe vorbereitet (Pruefung in _pdf entfernt)")
+    tmp = os.path.join(tempfile.mkdtemp(), "pruef_proxy.py"); open(tmp, "w", encoding="utf-8").write(kaputt)
+    e2 = wegabgleich.pruefen(tmp)
+    pruefe(any(o[0] == "_pdf" for o in e2["offen"]), "Gegenprobe: entfernte Pruefung wird als LOCH gemeldet")
+    t = "[Seite 3]\n<!-- image -->\n\nLine chart\n\nBild 6.17: Erreichter Druck\n\n<!-- image -->\n\nLogo\n\nText\n\nBild 6.18: Spannungen\n\n<!-- image -->\n\nPhotograph\n\nBild 5.6: Probekörper"
+    pruefe(fadenfrage.bildarten_aus_text(t) == {"6.17": "Diagramm", "5.6": "Foto"}, "Bildarten aus der Docling-Klassifikation (Logo zaehlt nicht)")
+    import kategorie as kat
+    pruefe(kat.zuordnen(kat.aus_kopf("Kategorie (Vorgabe): Normen\nDokumenttyp: Manual\n## Inhalt"), dateiname="x.pdf") == "Norm/Richtlinie"
+           and kat.zuordnen(kat.aus_kopf("Kategorie (Vorgabe): Sicherheitsunterlagen\n## Inhalt"), dateiname="x.pdf") == "Sicherheitsunterlagen", "Unterordner-Vorgabe schlaegt Dokumenttyp; unbekannte Namen gelten woertlich")
+
+
 if __name__ == "__main__":
     for s in (szenario_1_verfasser_und_folgefragen, szenario_2_beschwerde_reparatur,
               szenario_3_themenwechsel, szenario_4_rueckkehr, szenario_5_nicht_im_dokument,
@@ -689,7 +711,8 @@ if __name__ == "__main__":
               szenario_15_vergleich, szenario_16_kennwerte_abkuerzung, szenario_17_export_kontakt_tippfehler,
               szenario_18_absichts_modell, szenario_19_gespraechsmodus, szenario_20_proxy_statisch,
               szenario_21_metadaten, szenario_22_stoerfall, szenario_23_kennzahlen,
-              szenario_24_pruefungskatalog, szenario_25_rolle, szenario_26_kategorien):
+              szenario_24_pruefungskatalog, szenario_25_rolle, szenario_26_kategorien,
+              szenario_27_wegabgleich_und_bildarten):
         try:
             s()
         except Exception as e:

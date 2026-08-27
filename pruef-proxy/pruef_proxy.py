@@ -3061,8 +3061,7 @@ def _modell_zeile(modell, sekunden=None, zeichen=None):
         else:
             _z = "%.0f s" % sekunden
         zusatz = " \u00b7 gesamt %s (inkl. Belegpr\u00fcfung)" % _z
-    return ("\n\n---\n*\U0001F9E0 Antwort formuliert vom Sprachmodell "
-            "**%s**%s*" % (modell, zusatz))
+    return "\n\n*Sprachmodell %s%s*" % (modell, zusatz.replace(" (inkl. Belegpr\u00fcfung)", ""))
 
 
 def _allgemein_zeile(modell, sekunden=None):
@@ -5931,6 +5930,20 @@ class Griff(BaseHTTPRequestHandler):
         if not liste:
             return []
         f = (frage or "").lower() + " " + (aspekt or "").lower()
+        # Bildart gewuenscht ("Diagramme", "Fotos", "Zeichnungen")? Dann nur solche,
+        # soweit die Aufnahme sie klassifiziert hat (28.08.).
+        _wunsch = None
+        for w, art in (("diagramm", ("Diagramm", "Flussdiagramm")), ("kurve", ("Diagramm",)), ("plot", ("Diagramm",)), ("grafik", ("Diagramm", "Flussdiagramm", "Schema")),
+                       ("foto", ("Foto",)), ("aufnahme", ("Foto",)), ("zeichnung", ("Zeichnung", "Schema")), ("schema", ("Schema", "Flussdiagramm", "Zeichnung")),
+                       ("tabelle", ("Tabelle",)), ("formel", ("Formel", "Strukturformel"))):
+            if w in f:
+                _wunsch = art
+                break
+        if _wunsch:
+            arten = self._abbildungen_arten(dok)
+            passend = [x for x in liste if arten.get(x[0]) in _wunsch]
+            if passend:
+                liste = passend
         if re.search(r"\bletzte[snr]?\b", f):
             return liste[-hoechstens:] if "letzten" in f else liste[-1:]
         if re.search(r"\berste[snr]?\b", f) and not aspekt:
@@ -6127,6 +6140,24 @@ class Griff(BaseHTTPRequestHandler):
         cache[schluessel] = aus
         return aus
 
+    def _abbildungen_arten(self, dok):
+        """{nummer: Art} aus der Bildklassifikation der Aufnahme (Docling-Text im Bestand)."""
+        cache = getattr(self.__class__, "_abb_art_cache", None)
+        if cache is None:
+            cache = self.__class__._abb_art_cache = {}
+        s = bestandsschluessel(dok)
+        if not s:
+            return {}
+        if s in cache:
+            return cache[s]
+        try:
+            d = BESTAND.hol(s)
+            arten = fadenfrage.bildarten_aus_text((getattr(d, "text", "") or "") if d else "")
+        except Exception:
+            arten = {}
+        cache[s] = arten
+        return arten
+
     def _bild_url(self, schluessel, seite):
         """Freigestellte Abbildung, wenn ein Rasterbild da ist - sonst die
         gerenderte Seite (Vektorgrafiken, Diagramme aus Linien)."""
@@ -6143,9 +6174,10 @@ class Griff(BaseHTTPRequestHandler):
         schluessel = _pdf_schluessel(dok) or dok
         dq = quote(str(schluessel), safe="")
         stelle = "/stelle?dok=%s&seite=%d" % (dq, seite)
-        return ("**Bild %s** — %s, [Seite %d](%s)\n\n*%s*\n\n"
+        art = (self._abbildungen_arten(dok) or {}).get(nummer, "")
+        return ("**Bild %s** — %s, [Seite %d](%s)%s\n\n*%s*\n\n"
                 "[![Abbildung aus %s, Seite %d](%s)](%s)"
-                % (nummer, assistent._titel_saubern(dok), seite, stelle,
+                % (nummer, assistent._titel_saubern(dok), seite, stelle, (" · %s" % art) if art else "",
                    ("Bild %s: %s" % (nummer, unterschrift)) if unterschrift else "Bild %s" % nummer,
                    assistent._titel_saubern(dok), seite, self._bild_url(schluessel, seite), stelle))
 
@@ -6258,8 +6290,9 @@ class Griff(BaseHTTPRequestHandler):
                 return "Keine Abbildung mit nummerierter Unterschrift in %s." % assistent._titel_saubern(dok)
             aus = "%d Abbildungen in %s. Die Zahl %d ist die einzige gueltige Anzahl. Tabelle (Markdown, unveraendert uebernehmen):\n\n" % (
                 len(liste), assistent._titel_saubern(dok), len(liste))
-            aus += "| Bild | Seite | Unterschrift |\n|---|---|---|\n"
-            aus += "\n".join("| %s | %d | %s |" % (n, s, u[:110].replace("|", "/")) for n, s, u in teil)
+            arten = self._abbildungen_arten(dok)
+            aus += "| Bild | Seite | Art | Unterschrift |\n|---|---|---|---|\n"
+            aus += "\n".join("| %s | %d | %s | %s |" % (n, s, arten.get(n, ""), u[:110].replace("|", "/")) for n, s, u in teil)
             if len(liste) > ab + 80:
                 aus += "\n\n(weitere %d mit ab=%d)" % (len(liste) - ab - 80, ab + 80)
             return aus
@@ -8585,6 +8618,11 @@ class Griff(BaseHTTPRequestHandler):
     def _parse_mitschnitt(self, slug):
         """AnythingLLMs /parse normal durchreichen UND den Text der
         angehaengten Datei fuer die naechste Chat-Frage merken (Weg A)."""
+        # Wegabgleich 28.08.: nimmt einen Bereich entgegen -> Bereich pruefen,
+        # sonst koennte ein Konto ohne Zugang einen Anhang in fremde Bereiche legen.
+        if not bereich_sichtbar("/api/workspace/%s" % slug, self.headers):
+            self._json({"error": "Workspace does not exist."}, code=404)
+            return
         laenge = int(self.headers.get("Content-Length") or 0)
         roh = self.rfile.read(laenge) if laenge else b""
         # ZUERST merken (vor der Antwort), damit die sofort folgende Chat-Frage

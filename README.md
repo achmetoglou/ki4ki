@@ -33,6 +33,7 @@ den `.pub`-Inhalt bei GitHub als Deploy-Key (nur lesen) eintragen, dann
 | **Dokument hochladen** | Hochladen-Knopf in der Oberfläche — oder per SFTP/FileZilla nach `dokumente/<bereich>/input/`. Aufnahme startet von selbst (jede Minute nachgesehen), fertig = liegt in `archiv/`. |
 | **Viele Dokumente (Massenlauf)** | Alle nach `input/` legen. `parkplatz/` = Zwischenlager, wird nie angefasst. |
 | **Bilder/Diagramme** | Die Aufnahme liest Text, Tabellen und Formeln (eine Dissertation in 1–3 Minuten). Bildbeschreibungen (~6 s je Bild) und Formel-Erkennung als LaTeX (~6 min je Dissertation) sind deshalb standardmäßig **aus**; die Dokumente stehen in `bilder-nachholen.txt` und bekommen beides nachgelagert. Sofort: `KI4KI_BILDBESCHREIBUNG=an` bzw. `KI4KI_FORMELN=an` in die `.env`. |
+| **Rechte je Ausgabeweg** | `python3 pruef-proxy/wegabgleich.py` prüft im Quelltext, dass jeder Weg, der Daten ausgibt, eine Rechteprüfung ruft oder begründet ausgenommen ist — läuft in der Testreihe vor jedem Update; eine entfernte Prüfung wird rot. |
 | **Rückmeldung geben** | Unter jeder Antwort: Daumen hoch (AnythingLLM) und **Daumen runter mit kurzem Grund** (von der Anlage ergänzt — AnythingLLM kennt nur den hoch). Beides landet im Prüfprotokoll und unter `/rueckmeldungen` bzw. `/kpi`. Die Anlage trainiert sich damit **nicht** selbst; der Betreiber sieht, wo sie schwach war, und die Einträge sind die Grundlage für gezielte Verbesserungen. Im Chat geht auch „Feedback: …" oder „Falsche Quelle: …". |
 | **Dokument löschen** | In der Oberfläche: Zahnrad → Dokumente → Papierkorb — die Anlage räumt Archiv-PDF, Katalog und Vormerkliste selbst nach. Oder per SFTP: die Datei (PDF, Excel, Word …) nach `dokumente/<bereich>/loeschen/` legen, alles Weitere passiert von selbst (Quittung in `loeschen.log`). |
 | **Fragen** | Fachfrage stellen → Antwort mit Belegen; Klick auf einen Beleg öffnet die Seite im Original, gelb markiert. Diagramme der belegten Seiten erscheinen im Chat. |
@@ -86,6 +87,15 @@ Sprache, Fachgebiet/Teilgebiet, Methoden, eine **Kurzfassung** (2–3 Sätze, se
 Bildklassen von Docling (Logo, Diagramm, Zeichnung, Foto) an jeder Abbildungsstelle. Themen und Kurzfassung
 sind in der Sprache des Dokuments; ältere Einträge mit englischen Themen deutscht die Anlage beim
 Nachtragen ein.
+
+**Kategorie per Unterordner vorgeben.** Wer es beim Hochladen schon weiß, legt die Datei in einen Unterordner
+von `input/` — `input/Normen/x.pdf`, `input/Handbücher/y.pdf`. Der Ordnername wird zur Kategorie (bekannte
+Namen werden auf die Liste abgebildet, unbekannte gelten wörtlich) und schlägt die Automatik. Die Datei
+wandert danach wie gewohnt ins Archiv.
+
+**Bildarten.** Die Aufnahme klassifiziert Abbildungen (Diagramm, Foto, Zeichnung, Flussdiagramm, Tabelle,
+Strukturformel …). Die Bilderliste zeigt die Art, und „zeig mir ein Diagramm aus der Arbeit" wählt nur
+solche — soweit die Aufnahme eine Klasse vergeben hat (Vektorgrafiken oft nicht).
 
 **Index eines Bereichs.** „Was haben wir im Bestand?" liefert in jedem Bereich dieselbe Tabelle —
 Kennung (Link zur Datei) · Titel · Verfasser · Jahr · Art (Dissertation / PDF mit Seitenzahl / Excel /

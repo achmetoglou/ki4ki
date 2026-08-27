@@ -78,7 +78,7 @@
         "url": "http://mkmd-dienst:5055/markdown",
         "sendBody": true,
         "specifyBody": "json",
-        "jsonBody": "={{ JSON.stringify({ rohtext: $json.parsed_text || $json.text || $json.content || '', basisname: ($json.filename || 'dokument.pdf').replace(/\\.[^.]+$/, ''), tagging: { document_type: $json.document_type || $json.docType || '', language: $json.language || '', domain: $json.domain || '', subdomain: $json.subdomain || '', tags: $json.tags || [], keywords: $json.keywords || [], methods: $json.methods || [] } }) }}",
+        "jsonBody": "={{ JSON.stringify({ rohtext: $json.parsed_text || $json.text || $json.content || '', basisname: ($json.filename || 'dokument.pdf').replace(/\\.[^.]+$/, ''), tagging: { kategorie_vorgabe: $json.kategorie_vorgabe || '', document_type: $json.document_type || $json.docType || '', language: $json.language || '', domain: $json.domain || '', subdomain: $json.subdomain || '', tags: $json.tags || [], keywords: $json.keywords || [], methods: $json.methods || [] } }) }}",
         "options": {
           "timeout": 300000
         }

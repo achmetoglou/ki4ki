@@ -107,6 +107,8 @@ def aus_kopf(text):
         kopf = kopf[:i]
     kopf = kopf[:6000]
     aus = {"dokumenttyp": "", "sprache": "", "domain": "", "subdomain": "", "tags": [], "keywords": [], "methoden": []}
+    m = re.search(r"(?m)^Kategorie \(Vorgabe\):\s*(.+)$", kopf)
+    aus["vorgabe"] = m.group(1).strip() if m else ""
     for feld, schl in (("Dokumenttyp", "dokumenttyp"), ("Sprache", "sprache"), ("Domain", "domain"), ("Subdomain", "subdomain")):
         m = re.search(r"(?m)^%s:\s*(.+)$" % feld, kopf)
         if m:
@@ -122,6 +124,15 @@ def aus_kopf(text):
 
 def zuordnen(kopf, dateiname="", titel="", kennung="", ist_katalog=False, wurzel=None):
     """Die Kategorie eines Dokuments - deterministisch."""
+    k0 = kopf or {}
+    if k0.get("vorgabe"):
+        # Unterordner im Eingang: der Mensch hat es beim Hochladen gesagt
+        v = str(k0["vorgabe"]).strip()
+        for name in namen(wurzel):
+            if name.lower() == v.lower() or name.lower().split("/")[0] == v.lower():
+                return name
+        g, _w = gefragte(v)            # "Normen" -> Norm/Richtlinie, "Handbücher" -> Handbuch/Anleitung
+        return g or v[:40]
     if ist_katalog:
         return "Prüfungskatalog"
     m = re.match(r"([A-Za-z]{1,3})[-_ ]?\d", str(kennung or dateiname or "").strip())
