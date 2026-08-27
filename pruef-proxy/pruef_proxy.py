@@ -6799,7 +6799,7 @@ class Griff(BaseHTTPRequestHandler):
         geglaettet = False
         if glaetten and ROLLE_GLAETTEN:
             try:
-                antwort = self._modell_fragen(rolle.glaett_auftrag(text), zeitgrenze=90)
+                antwort = self._modell_fragen(rolle.glaett_auftrag(fach, nutzer, besonderes), zeitgrenze=120)
                 if rolle.geglaettet_brauchbar(antwort, fach, nutzer):
                     text = rolle.vorlage_mit_glaettung(fach, nutzer, besonderes, antwort, slug=name)
                     _rolle_schreiben(slug, text)

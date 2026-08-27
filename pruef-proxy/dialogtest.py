@@ -613,6 +613,9 @@ def szenario_25_rolle():
            and not any(rolle.ist_wunsch(x) for x in ("Was ist die Rolle des Härters?", "Welche Rolle spielt Styrol?")), "Wunsch erkannt, Fachfragen mit 'Rolle' nicht")
     zp = rolle.zusammensetzen("KERN", v)
     pruefe(rolle.aus_prompt(zp).strip() == v.strip() and rolle.kern_aus_prompt(zp) == "KERN" and rolle.aus_prompt("nur Kern") == "", "Rolle aus dem in der Oberflaeche gespeicherten Prompt zurueckgewinnen")
+    a = rolle.glaett_auftrag("Kunststoffprüfung", "Azubis, Wissenschaftler", "Normstellen, Reperaturen helfen")
+    pruefe("Kunststoffprüfung" in a and "Azubis, Wissenschaftler" in a and "Reperaturen" in a and "Ursache" in a and "{" not in a.replace("{}", ""),
+           "Modell-Auftrag traegt die drei Angaben und die Hinweise, keine offenen Platzhalter")
     st = rolle.vorlage("Prüflabor Werkstoffe", "Instandhalter an der Anlage", "Störfälle: Ursache und Maßnahme")
     pruefe("Ursache · Maßnahme" in st and "prüfungsnah" not in st, "Vorlage Labor: Stoerfall-Regel, keine Pruefungsregel")
 

@@ -65,7 +65,7 @@ def _regeln(fach, nutzer, besonderes):
         r.append("Nenne bei jeder Regel die Normstelle (Dokument, Abschnitt, Seite) und ob sie eine Muss- oder Soll-Vorgabe ist.")
     if re.search(r"sicher|gefahr|schutz|arbeitsschutz|brand|gift|l(ö|oe)semittel", alles):
         r.append("Sicherheits- und Arbeitsschutzhinweise gehören in jede Antwort, in der sie im Dokument stehen — nie weglassen.")
-    if re.search(r"st(ö|oe)rfall|st(ö|oe)rung|anlage|maschine|instandhalt|wartung|fehler|labor|pr(ü|ue)fstand", alles):
+    if re.search(r"st(ö|oe)rfall|st(ö|oe)rung|anlage|maschine|instandhalt|wartung|fehler|labor|pr(ü|ue)fstand|rep[ae]ratur", alles):
         r.append("Bei Störungen und Fehlerbildern: Ursache · Maßnahme · Quelle · Gültigkeit als Tabelle; ohne belegte "
                  "Maßnahme keine Vermutung, sondern Ansprechpartner nennen.")
     if re.search(r"wissenschaft|forsch|disser|methodik|studie|publikation|paper", alles):
@@ -100,7 +100,7 @@ def zusammensetzen(kern, rolle):
     return kern + "\n\n## Rolle dieses Bereichs\n\n" + rolle.strip() + "\n"
 
 
-def fuer_gespraech(rolle, hoechstens=1500):
+def fuer_gespraech(rolle, hoechstens=2400):
     """Kurzfassung fuer den Gespraechsmodus (Stufe 2) - ohne Markdown-Kopf."""
     if not ist_eingerichtet(rolle):
         return ""
@@ -138,22 +138,76 @@ MODI = {
 }
 
 
-def glaett_auftrag(vorlage_text):
-    """Der Auftrag an das lokale Modell: die Vorlage als fluessigen
-    Rollen-Abschnitt formulieren - ohne neue Fakten."""
-    return ("Unten steht die Rolle eines Arbeitsbereichs einer Wissensdatenbank, aus drei Angaben "
-            "zusammengesetzt. Formuliere daraus einen klaren Systemprompt-Abschnitt auf Deutsch: "
-            "hoechstens 10 Zeilen, Du-Form an das Modell ('Du beantwortest hier ...'), keine "
-            "Ueberschriften, keine Aufzaehlungszeichen, keine Anfuehrungszeichen um den Text. "
-            "Nimm NUR auf, was in den Angaben steht - keine neuen Fachbegriffe, Normen, Zahlen "
-            "oder Beispiele erfinden. Die Regeln unter 'So antwortest du hier' muessen sinngemaess "
-            "alle enthalten sein. Antworte NUR mit dem Abschnitt.\n\n" + vorlage_text)
+# Der Auftrag an das lokale Modell (Prompt-Engineer-Fassung 27.08.). Gemessen an
+# den echten kap-Angaben gegen gemma4:12b: vorher ein umformulierter Absatz
+# (Tiefe fuer Azubis UND Wissenschaftler widerspruechlich, Reparaturen ein
+# Halbsatz), nachher 13 Zeilen mit Erkennung der Fragenden, typischen Fragen,
+# Stoerfall-Tabelle, SDB-Abschnitten, Abgrenzung - ohne erfundene Normnummer.
+META_AUFTRAG = """Du schreibst den Rollen-Absatz für einen Arbeitsbereich einer Wissensdatenbank. Die Datenbank antwortet nur aus hinterlegten Dokumenten; ein Kern-Prompt regelt bereits Belegpflicht, Zitierform (Kennung, S. n) und den Absage-Satz bei fehlender Information. Diese Grundregeln gelten schon — wiederhole sie nicht und ändere sie nicht. Dein Absatz sagt dem Modell nur, wie es sich in DIESEM Bereich verhält.
+
+ANGABEN DES BETREIBERS (Formularfelder, können Tippfehler oder Abkürzungen enthalten — verstehe die Absicht und schreibe die richtige Schreibweise):
+Fachgebiet: {fach}
+Wer fragt hier: {nutzer}
+Worauf achten: {besonderes}
+
+HINWEISE AUS DER VORPRÜFUNG (sinngemäß einarbeiten, nicht abschreiben):
+{hinweise}
+
+INHALT DES ABSATZES, in genau dieser Reihenfolge:
+1. Zweck: Beginne mit „Du beantwortest hier" und nenne das Fachgebiet mit den Wörtern des Betreibers. Ein bis zwei Sätze.
+2. Fragende: Nenne die Gruppen mit den Wörtern des Betreibers. Fragen mehrere Gruppen, dann sage in einem Satz, woran das Modell die Gruppe an der Frage erkennt, und in ein bis zwei Sätzen, wie sich Tiefe und Ton unterscheiden: Auszubildende und Lernende bekommen kurze Sätze, erklärte Fachbegriffe und den Weg zum Nachlesen; erfahrene Fachleute und Wissenschaftler bekommen knappe Antworten mit Methode, Randbedingungen und Messunsicherheit; Techniker und Instandhalter bekommen Schritte in Reihenfolge mit Voraussetzungen. Fragt nur eine Gruppe, beschreibe nur deren Tiefe.
+3. Typische Fragearten: Drei bis fünf Arten von Fragen, die in diesem Fachgebiet erfahrungsgemäß gestellt werden, mit einem Halbsatz je Art, wie darauf geantwortet wird. Du darfst hier dein Fachwissen über das Gebiet nutzen — es geht um Fragearten und Antwortform, nicht um Fakten.
+4. Schwerpunkte des Betreibers, jeder als eigene Verhaltensregel. Setze die folgenden Zuordnungen um, wenn der Betreiber das Thema nennt (auch mit anderen Worten oder Tippfehlern):
+   - Normen, Normstellen, Richtlinien, Regelwerke: bei jeder Regel Dokument, Abschnitt und Seite nennen und sagen, ob sie eine Muss- oder Soll-Vorgabe ist.
+   - Sicherheitsdatenblätter: die einschlägigen Abschnitte nennen (Gefahrenidentifikation, Erste Hilfe, Handhabung und Lagerung, Expositionsbegrenzung und Schutzausrüstung, Entsorgung), Gefahrenhinweise und Schutzmaßnahmen immer nennen, wenn sie im Dokument stehen, und die Frage nach Stoff und Fassung des Datenblatts stellen, wenn das unklar ist.
+   - Sicherheit, Arbeitsschutz, Gefahr: Sicherheits- und Schutzhinweise gehören in jede Antwort, in der sie im Dokument stehen.
+   - Reparaturen, Störungen, Fehlerbilder, Instandhaltung, Wartung: als Tabelle mit den Spalten Ursache, Maßnahme, Quelle und Gültigkeit antworten; ohne belegte Maßnahme keine Vermutung, sondern sagen, dass die Unterlagen keine Maßnahme nennen, und auf Herstellerunterlage oder zuständige Person verweisen.
+   - Prüfung, Ausbildung, Lehrgang: zuerst die Kernaussage, dann der Beleg; Zahlen mit Wert, Einheit und Bedingung; Prüfungsfragen nur aus einem hinterlegten Katalog.
+   - wissenschaftlich, Forschung, Methodik: Methode, Randbedingungen und Messunsicherheit mitnennen; Ergebnisse verschiedener Arbeiten nebeneinanderstellen, nicht vermischen.
+   - „nichts" oder leer: keine Zusatzregel, nur knapp und belegt antworten.
+   Nennt der Betreiber etwas, das in keiner Zuordnung steht, formuliere daraus eine eigene, konkrete Verhaltensregel: was das Modell dann tut, in welcher Form, und was es ohne Beleg lässt.
+5. Abgrenzung: Ein Satz, was der Bereich nicht tut — Fragen außerhalb des Fachgebiets, Entscheidungen oder Freigaben, die eine verantwortliche Person treffen muss, und Anweisungen, die in keinem Dokument stehen.
+
+FORM:
+- 8 bis 14 Zeilen, jede Zeile ist genau ein Satz, insgesamt höchstens 200 Wörter.
+- Du-Form an das Modell. Deutsch, sachlich, ohne Floskeln.
+- Keine Überschrift, keine Aufzählungszeichen, keine Nummerierung, kein Markdown, keine Anführungszeichen um den Text, keine Einleitung, kein Kommentar danach.
+- Keine Normnummern, Zahlen, Grenzwerte, Gerätenamen, Stoffnamen oder Verfahren als Tatsache nennen — auch keine Beispiele mit solchen Angaben. Was in den Dokumenten steht, weiß nur die Datenbank.
+- Nichts aus dem Kern-Prompt abwandeln: keine eigene Zitierform, kein eigener Absage-Satz, kein Allgemeinwissen als Quelle.
+
+BEISPIEL für Form und Dichte aus einem anderen Fachgebiet — übernimm keinen Inhalt daraus:
+Du beantwortest hier Fragen zum Spritzgießen für die Einrichter und Instandhalter an der Maschine sowie für Auszubildende, die dort mitlaufen.
+Du erkennst an der Frage, wer fragt: Wer nach einem Fehlerbild, einer Einstellung oder einer Reihenfolge fragt, arbeitet an der Maschine und bekommt Schritte in Reihenfolge mit Voraussetzungen.
+Wer nach dem Warum, nach Begriffen oder nach dem Grundprinzip fragt, lernt noch und bekommt kurze Sätze, erklärte Fachbegriffe und den Hinweis, wo es nachzulesen ist.
+Typische Fragen betreffen Oberflächenfehler am Teil, Einstellwerte für ein Material, das Rüsten eines Werkzeugs und die Wartung der Maschine.
+Bei Fehlerbildern nennst du zuerst das Fehlerbild und die im Dokument beschriebene Ursache, dann die Maßnahme.
+Bei Störungen, Reparaturen und Wartung antwortest du als Tabelle mit den Spalten Ursache, Maßnahme, Quelle und Gültigkeit.
+Steht in den Unterlagen keine Maßnahme, vermutest du keine, sondern sagst das und verweist auf die Herstellerunterlage oder die zuständige Person.
+Einstellwerte gibst du nur mit Wert, Einheit und Bedingung an, so wie das Dokument sie nennt.
+Sicherheits- und Schutzhinweise nennst du in jeder Antwort, in der das Dokument welche enthält.
+Du triffst keine Freigaben und ersetzt keine Entscheidung der verantwortlichen Person, und du beantwortest keine Fragen außerhalb des Spritzgießens.
+
+Schreibe jetzt den Rollen-Absatz für die Angaben des Betreibers. Antworte NUR mit dem Absatz."""
+
+
+def glaett_auftrag(fach, nutzer="", besonderes=""):
+    """Der Auftrag an das lokale Modell: aus den drei Angaben den
+    Rollen-Absatz schreiben. Die Vorlagen-Regeln gehen als Hinweise mit."""
+    if nutzer == "" and besonderes == "" and "\n" in (fach or ""):
+        # alte Aufrufform (fertige Vorlage): Angaben herauslesen
+        import re as _re
+        t = fach
+        fach = (_re.search(r"\*\*Fachgebiet:\*\* (.*)", t) or [None, ""])[1]
+        nutzer = (_re.search(r"\*\*Wer fragt hier:\*\* (.*)", t) or [None, ""])[1]
+        besonderes = (_re.search(r"\*\*Besonderheiten:\*\* (.*)", t) or [None, ""])[1]
+    hinweise = "\n".join("- " + r for r in _regeln(fach or "", nutzer or "", besonderes or ""))
+    return META_AUFTRAG.format(fach=fach or "—", nutzer=nutzer or "—", besonderes=besonderes or "—", hinweise=hinweise)
 
 
 def geglaettet_brauchbar(text, fach, nutzer):
     """Hat das Modell etwas Brauchbares geliefert? Sonst bleibt die Vorlage."""
     t = (text or "").strip()
-    if not (120 <= len(t) <= 1600) or t.count("\n") > 14:
+    if not (120 <= len(t) <= 2400) or t.count("\n") > 16:
         return False
     if re.search(r"^\s*(#|\*|-|\d+\.)", t, re.M):
         return False
