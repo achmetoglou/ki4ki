@@ -113,11 +113,11 @@ def _ist_admin(kopfzeilen):
         except Exception:
             pass
         _ADMINS["wann"] = time.time()
-    return pruefprotokoll.konto_aus(kopfzeilen) in _ADMINS["namen"]
+    return konto_aus_anfrage(kopfzeilen) in _ADMINS["namen"]
 
 
 def _darf_rolle_setzen(kopfzeilen):
-    konto = pruefprotokoll.pseudonym(pruefprotokoll.konto_aus(kopfzeilen))
+    konto = pruefprotokoll.pseudonym(konto_aus_anfrage(kopfzeilen))
     return pruefprotokoll.darf_einsehen(konto) or _ist_admin(kopfzeilen)
 
 
@@ -1246,6 +1246,54 @@ _DOKZUGANG_DATEI = (os.environ.get("KI4KI_DOKZUGANG")
                                     ".dokzugang.json"))
 
 
+# Welches KONTO hinter einer Marke steht. Ein Browser-Tab (/kpi, /selbstcheck,
+# Beleg-Link) schickt nur das Cookie - ohne diese Zuordnung kannte der Proxy
+# dort nur "irgendwer angemeldet" und wies den Admin ab (gemessen 27.08.).
+_KONTEN_JE_MARKE = {}
+
+
+def _konten_speichern():
+    try:
+        jetzt = time.time()
+        raus = {k: v for k, v in _KONTEN_JE_MARKE.items() if jetzt - v[1] < ZUGANG_DAUER}
+        pfad = _DOKZUGANG_DATEI + ".konten.json"
+        with open(pfad + ".neu", "w", encoding="utf-8") as f:
+            json.dump(raus, f)
+        os.chmod(pfad + ".neu", 0o600)
+        os.replace(pfad + ".neu", pfad)
+    except Exception:
+        traceback.print_exc(file=sys.stderr)
+
+
+def _konten_laden():
+    try:
+        with open(_DOKZUGANG_DATEI + ".konten.json", encoding="utf-8") as f:
+            roh = json.load(f) or {}
+        jetzt = time.time()
+        for k, v in roh.items():
+            if isinstance(v, list) and len(v) == 2 and jetzt - float(v[1]) < ZUGANG_DAUER:
+                _KONTEN_JE_MARKE[k] = (str(v[0]), float(v[1]))
+    except Exception:
+        pass
+
+
+def konto_aus_anfrage(kopfzeilen):
+    """Das Konto hinter einer Anfrage - aus der Anmeldungskopfzeile, sonst
+    ueber die Marke im Cookie (Browser-Tab ohne Kopfzeile)."""
+    try:
+        if (kopfzeilen.get("Authorization") or "").strip():
+            return pruefprotokoll.konto_aus(kopfzeilen)
+    except Exception:
+        pass
+    try:
+        k = marke_kennung(marke_aus_kopf(kopfzeilen))
+        if k and k in _KONTEN_JE_MARKE:
+            return _KONTEN_JE_MARKE[k][0]
+    except Exception:
+        pass
+    return pruefprotokoll.konto_aus(kopfzeilen)
+
+
 def _dokzugang_speichern():
     """Den aktuellen Zugang atomar auf Platte schreiben (0600)."""
     try:
@@ -1285,6 +1333,7 @@ def _dokzugang_laden():
 
 
 _dokzugang_laden()
+_konten_laden()
 
 
 def erlaubte_dokumente(kopfzeilen):
@@ -4761,8 +4810,10 @@ class Griff(BaseHTTPRequestHandler):
         if not darf_sehen(self.headers):
             self._fehler(401, "Nicht angemeldet. Bitte zuerst in der Oberflaeche anmelden.")
             return
-        konto = pruefprotokoll.pseudonym(pruefprotokoll.konto_aus(self.headers))
+        konto = pruefprotokoll.pseudonym(konto_aus_anfrage(self.headers))
         if not pruefprotokoll.darf_einsehen(konto):
+            print("[Einsicht] %s abgewiesen: Konto %s nicht in KI4KI_PROTOKOLL_EINSICHT" % (pfad, konto),
+                  file=sys.stderr, flush=True)
             self._fehler(404, "Nicht gefunden.")
             return
         seit = (felder.get("seit") or [None])[0]
@@ -7579,6 +7630,10 @@ class Griff(BaseHTTPRequestHandler):
                         _ausweis.encode()).hexdigest()[:16]
                     # fuellt _DOKZUGANG[_kennung]
                     erlaubte_dokumente(self.headers)
+                    _k = pruefprotokoll.konto_aus(self.headers)
+                    if _k and not _k.startswith(("sitzung-", "dienst-", "unbekannt")):
+                        _KONTEN_JE_MARKE[_kennung] = (_k, time.time())
+                        _konten_speichern()
             except Exception:
                 traceback.print_exc(file=sys.stderr)
             self.send_header("Set-Cookie",
