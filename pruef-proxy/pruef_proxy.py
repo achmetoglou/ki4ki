@@ -4216,6 +4216,10 @@ class Griff(BaseHTTPRequestHandler):
                 return
             if self._bild_vorab(frage):
                 return
+            if self._fakten_vorab(frage):
+                return
+            if self._zusammenfassung_vorab(frage):
+                return
         except Exception:
             traceback.print_exc(file=sys.stderr)
         # ⭐ PRUEFUNGSKATALOG (26.08.): exakte Fragen aus der Datei, Antwort gegen
@@ -6031,15 +6035,7 @@ class Griff(BaseHTTPRequestHandler):
         #   verschiedene Zahlen, und der Waechter strich echte Bilder als
         #   "gibt es nicht"). Die Bildunterschrift ist die Wahrheit; ob ein
         #   Rasterbild da ist, entscheidet nur, WIE es gezeigt wird.
-        muster = re.compile(r"(?m)^\s*(?:Bild|Abbildung|Abb\.?|Figure|Fig\.?)\s*(\d{1,2}[.\-]\d{1,3})\b[:\s]*([^\n]{0,160})")
-        aus, gesehen = [], set()
-        for i, s in enumerate(seiten, 1):
-            for m in muster.finditer(s or ""):
-                n = m.group(1).replace("-", ".")
-                if n in gesehen:
-                    continue
-                gesehen.add(n)
-                aus.append((n, i, re.sub(r"\s+", " ", m.group(2)).strip()[:160]))
+        aus = fadenfrage.abbildungen_aus_seiten(seiten)
         cache[schluessel] = aus
         return aus
 
@@ -6118,6 +6114,11 @@ class Griff(BaseHTTPRequestHandler):
                 begriffe = str(args.get("begriffe") or "")
             treffer = self._bestand_durchsuchen(begriffe, namen)
             if not treffer:
+                if zustand.get("allgemeinwissen"):
+                    return ("Zu '%s' keine belegte Stelle in den %d Dokumenten des Bereichs. Sag das in einem Satz - und "
+                            "antworte dann aus Allgemeinwissen in einem eigenen Absatz, der mit 'Aus Allgemeinwissen "
+                            "(nicht aus den Dokumenten):' beginnt (dieser Bereich steht auf Modus Chat)."
+                            % (begriffe, len(namen)))
                 return ("Zu '%s' keine belegte Stelle in den %d Dokumenten des Bereichs. Sag das ehrlich; "
                         "Ansprechpartner: %s" % (begriffe, len(namen), assistent.kontakt_zeile() or "nicht hinterlegt"))
             aus = []
@@ -6167,8 +6168,12 @@ class Griff(BaseHTTPRequestHandler):
             teil = liste[ab:ab + 80]
             if not liste:
                 return "Keine Abbildung mit nummerierter Unterschrift in %s." % assistent._titel_saubern(dok)
-            aus = "%d Abbildungen in %s (vollstaendige Liste, Nummer | Seite | Unterschrift):\n" % (len(liste), assistent._titel_saubern(dok))
-            aus += "\n".join("%s | S. %d | %s" % (n, s, u[:110]) for n, s, u in teil)
+            aus = "%d Abbildungen in %s. Die Zahl %d ist die einzige gueltige Anzahl. Tabelle (Markdown, unveraendert uebernehmen):\n\n" % (
+                len(liste), assistent._titel_saubern(dok), len(liste))
+            aus += "| Bild | Seite | Unterschrift |\n|---|---|---|\n"
+            aus += "\n".join("| %s | %d | %s |" % (n, s, u[:110].replace("|", "/")) for n, s, u in teil)
+            if len(liste) > ab + 80:
+                aus += "\n\n(weitere %d mit ab=%d)" % (len(liste) - ab - 80, ab + 80)
             return aus
         if name == "seite_zeigen":
             try:
@@ -6271,9 +6276,10 @@ class Griff(BaseHTTPRequestHandler):
         self._strom_beginnen()
         stand = "gespraech-%d" % id(self)
         self._stand(stand, "Denke nach …")
+        _m0 = re.match(r"^/api/(?:v1/)?workspace/([^/]+)", self.path or "")
         zustand = {"namen": namen, "dokumente": [], "seiten": {}, "abbildungen": {},
                    "gezeigt": [], "seiten_gezeigt": [], "zusammengefasst": [], "stand": stand, "gespraech": gespraech_k,
-                   "bestand_text": ""}
+                   "bestand_text": "", "allgemeinwissen": (_bereich_modus(_m0.group(1) if _m0 else None) == "chat")}
         _melde = {"seiten_lesen": "Lese Seiten in %s …", "abbildungen_auflisten": "Suche Abbildungen in %s …",
                   "abbildung_zeigen": "Hole Bild aus %s …", "zusammenfassen": "Lese %s vollständig …",
                   "zaehlen": "Zähle in %s …", "bestand": "Sehe im Katalog nach …",
@@ -6431,6 +6437,15 @@ class Griff(BaseHTTPRequestHandler):
         if _kenn:
             text = re.sub(r"(?<![\(\[\w])(%s)\s*,\s*S\.?\s*(\d{1,4})(?![\w)])" % "|".join(re.escape(k) for k in _kenn),
                           r"(\1, S. \2)", text)
+        # Doppelte Zeilen (das Modell wiederholt "Bild 4.11 - ..., Seite 51" neben dem Block)
+        _gesehen, _zeilen = set(), []
+        for _z in text.split("\n"):
+            _k = _z.strip().lower()
+            if len(_k) > 12 and not _k.startswith(("|", "-", "*", "#")) and _k in _gesehen:
+                continue
+            _gesehen.add(_k)
+            _zeilen.append(_z)
+        text = "\n".join(_zeilen)
         # ---- Jede Aussage mit Seitenangabe gegen die Seite pruefen --------
         # Gemessen 26.08.: Das Modell schrieb "die Klemmung erhoeht die
         # Lebensdauer (DS-24-005, S. 12)" - erfunden, Gegenteil der Arbeit.
@@ -6842,6 +6857,7 @@ class Griff(BaseHTTPRequestHandler):
         if modus in rolle.MODI and API_SCHLUESSEL:
             try:
                 _api("POST", "/api/v1/workspace/%s/update" % slug, {"chatMode": modus}, timeout=30)
+                _MODUS_JE_BEREICH[slug] = (modus, time.time())
             except Exception as e:
                 print("[Rolle] Modus '%s' fuer '%s' nicht gesetzt: %s" % (modus, slug, str(e)[:80]), file=sys.stderr, flush=True)
         # 2) DANN: das Modell den Regelteil formulieren lassen und nachziehen
@@ -6970,6 +6986,32 @@ class Griff(BaseHTTPRequestHandler):
         aspekt = v[2] if len(v) > 2 else ""
         return bool(self._vergleich_antwort(frage, a, b, aspekt or ""))
 
+    def _zusammenfassung_vorab(self, frage):
+        """'Fasse X zusammen' / 'Lies das Dokument komplett' -> die vollstaendige
+        mehrstufige Lesung (mit Vorrat), nicht ein paar Seiten durchs Modell
+        (gemessen 27.08.: 14,7 s fuer 'komplett lesen' = nicht komplett)."""
+        if not assistent._ZUSAMMENFASSUNG.search(frage or "") and not re.search(
+                r"\b(?:komplett|vollst(?:ä|ae)ndig|ganz(?:es)?)\b.{0,40}\b(?:les|zusammenfass)", frage or "", re.I):
+            return False
+        if assistent.ist_bestandsfrage_unscharf(frage):
+            return False
+        namen = (titel_im_bereich(self.path, self.headers) or nur_erlaubte(BESTAND.titel(), self.headers) or [])
+        dok = assistent.dokument_gemeint(frage, namen)[0] or GESPRAECHE.letztes_dokument(GESPRAECHE.kennung(self.path, self.headers))
+        if not dok:
+            return False
+        return bool(self._zusammenfassung(frage, erzwinge=dok))
+
+    def _fakten_vorab(self, frage):
+        """'Wie viele Abbildungen/Seiten/Tabellen hat ...' -> gezaehlt, nicht geraten
+        (gemessen 27.08.: das Modell nannte 38 und 91 in einer Antwort)."""
+        if not assistent.dokument_fakten_frage(frage):
+            return False
+        namen = (titel_im_bereich(self.path, self.headers) or nur_erlaubte(BESTAND.titel(), self.headers) or [])
+        dok = assistent.dokument_gemeint(frage, namen)[0] or GESPRAECHE.letztes_dokument(GESPRAECHE.kennung(self.path, self.headers))
+        if not dok:
+            return False
+        return bool(self._fakten_antwort(frage, dok))
+
     def _bild_vorab(self, frage):
         """'Zeig mir Bild 2.1' mit Faden-Dokument -> direkt das Bild (kein Modell)."""
         m = re.match(r"^\s*(?:ok\s+|okay\s+|dann\s+|ja\s+|gut\s+)*zeig\w*\s+(?:mir\s+)?(?:mal\s+|bitte\s+)*(?:das\s+|die\s+)?(?:bild|abbildung|abb\.?|grafik|diagramm)\s*(\d{1,2}[.\-]\d{1,3})\b",
@@ -6980,7 +7022,19 @@ class Griff(BaseHTTPRequestHandler):
         dok = GESPRAECHE.letztes_dokument(k)
         if not dok:
             return False
-        return bool(self._bild_antwort(frage, erzwinge=dok))
+        nummer = m.group(1).replace("-", ".")
+        liste = self._abbildungen_liste(dok)
+        for n, s, u in liste:
+            if n == nummer:
+                text = self._bild_block(dok, n, s, u) + "\n\n*Klick auf Bild oder Seite öffnet das Original.*"
+                self._direkt_senden("bild", frage, text, dok=dok)
+                return True
+        if liste:
+            self._direkt_senden("bild", frage, "Bild %s gibt es in %s nicht. Vorhanden: %s%s" % (
+                nummer, assistent._titel_saubern(dok), ", ".join(n for n, _, _ in liste[:30]),
+                " …" if len(liste) > 30 else ""), dok=dok)
+            return True
+        return False
 
     def _json_ueber_gespraech(self, frage):
         """⭐ Der JSON-Weg (/api/v1/workspace/<slug>/chat - n8n, Partner-
@@ -6996,7 +7050,8 @@ class Griff(BaseHTTPRequestHandler):
         self._sammeln = []
         try:
             getroffen = False
-            for hook in (self._rolle_antwort, self._pruefung_antwort, self._vergleich_vorab, self._bild_vorab, self._bestand_vorab,
+            for hook in (self._rolle_antwort, self._pruefung_antwort, self._vergleich_vorab, self._bild_vorab,
+                         self._fakten_vorab, self._zusammenfassung_vorab, self._bestand_vorab,
                          (self._gespraech_antwort if gespraechsmodus.AN else None)):
                 if hook is None:
                     continue
@@ -8580,6 +8635,7 @@ class Griff(BaseHTTPRequestHandler):
                     konf = _bereich_konf(_wu.group(1))
                     konf.setdefault("rolle", {})["modus"] = leib["chatMode"]
                     _bereich_konf_schreiben(_wu.group(1), konf)
+                    _MODUS_JE_BEREICH[_wu.group(1)] = (leib["chatMode"], time.time())
             except Exception:
                 traceback.print_exc(file=sys.stderr)
             return

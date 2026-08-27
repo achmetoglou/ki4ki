@@ -597,6 +597,13 @@ def szenario_24_pruefungskatalog():
     pruefe("ALLGEMEINWISSEN ERLAUBT" in gespraech.system_text(allgemeinwissen=True) and "ALLGEMEINWISSEN" not in gespraech.system_text(), "Allgemeinwissen nur im Chat-Modus")
     pruefe(assistent.ist_bestandsfrage_unscharf("Was haben wi rim Besdant?") and not assistent.ist_bestandsfrage_unscharf("Was ist Laminieren?"), "Bestandsfrage trotz Tippfehler")
     pruefe(assistent.ist_faden_raus("Tue das mal raus und vergleiche") and assistent.ist_faden_raus("Vergiss das Dokument") and not assistent.ist_faden_raus("Was ist Kleben?"), "'Dokument raus' erkannt")
+    seiten = ["Titel", "Abbildungsverzeichnis\nAbbildung 1.1 Ausführungen von GFK Blattfedern ... 15\nAbbildung 2.1 Allgemeiner Spannungszustand ..... 21\nAbbildung 2.2 Transformation der Spannungen 23\nAbbildung 4.4 Modellierung der Probekörperbiegung 42",
+              "", "Text", "Kapitel 1\nAbbildung 1.1: Ausführungen von GFK Blattfedern und deren Einbaulage", "", "Abbildung 2.1: Allgemeiner Spannungszustand in der homogenisierten UD-Einheitszelle",
+              "Bild 2.1 zeigt den Zustand. Abbildung 2.2: Transformation der Spannungen in eine Wirkebene", "Abbildung 4.4: Modellierung der Probekörperbiegung als Balken"]
+    ab = fadenfrage.abbildungen_aus_seiten(seiten)
+    pruefe([(n, s_) for n, s_, _ in ab] == [("1.1", 5), ("2.1", 7), ("2.2", 8), ("4.4", 9)], "Abbildungsverzeichnis uebersprungen, echte Seiten: %s" % [(n, s_) for n, s_, _ in ab])
+    ab2 = fadenfrage.abbildungen_aus_seiten(["Abbildungsverzeichnis\nAbbildung 3.1 Verbindungspunkte zum Chassis und Mittenklemmung 29\nAbbildung 3.2 Uebertragung der Mittenklemmung 30\nAbbildung 3.3 Dritte 31\nAbbildung 3.4 Vierte 32", "", "Hier: Verbindungspunkte zum Chassis und Mittenklemmung der Feder"])
+    pruefe(("3.1", 3) in [(n, s_) for n, s_, _ in ab2] and all(s_ >= 1 for _, s_, _ in ab2), "nur im Verzeichnis: Unterschrift im Text gesucht -> Seite 3; Rest behaelt Verzeichnisseite")
     v3 = assistent.Verlauf(); k3 = "wissensdatenbank|f24"; v3.dokument_merken(k3, "DS-24-002.md")
     pruefe(v3.dokument_vergessen(k3) and v3.letztes_dokument(k3) is None, "Faden-Dokument vergessen")
 

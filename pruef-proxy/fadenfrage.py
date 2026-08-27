@@ -300,3 +300,61 @@ def will_gesamtbestand(frage):
     if _ANDERE.search(f):
         return True, f
     return False, f
+
+
+# ---- Abbildungen aus Seitentexten --------------------------------------------
+_ABB_MUSTER = re.compile(r"(?m)^\s*(?:Bild|Abbildung|Abb\.?|Figure|Fig\.?)\s*(\d{1,2}[.\-]\d{1,3})\b[:\s]*([^\n]{0,160})")
+_VERZEICHNIS = re.compile(r"(?i)abbildungsverzeichnis|verzeichnis\s+der\s+abbildungen|list\s+of\s+figures|bildverzeichnis")
+
+
+def _ist_verzeichnisseite(text, treffer):
+    """Abbildungsverzeichnis: Ueberschrift oder viele Eintraege, die mit einer
+    Seitenzahl enden ('2.1 Allgemeiner Spannungszustand ... 11')."""
+    if _VERZEICHNIS.search(text or ""):
+        return True
+    if len(treffer) < 4:
+        return False
+    mit_zahl = sum(1 for m in treffer if re.search(r"(?:\.{2,}|\s)\s*\d{1,3}\s*$", m.group(2).strip()))
+    return mit_zahl >= max(3, int(len(treffer) * 0.6))
+
+
+def abbildungen_aus_seiten(seiten):
+    """[(nummer, seite, unterschrift)] - echte Bildunterschriften. Gemessen
+    27.08.: '2.1 | S. 11' und '1.1 | S. 12' stammten aus dem Abbildungs-
+    VERZEICHNIS vorne im Buch - die Anlage zeigte weisse Seiten. Verzeichnis-
+    seiten werden uebersprungen; taucht ein Bild nur dort auf, wird die
+    Unterschrift im Text gesucht und die echte Seite genommen."""
+    aus, gesehen, nur_verzeichnis = [], {}, []
+    for i, s in enumerate(seiten, 1):
+        treffer = list(_ABB_MUSTER.finditer(s or ""))
+        if not treffer:
+            continue
+        verzeichnis = _ist_verzeichnisseite(s, treffer)
+        for m in treffer:
+            n = m.group(1).replace("-", ".")
+            u = re.sub(r"\s+", " ", m.group(2)).strip()
+            if verzeichnis:
+                u = re.sub(r"(?:\s*\.{2,}\s*|\s+)\d{1,3}\s*$", "", u).strip()
+                if n not in gesehen:
+                    nur_verzeichnis.append((n, i, u[:160]))
+                continue
+            if n in gesehen:
+                continue
+            gesehen[n] = len(aus)
+            aus.append((n, i, u[:160]))
+    # Nur im Verzeichnis gefunden: die Unterschrift im Text suchen
+    for n, vz_seite, u in nur_verzeichnis:
+        if n in gesehen:
+            continue
+        kern = _falte(u)[:40]
+        seite = 0
+        if len(kern) >= 15:
+            for j in range(vz_seite, len(seiten)):
+                if kern in _falte(seiten[j] or ""):
+                    seite = j + 1
+                    break
+        gesehen[n] = len(aus)
+        aus.append((n, seite or vz_seite, u))
+    # nach Seite ordnen, damit die Liste dem Buch folgt
+    aus.sort(key=lambda t: (t[1], [int(x) for x in re.findall(r"\d+", t[0])]))
+    return aus
