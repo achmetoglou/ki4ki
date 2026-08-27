@@ -2139,25 +2139,25 @@ def _seitentexte_pdf(schluessel):
         seiten = pdfstelle.seitentexte(schluessel) or []
     except Exception:
         seiten = []
-    duenn = [i for i, t in enumerate(seiten) if len((t or "").strip()) < 40]
     gesamt = sum(len((t or "").strip()) for t in seiten)
-    if seiten and not duenn and gesamt >= 200 * len(seiten):
+    if seiten and gesamt >= 60 * len(seiten):
+        # Textlayer vorhanden: NUR pdftotext. ⛔ Keine seitenweise Mischung mit
+        # dem OCR-Text (gemessen 27.08.: die [Seite n]-Marken der Aufnahme sind
+        # GEDRUCKTE Seitenzahlen, pdftotext zaehlt physisch - eine duenne Seite 11
+        # bekam die OCR-Seite 11 = Kapitel 2, und "Bild 2.1" wanderte von der
+        # echten Seite 14 auf Seite 11: weisse Seite im Chat).
         return seiten
     ocr = _seiten_ohne_pdf(schluessel)
     if not ocr:
         return seiten
     if not seiten:
         return ocr
-    # Ganzer Scan mit Text-Resten (Teil 1: 5 609 Zeichen pdftotext gegen 75 457 OCR):
-    # dann die OCR-Fassung fuer ALLE Seiten, nicht nur fuer die leeren.
+    # Scan (kein oder kaum Textlayer): OCR-Fassung als Ganzes - nur wenn die
+    # Seitenzahlen zusammenpassen; sonst pdftotext, so duenn es ist.
     ocr_gesamt = sum(len(t.strip()) for t in ocr)
-    if ocr_gesamt and gesamt < 0.3 * ocr_gesamt and len(ocr) >= len(seiten) - 2:
+    if ocr_gesamt > gesamt and abs(len(ocr) - len(seiten)) <= 2:
         return ocr if len(ocr) == len(seiten) else (ocr + [""] * (len(seiten) - len(ocr)))[:len(seiten)]
-    aus = list(seiten)
-    for i in duenn:
-        if i < len(ocr) and len(ocr[i].strip()) > len((seiten[i] or "").strip()):
-            aus[i] = ocr[i]
-    return aus
+    return seiten
 
 
 def _seitentexte_von(name):
