@@ -2364,6 +2364,23 @@ EINHAENGER = """
   // Felder fuer den Prompt direkt in der Box 'Neues Workspace anlegen'").
   var ID = "ki4ki-rolle-felder";
   var werte = {fach: "", nutzer: "", besonderes: "", modus: "query"};
+  var anmeldung = "";   // Authorization des Anlege-Aufrufs - ohne sie kennt der Proxy das Konto nicht (403)
+
+  function kopfzeile(einst, name) {
+    try {
+      var h = einst && einst.headers;
+      if (!h) return "";
+      if (typeof h.get === "function") return h.get(name) || "";
+      for (var k in h) if (k.toLowerCase() === name.toLowerCase()) return h[k];
+    } catch (e) {}
+    return "";
+  }
+  function gespeicherteAnmeldung() {
+    try {
+      var t = window.localStorage.getItem("anythingllm_authToken") || window.localStorage.getItem("anythingllm_authtoken");
+      return t ? ("Bearer " + t.replace(/^"|"$/g, "")) : "";
+    } catch (e) { return ""; }
+  }
 
   function feld(name, beschriftung, hinweis) {
     var w = document.createElement("div");
@@ -2409,12 +2426,24 @@ EINHAENGER = """
 
   function einbauen() {
     if (document.getElementById(ID)) return;
+    if (/\\/settings\\b/.test(location.pathname)) return;   // Einstellungsseiten: dort gehoert das nicht hin
     var eingaben = document.querySelectorAll('input[name="name"]');
     for (var i = 0; i < eingaben.length; i++) {
       var inp = eingaben[i];
       var form = inp.closest("form");
       if (!form) continue;
-      var kasten = form.closest('[role="dialog"]') || form.parentElement;
+      // Nur der Dialog zum ANLEGEN (schwebendes Fenster) - nicht die
+      // Einstellungsseite eines bestehenden Bereichs (gemessen 27.08.).
+      var kasten = form.closest('[role="dialog"], [class*="modal"], [class*="Modal"], [id*="modal"]');
+      if (!kasten) {
+        var el = form, schwebt = false;
+        for (var t = 0; el && t < 8; t++, el = el.parentElement) {
+          var pos = window.getComputedStyle(el).position;
+          if (pos === "fixed" || pos === "absolute") { schwebt = true; break; }
+        }
+        if (!schwebt) continue;
+        kasten = form.parentElement;
+      }
       var text = (kasten && kasten.textContent) || "";
       if (!/workspace|arbeitsbereich/i.test(text)) continue;
       if (/thread|faden|umbenennen|rename/i.test(text) && !/new|neu/i.test(text)) continue;
@@ -2449,8 +2478,10 @@ EINHAENGER = """
     var w = {slug: slug, fach: werte.fach, nutzer: werte.nutzer, besonderes: werte.besonderes, modus: werte.modus};
     werte = {fach: "", nutzer: "", besonderes: "", modus: "query"};
     if (!w.fach && !w.nutzer && !w.besonderes && w.modus === "query") return;
-    fetch("/rolle", {method: "POST", headers: {"Content-Type": "application/json"}, credentials: "include",
-                     body: JSON.stringify(w)})
+    var kopf = {"Content-Type": "application/json"};
+    var auth = anmeldung || gespeicherteAnmeldung();
+    if (auth) kopf["Authorization"] = auth;
+    fetch("/rolle", {method: "POST", headers: kopf, credentials: "include", body: JSON.stringify(w)})
       .then(function (a) { return a.json(); })
       .then(function (d) {
         if (d && d.ok) melden("Rolle für „" + slug + "“ gespeichert" + (d.geglaettet ? " (vom Modell formuliert)" : "") +
@@ -2466,6 +2497,7 @@ EINHAENGER = """
       var weg = typeof eingabe === "string" ? eingabe : (eingabe && eingabe.url) || "";
       var antwort = echtesFetch.apply(this, arguments);
       if (/\\/api\\/(v1\\/)?workspace\\/new\\/?(\\?|$)/.test(weg)) {
+        anmeldung = kopfzeile(einst, "Authorization") || anmeldung;
         antwort.then(function (a) {
           a.clone().json().then(function (d) {
             var ws = d && d.workspace;
@@ -6550,10 +6582,13 @@ class Griff(BaseHTTPRequestHandler):
         """POST /rolle  {slug, fach, nutzer, besonderes, modus} - vom Formular
         'Neuer Arbeitsbereich' (Skript in der Oberflaeche). Nur Einsichtsrecht."""
         if not darf_sehen(self.headers):
+            print("[Rolle] /rolle abgewiesen: nicht angemeldet", file=sys.stderr, flush=True)
             self._json({"ok": False, "fehler": "Nicht angemeldet."}, code=401)
             return
         konto = pruefprotokoll.pseudonym(pruefprotokoll.konto_aus(self.headers))
         if not pruefprotokoll.darf_einsehen(konto):
+            print("[Rolle] /rolle abgewiesen: Konto %s ohne Einsichtsrecht (Authorization %s)" % (
+                konto, "vorhanden" if self.headers.get("Authorization") else "FEHLT"), file=sys.stderr, flush=True)
             self._json({"ok": False, "fehler": "Nur Betreiber/Admin darf die Rolle eines Bereichs setzen."}, code=403)
             return
         try:
