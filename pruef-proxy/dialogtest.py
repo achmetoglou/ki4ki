@@ -611,6 +611,8 @@ def szenario_25_rolle():
     pruefe("ROLLE DIESES BEREICHS" in gespraech.system_text(rolle=g) and "ROLLE DIESES BEREICHS" not in gespraech.system_text(), "Rolle im Systemtext des Gespraechsmodus")
     pruefe(all(rolle.ist_wunsch(x) for x in ("Rolle einrichten", "bitte die Rolle für den Bereich anpassen", "Prompt anpassen"))
            and not any(rolle.ist_wunsch(x) for x in ("Was ist die Rolle des Härters?", "Welche Rolle spielt Styrol?")), "Wunsch erkannt, Fachfragen mit 'Rolle' nicht")
+    zp = rolle.zusammensetzen("KERN", v)
+    pruefe(rolle.aus_prompt(zp).strip() == v.strip() and rolle.kern_aus_prompt(zp) == "KERN" and rolle.aus_prompt("nur Kern") == "", "Rolle aus dem in der Oberflaeche gespeicherten Prompt zurueckgewinnen")
     st = rolle.vorlage("Prüflabor Werkstoffe", "Instandhalter an der Anlage", "Störfälle: Ursache und Maßnahme")
     pruefe("Ursache · Maßnahme" in st and "prüfungsnah" not in st, "Vorlage Labor: Stoerfall-Regel, keine Pruefungsregel")
 

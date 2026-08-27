@@ -147,6 +147,53 @@ def _rolle_schreiben(slug, text):
     return pfad
 
 
+def _bereich_konf(slug):
+    try:
+        with open(os.path.join(EINGANG_ORDNER, _ordnername(slug), "bereich.json"), encoding="utf-8") as fh:
+            return json.load(fh) or {}
+    except Exception:
+        return {}
+
+
+def _bereich_konf_schreiben(slug, konf):
+    try:
+        pfad = os.path.join(EINGANG_ORDNER, _ordnername(slug), "bereich.json")
+        os.makedirs(os.path.dirname(pfad), exist_ok=True)
+        with open(pfad + ".neu", "w", encoding="utf-8") as fh:
+            json.dump(konf, fh, ensure_ascii=False, indent=1)
+        os.replace(pfad + ".neu", pfad)
+        try:
+            os.chown(pfad, 1000, int(os.environ.get("KI4KI_GID") or 1000))
+            os.chmod(pfad, 0o664)
+        except Exception:
+            pass
+    except Exception:
+        traceback.print_exc(file=sys.stderr)
+
+
+def _rolle_aus_oberflaeche(slug, prompt):
+    """Der Mensch hat den Prompt in den Einstellungen gespeichert: den
+    Rollen-Abschnitt daraus in prompt.md uebernehmen, damit Datei und
+    Gespraechsmodus mitziehen - und den Stand merken, damit der 5-Minuten-
+    Abgleich die Oberflaeche NICHT zurueck ueberschreibt."""
+    text = rolle.aus_prompt(prompt)
+    if not text.strip():
+        return False
+    alt = _rolle_lesen(slug)
+    if alt.strip() == text.strip():
+        return False
+    _rolle_schreiben(slug, text)
+    pfad = os.path.join(EINGANG_ORDNER, _ordnername(slug), rolle.DATEI)
+    try:
+        st = os.stat(pfad)
+        _ROLLEN_STAND[slug] = (st.st_mtime_ns, st.st_size)
+    except OSError:
+        pass
+    print("[Rolle] '%s': Rolle aus den Einstellungen der Oberflaeche uebernommen (%d Zeichen)" % (slug, len(text)),
+          file=sys.stderr, flush=True)
+    return True
+
+
 def _prompt_fuer_bereich(slug):
     """Kern (systemprompt.txt) + Rolle (prompt.md) - der eine Prompt eines Bereichs."""
     return rolle.zusammensetzen(_systemprompt_lesen() or "", _rolle_lesen(slug))
@@ -2609,10 +2656,70 @@ EINHAENGER = """
     };
   }
 
+  // --- Einstellungen eines bestehenden Bereichs: dieselben Felder, vorausgefuellt,
+  //     mit Knopf. Emrach 27.08.: "Die werden nie die Textdatei aendern -
+  //     Bequemlichkeit kommt immer ueber die UI."
+  var ID2 = "ki4ki-rolle-einstellungen";
+  function slugAusPfad() {
+    var m = /\\/workspace\\/([^\\/]+)\\/settings/.exec(location.pathname);
+    return m ? decodeURIComponent(m[1]) : "";
+  }
+  function einstellungenEinbauen() {
+    if (document.getElementById(ID2)) return;
+    var slug = slugAusPfad();
+    if (!slug) return;
+    var ta = document.querySelector('textarea[name="openAiPrompt"]');
+    if (!ta) return;
+    var block = document.createElement("div");
+    block.id = ID2;
+    block.style.cssText = "margin:8px 0 14px;padding:12px;border:1px dashed #3a4454;border-radius:10px;color:#e8edf5";
+    var kopf = document.createElement("div");
+    kopf.innerHTML = "<b>Rolle dieses Bereichs</b> <span style='opacity:.7'>— aus diesen drei Angaben entsteht der Abschnitt „Rolle dieses Bereichs“ im Prompt unten (das Modell formuliert ihn aus).</span>";
+    kopf.style.cssText = "font-size:13px";
+    block.appendChild(kopf);
+    block.appendChild(feld("fach", "Fachgebiet", "z. B. Kunststoffanalyse und -prüfung"));
+    block.appendChild(feld("nutzer", "Wer fragt hier?", "z. B. Azubis, Projektingenieure, Techniker"));
+    block.appendChild(feld("besonderes", "Worauf achten?", "z. B. Normstellen, Sicherheitsdatenblätter, Reparaturen"));
+    var knopf = document.createElement("button");
+    knopf.type = "button";
+    knopf.textContent = "Rolle speichern & neu formulieren";
+    knopf.style.cssText = "margin-top:12px;padding:8px 16px;border-radius:7px;cursor:pointer;border:1px solid #3a4454;background:#1b212b;color:#e8edf5;font:inherit";
+    knopf.onclick = function () {
+      knopf.disabled = true; knopf.textContent = "Formuliere … (das Modell braucht ein paar Sekunden)";
+      var w = {slug: slug, fach: werte.fach, nutzer: werte.nutzer, besonderes: werte.besonderes};
+      var kopfz = {"Content-Type": "application/json"};
+      var auth = anmeldung || gespeicherteAnmeldung();
+      if (auth) kopfz["Authorization"] = auth;
+      fetch("/rolle", {method: "POST", headers: kopfz, credentials: "include", body: JSON.stringify(w)})
+        .then(function (a) { return a.json(); })
+        .then(function (d) {
+          if (d && d.ok) { melden("Rolle gespeichert — Seite wird neu geladen", true); setTimeout(function () { location.reload(); }, 1200); }
+          else { melden("Rolle nicht gespeichert: " + ((d && d.fehler) || "unbekannt"), false); knopf.disabled = false; knopf.textContent = "Rolle speichern & neu formulieren"; }
+        })
+        .catch(function () { melden("Rolle nicht gespeichert (Verbindung).", false); knopf.disabled = false; knopf.textContent = "Rolle speichern & neu formulieren"; });
+    };
+    block.appendChild(knopf);
+    ta.parentElement.insertBefore(block, ta);
+    // vorausfuellen
+    var kopfz = {};
+    var auth = anmeldung || gespeicherteAnmeldung();
+    if (auth) kopfz["Authorization"] = auth;
+    fetch("/rolle?slug=" + encodeURIComponent(slug), {headers: kopfz, credentials: "include"})
+      .then(function (a) { return a.json(); })
+      .then(function (d) {
+        if (!d || !d.ok) return;
+        ["fach", "nutzer", "besonderes"].forEach(function (k) {
+          var i = block.querySelector('input[data-ki4ki="' + k + '"]');
+          if (i && d[k]) { i.value = d[k]; werte[k] = d[k]; }
+        });
+        if (d.darf === false) { knopf.disabled = true; knopf.textContent = "Nur Betreiber/Admin darf die Rolle ändern"; }
+      }).catch(function () {});
+  }
+
   var wartend = null;
   new MutationObserver(function () {
     clearTimeout(wartend);
-    wartend = setTimeout(einbauen, 200);
+    wartend = setTimeout(function () { einbauen(); einstellungenEinbauen(); }, 200);
   }).observe(document.documentElement, {childList: true, subtree: true});
 })();
 </script>
@@ -6673,6 +6780,9 @@ class Griff(BaseHTTPRequestHandler):
         Modus einspielen. Rueckgabe (text, eingespielt, geglaettet)."""
         name = _ordnername(slug)
         text = rolle.vorlage(fach, nutzer, besonderes, slug=name)
+        konf = _bereich_konf(slug)
+        konf["rolle"] = {"fach": fach or "", "nutzer": nutzer or "", "besonderes": besonderes or "", "modus": modus or konf.get("rolle", {}).get("modus", "")}
+        _bereich_konf_schreiben(slug, konf)
         # 1) SOFORT: Vorlage + Modus eintragen - wer gleich die Einstellungen
         #    oeffnet, sieht schon Rolle und Modus (gemessen 27.08.: Emrach sah
         #    den alten Stand, weil das Glaetten noch lief).
@@ -7709,6 +7819,17 @@ class Griff(BaseHTTPRequestHandler):
         if pfad in ("/rueckmeldungen", "/kpi", "/selbstcheck"):
             self._kennzahlen_seite(pfad, felder)
             return
+        if pfad == "/rolle":
+            # Die gespeicherten Angaben eines Bereichs (fuer die Felder in den Einstellungen)
+            slug = re.sub(r"[^A-Za-z0-9_-]", "", (felder.get("slug") or [""])[0])[:80]
+            if not slug or not darf_sehen(self.headers) or not bereich_sichtbar("/api/workspace/%s" % slug, self.headers):
+                self._json({"ok": False}, code=404)
+                return
+            r = (_bereich_konf(slug).get("rolle") or {})
+            self._json({"ok": True, "slug": slug, "fach": r.get("fach", ""), "nutzer": r.get("nutzer", ""),
+                        "besonderes": r.get("besonderes", ""), "modus": r.get("modus", ""),
+                        "eingerichtet": rolle.ist_eingerichtet(_rolle_lesen(slug)), "darf": _darf_rolle_setzen(self.headers)})
+            return
         if pfad in ("/stelle", "/seitenbild", "/abbildung") or pfad.startswith("/pdf/"):
             # Diese Routen beantwortet der Proxy selbst - AnythingLLM sieht sie
             # nie und kann sie deshalb auch nicht schuetzen.
@@ -8323,6 +8444,28 @@ class Griff(BaseHTTPRequestHandler):
 
         if pfad == "/rolle":
             self._rolle_route()
+            return
+
+        _wu = re.match(r"^/api/workspace/([^/]+)/update/?$", pfad)
+        if _wu:
+            # Einstellungen aus der Oberflaeche gespeichert: weiterreichen, dann
+            # den Rollen-Abschnitt des Prompts in prompt.md uebernehmen.
+            try:
+                laenge = int(self.headers.get("Content-Length") or 0)
+                koerper = self.rfile.read(laenge) if laenge else b""
+            except Exception:
+                koerper = b""
+            self._weiterleiten("POST", koerper)
+            try:
+                leib = json.loads(koerper or b"{}") or {}
+                if isinstance(leib.get("openAiPrompt"), str):
+                    _rolle_aus_oberflaeche(_wu.group(1), leib["openAiPrompt"])
+                if leib.get("chatMode") in rolle.MODI:
+                    konf = _bereich_konf(_wu.group(1))
+                    konf.setdefault("rolle", {})["modus"] = leib["chatMode"]
+                    _bereich_konf_schreiben(_wu.group(1), konf)
+            except Exception:
+                traceback.print_exc(file=sys.stderr)
             return
 
         # ⭐ K2 (Leitfaden S. 123, 128): Daumen hoch/runter der Oberflaeche

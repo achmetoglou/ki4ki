@@ -166,3 +166,24 @@ def vorlage_mit_glaettung(fach, nutzer, besonderes, geglaettet, slug=""):
     kopf = v.split("## So antwortest du hier")[0].rstrip()
     return kopf + "\n\n## So antwortest du hier\n\n" + geglaettet.strip() + \
         "\n\n*(Diese Datei darf frei bearbeitet werden — Änderungen wirken innerhalb von fünf Minuten.)*\n"
+
+
+MARKE_ABSCHNITT = "## Rolle dieses Bereichs"
+
+
+def aus_prompt(prompt):
+    """Den Rollen-Abschnitt aus einem in der Oberflaeche gespeicherten Prompt
+    holen - '' wenn keiner drin ist. Die Oberflaeche ist die Wahrheit
+    (Emrach 27.08.: 'Bequemlichkeit wird immer ueber die UI kommen')."""
+    t = prompt or ""
+    i = t.find(MARKE_ABSCHNITT)
+    if i < 0:
+        return ""
+    return t[i + len(MARKE_ABSCHNITT):].strip() + "\n"
+
+
+def kern_aus_prompt(prompt):
+    """Der Teil vor dem Rollen-Abschnitt."""
+    t = prompt or ""
+    i = t.find(MARKE_ABSCHNITT)
+    return (t if i < 0 else t[:i]).rstrip()

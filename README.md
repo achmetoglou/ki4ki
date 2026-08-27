@@ -61,10 +61,12 @@ Fachgebiet, wer fragt, worauf achten). **Beim Anlegen eines Bereichs in der Ober
 Felder direkt im Formular „Neuer Arbeitsbereich", dazu die Wahl des Modus mit Erklärung (Abfrage = nur
 Dokumente mit Beleg, Standard · Chat = plus Allgemeinwissen · Vertreter = ohne Quellen, nicht empfohlen).
 Das lokale Modell formuliert aus den Angaben den Rollen-Absatz (ohne neue Fakten; `KI4KI_ROLLE_GLAETTEN=0`
-schaltet das ab, dann gilt die Vorlage). Alternativ: im Chat „Rolle einrichten" (drei Fragen, nur
-Betreiber/Admin) oder `./arbeitsbereich_anlegen.sh <Key> <Name> <Fach> <Wer> <Besonderes>`. Die Datei darf
-mit jedem Editor geändert werden — die Anlage spielt sie binnen fünf Minuten ein, in die Oberfläche und in
-den Gesprächsmodus. Solange sie nicht eingerichtet ist, gilt nur der Kern. Gedächtnis je Faden: 20 Züge.
+schaltet das ab, dann gilt die Vorlage). **Später ändern:** in den Chat-Einstellungen des Bereichs stehen dieselben drei Felder vorausgefüllt mit
+dem Knopf „Rolle speichern & neu formulieren"; wer den Prompt dort direkt im Textfeld ändert, dessen
+Rollen-Abschnitt übernimmt die Anlage ebenfalls (die Oberfläche ist die Wahrheit). Alternativ: im Chat
+„Rolle einrichten" (drei Fragen) oder `./arbeitsbereich_anlegen.sh <Key> <Name> <Fach> <Wer> <Besonderes>`;
+die Datei `prompt.md` kann auch mit einem Editor geändert werden (wirkt binnen fünf Minuten). Solange
+keine Rolle eingerichtet ist, gilt nur der Kern. Gedächtnis je Faden: 20 Züge.
 
 **Index eines Bereichs.** „Was haben wir im Bestand?" liefert in jedem Bereich dieselbe Tabelle —
 Kennung (Link zur Datei) · Titel · Verfasser · Jahr · Art (Dissertation / PDF mit Seitenzahl / Excel /
