@@ -81,6 +81,12 @@ Betreiber „Kategorie von DVS 2290 Werkzeugliste ist Handbuch/Anleitung" (bleib
 Abfragen: „Welche Normen haben wir?", „Zeig mir alle Prüfungskataloge", „Was habt ihr zum Thema
 Laminieren?" (Titel, Themen und Tags). Ab 15 Dokumenten gruppiert der Index nach Kategorie.
 
+**Was die Aufnahme sonst noch je Dokument ablegt** (im Kopf der Textfassung, für Suche und Katalog):
+Sprache, Fachgebiet/Teilgebiet, Methoden, eine **Kurzfassung** (2–3 Sätze, seit 28.08. sichtbar) und die
+Bildklassen von Docling (Logo, Diagramm, Zeichnung, Foto) an jeder Abbildungsstelle. Themen und Kurzfassung
+sind in der Sprache des Dokuments; ältere Einträge mit englischen Themen deutscht die Anlage beim
+Nachtragen ein.
+
 **Index eines Bereichs.** „Was haben wir im Bestand?" liefert in jedem Bereich dieselbe Tabelle —
 Kennung (Link zur Datei) · Titel · Verfasser · Jahr · Art (Dissertation / PDF mit Seitenzahl / Excel /
 Word / Prüfungskatalog) — egal, was hochgeladen wurde. Titel, Verfasser und Jahr liest das kleine

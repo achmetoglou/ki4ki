@@ -1184,10 +1184,13 @@ def _treffer_im_katalog(stichwort, namen, bereich=None, gattung=None):
         if any(_t in a["titel"].lower() for _t in teile):
             grund = "Titel"
         else:
-            passende = [s for s in (a.get("schlagworte") or []) + (a.get("themen") or [])
+            passende = [s for s in (a.get("schlagworte") or []) + (a.get("themen") or []) + (a.get("methoden") or [])
+                        + [x for x in (a.get("teilgebiet"), a.get("gebiet")) if x]
                         if any(_t in s.lower() for _t in teile)]
             if passende:
                 grund = "Thema: " + ", ".join(passende[:3])
+            elif any(_t in (a.get("kurzfassung") or "").lower() for _t in teile):
+                grund = "Kurzfassung"
         if grund:
             treffer.append((n, a, grund))
     if not treffer:

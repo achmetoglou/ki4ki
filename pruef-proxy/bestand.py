@@ -184,15 +184,20 @@ _NACHTRAG_SPERRE = threading.Lock()
 _NACHTRAG_LAEUFT = set()
 
 _DECKBLATT_ANWEISUNG = (
-    "Unten steht der Anfang eines Dokuments (Deckblatt, Impressum, Kopf einer "
-    "Tabelle) - es kann eine wissenschaftliche Arbeit sein, eine Norm oder "
-    "Richtlinie, ein Handbuch, ein Bericht, eine Praesentation oder eine "
-    "Fragen-/Datentabelle. Lies daraus den TITEL des Dokuments (bei Normen: "
-    "Nummer und Titel, z.B. 'DVS 2213-1 Kunststoffkleben'), den VERFASSER (die "
-    "Person oder die herausgebende Organisation, z.B. 'DVS' - nicht Betreuer, "
-    "Gutachter oder Institut einer Arbeit) und das JAHR. Antworte NUR mit einer "
-    'JSON-Zeile der Form {"titel": "...", "verfasser": "...", "jahr": "..."}. '
-    "Was nicht dasteht, bleibt leer. Nichts erfinden.")
+    "Unten stehen die ersten Seiten eines Dokuments (Deckblatt, Impressum, "
+    "Titelseite) - eine wissenschaftliche Arbeit, eine Norm oder Richtlinie, ein "
+    "Lehrgang, ein Handbuch, ein Bericht, eine Praesentation oder eine Tabelle. "
+    "Der Text kann durch Texterkennung zerhackt sein (Wortreste, einzelne "
+    "Buchstaben) - ueberspringe solche Stellen und nimm die naechste lesbare. "
+    "Lies daraus den TITEL des Dokuments, wie er auf der Titelseite steht (bei "
+    "Lehrgaengen z.B. 'DVS-Lehrgang Fachmann fuer Kunststofflaminierer und "
+    "-kleber nach DVS 2213-1'; bei Normen Nummer und Titel), den VERFASSER (bei "
+    "'Autoren:'/'Verfasser:' die genannten Personen, sonst die herausgebende "
+    "Organisation - nicht Betreuer oder Gutachter) und das JAHR (Auflage, "
+    "Copyright oder Abgabe; bei Spannen wie '1980 - 2026' das letzte Jahr). "
+    "Der Dateiname ist KEIN Titel. Ist kein Titel lesbar, lass ihn leer. "
+    "Antworte NUR mit einer JSON-Zeile der Form "
+    '{"titel": "...", "verfasser": "...", "jahr": "..."}. Nichts erfinden.')
 
 
 def _wurzel_des_dokuments(name):
@@ -210,8 +215,11 @@ def _wurzel_des_dokuments(name):
     return None
 
 
-def _volltext_anfang(name, zeichen=4000):
-    """Der Anfang des aufbereiteten Textes (Deckblatt, Impressum) - oder ''."""
+def _volltext_anfang(name, zeichen=4000, ab_inhalt=False):
+    """Der Anfang des aufbereiteten Textes - oder ''. ab_inhalt=True: ohne den
+    Kopf der Aufnahme (dessen '# Dateiname' hielt das Modell fuer den Titel,
+    gemessen 28.08.: 'DVS 2213-1_neu' statt 'DVS-Lehrgang Fachmann fuer
+    Kunststofflaminierer und -kleber')."""
     stamm = str(name)
     if stamm.lower().endswith((".pdf", ".md")):
         stamm = stamm.rsplit(".", 1)[0]
@@ -224,7 +232,13 @@ def _volltext_anfang(name, zeichen=4000):
                 continue
             try:
                 with open(os.path.join(wurzel, d), encoding="utf-8") as f:
-                    return (json.load(f).get("pageContent") or "")[:zeichen]
+                    t = json.load(f).get("pageContent") or ""
+                if ab_inhalt:
+                    i = t.find("## Inhalt")
+                    if i >= 0:
+                        t = t[i + len("## Inhalt"):]
+                    t = re.sub(r"<!-- image -->\s*", "", t)
+                return t[:zeichen]
             except Exception:
                 return ""
     return ""
@@ -241,13 +255,68 @@ def _json_aus(inhalt):
         return None
     if not isinstance(d, dict):
         return None
-    titel = re.sub(r"\s+", " ", str(d.get("titel") or "")).strip()
-    if len(titel) < 8:
-        return None
-    jahr = re.search(r"(?:19|20)\d{2}", str(d.get("jahr") or ""))
+    titel = titel_bereinigen(str(d.get("titel") or ""))
+    if len(titel) < 8 or len(titel.split()) < 2:
+        return None          # zu kurz/allgemein ("Leitfaden") - dann bleibt der Dateiname
+    if re.search(r"\.(?:pdf|md|xlsx|docx)$", titel, re.I) or re.search(r"_\w+_\d", titel):
+        return None          # das ist ein Dateiname, kein Titel
+    jahre = re.findall(r"(?:19|20)\d{2}", str(d.get("jahr") or ""))
     return {"titel": titel[:300],
-            "verfasser": re.sub(r"\s+", " ", str(d.get("verfasser") or "")).strip()[:120],
-            "jahr": jahr.group(0) if jahr else ""}
+            "verfasser": re.sub(r"\s+", " ", str(d.get("verfasser") or "")).replace("nicht angegeben", "").strip()[:120],
+            "jahr": jahre[-1] if jahre else ""}          # "1980 - 2026" -> 2026
+
+
+_ENGLISCHER_ANHANG = re.compile(
+    r"^(.{25,}?)\s+(?=(?:Investigation|Analysis|Development|Influence|Prediction|Design|Geometry-dependent|"
+    r"Material-Specific|Contactless|Non-contact|Experimental|Numerical|Effect|Characteri[sz]ation|Simulation|Modell?ing|"
+    r"A |An |The |Towards|On the|Adjoint)\b)")
+
+
+def titel_bereinigen(titel):
+    """Titel glaetten: Whitespace, Anfuehrungszeichen, und bei zweisprachigen
+    Deckblaettern (IKV: deutscher Titel + englische Uebersetzung) nur den
+    ersten Teil (gemessen 28.08.: 'Untersuchung ... Modell Investigation of the
+    Influence ...' in einer Zelle)."""
+    t = re.sub(r"\s+", " ", titel or "").strip().strip("„“\"'")
+    m = _ENGLISCHER_ANHANG.match(t)
+    if m and re.search(r"\b(?:of|for|on|and|the|in)\b", t[m.end(1):]) and not re.search(r"\b(?:der|die|das|und|von|für|fuer)\b", t[m.end(1):]):
+        t = m.group(1).strip()
+    return t
+
+
+_ENGLISCH = re.compile(r"(?i)\b(?:and|of|the|behavio[u]r|processing|fib(?:er|re)|analysis|strength|reinforced|design|"
+                       r"optimi[sz]ation|materials?|properties|manufacturing|mou?lding|flow|clamping|springs?|loading|"
+                       r"reduction|construction|printing|composites?|thermosets?|elements?|mixing|simulation|damage|"
+                       r"technology|channels?|plastics?|polymers?|surface|waviness|rate)\b|ing$|tion$|ity$")
+
+
+def _englisch(worte):
+    treffer = sum(1 for w in worte if _ENGLISCH.search(w or "") and not re.search(r"[äöüßÄÖÜ]", w or ""))
+    return treffer >= max(2, len(worte) // 2)
+
+
+def _themen_uebersetzen(worte):
+    """Englische Schlagworte eines deutschen Dokuments eindeutschen (kleines
+    Modell, ein Aufruf, ~1 s). Liefert die Liste oder None."""
+    try:
+        from urllib.request import Request, urlopen
+        leib = json.dumps({"model": _NETZ_MODELL, "think": False, "stream": False,
+                           "options": {"temperature": 0},
+                           "messages": [{"role": "user", "content":
+                                         "Uebersetze diese Fachbegriffe ins Deutsche (Kunststofftechnik). Antworte NUR mit einer "
+                                         "JSON-Liste von Strings in derselben Reihenfolge, deutsche Begriffe unveraendert lassen:\n"
+                                         + json.dumps(worte, ensure_ascii=False)}]}).encode("utf-8")
+        a = Request(_NETZ_URL, data=leib, headers={"Content-Type": "application/json"}, method="POST")
+        with urlopen(a, timeout=60) as r:
+            antwort = json.loads(r.read())
+        inhalt = ((antwort.get("message") or {}).get("content") or "")
+        m = re.search(r"\[.*\]", inhalt, re.S)
+        neu = json.loads(m.group(0)) if m else None
+        if isinstance(neu, list) and len(neu) == len(worte) and all(isinstance(x, str) and x.strip() for x in neu):
+            return [re.sub(r"\s+", " ", x).strip()[:40] for x in neu]
+    except Exception:
+        pass
+    return None
 
 
 def _deckblatt_lesen(text):
@@ -326,8 +395,19 @@ def kategorie_bestimmen(name, text, alt=None, ist_katalog=False):
     import kategorie as _kat
     kopf = _kat.aus_kopf(text)
     alt = alt or {}
-    aus = {"themen": _kat.themen(kopf), "sprache": kopf.get("sprache") or "",
-           "dokumenttyp": kopf.get("dokumenttyp") or ""}
+    themen = _kat.themen(kopf)
+    sprache = (kopf.get("sprache") or "").lower()
+    # Deutsches Dokument, englische Schlagworte (die Verschlagwortung antwortete
+    # frueher auf Englisch): eindeutschen - einmal, dann steht es im Katalog.
+    if themen and sprache.startswith(("german", "deutsch", "de")) and _englisch(themen) and alt.get("themen_quelle") != "uebersetzt":
+        neu = _themen_uebersetzen(themen)
+        if neu:
+            themen = neu
+    aus = {"themen": themen, "sprache": kopf.get("sprache") or "",
+           "themen_quelle": "uebersetzt" if (themen and sprache.startswith(("german", "deutsch", "de")) and not _englisch(themen)) else "aufnahme",
+           "dokumenttyp": kopf.get("dokumenttyp") or "", "gebiet": kopf.get("domain") or "",
+           "teilgebiet": kopf.get("subdomain") or "", "methoden": (kopf.get("methoden") or [])[:8],
+           "kurzfassung": kopf.get("kurzfassung") or ""}
     if alt.get("kategorie_quelle") == "mensch" and alt.get("kategorie"):
         aus["kategorie"] = alt["kategorie"]
         aus["kategorie_quelle"] = "mensch"
@@ -348,13 +428,19 @@ def _einen_nachtragen(name):
         if not text.strip():
             return False
         alt = angaben(name) or {}
-        if alt.get("titel"):
+        stamm = str(name)[:-3] if str(name).lower().endswith(".md") else str(name)
+        titel_ist_dateiname = _grund(alt.get("titel") or "") == _grund(stamm)
+        if alt.get("titel") and not titel_ist_dateiname:
             angabe = {k: alt.get(k) for k in ("titel", "verfasser", "jahr") if alt.get(k)}
             quelle = alt.get("quelle") or "modell"
         else:
-            angabe = _deckblatt_lesen(text)
+            # Deckblatt OHNE den Aufnahme-Kopf lesen; erste Seiten ausfuehrlicher
+            angabe = _deckblatt_lesen(_volltext_anfang(name, zeichen=6000, ab_inhalt=True) or text)
             if not angabe:
-                return False
+                if alt.get("titel"):
+                    angabe = {k: alt.get(k) for k in ("titel", "verfasser", "jahr") if alt.get(k)}
+                else:
+                    return False
             quelle = "modell"
         try:
             import pruefungskatalog as _pk
@@ -394,9 +480,11 @@ def nachtragen(namen, hoechstens=5):
     offen = []
     for n in namen or []:
         a = angaben(n)
-        if a and a.get("titel") and a.get("kategorie"):
+        if a and a.get("titel") and a.get("kategorie") and not (
+                a.get("themen") and str(a.get("sprache") or "").lower().startswith(("german", "deutsch", "de"))
+                and a.get("themen_quelle") != "uebersetzt" and _englisch(a.get("themen") or [])):
             continue
-        offen.append(n)          # ohne Titel (Modell) ODER ohne Kategorie (nur Kopf lesen)
+        offen.append(n)          # ohne Titel (Modell) ODER ohne Kategorie ODER englische Themen (nur Kopf lesen)
     if not offen:
         return 0
     sofort, spaeter = offen[:hoechstens], offen[hoechstens:]

@@ -673,6 +673,10 @@ def szenario_26_kategorien():
     tab = assistent._liste(["DS-24-005"], {})
     pruefe("| Kennung | Titel | Verfasser | Jahr | Kategorie | Themen | Datei |" in tab, "Index traegt Kategorie und Themen")
     pruefe(assistent._gruppieren(["DS-24-005", "DS-24-006", "DS-24-007"]) in ([], [("DS", 3)]) or True, "Gruppierung laeuft ohne Katalog durch")
+    j = bestand._json_aus('{"titel": "Untersuchung des Einflusses einer Mitteneinspannung auf das Ermüdungsverhalten Investigation of the Influence of a Centre Clamping on the Fatigue Behaviour", "verfasser": "Fabian Becker", "jahr": "1980 - 2026"}')
+    pruefe(j["titel"] == "Untersuchung des Einflusses einer Mitteneinspannung auf das Ermüdungsverhalten" and j["jahr"] == "2026", "Deckblatt: englischer Anhang abgeschnitten, letztes Jahr einer Spanne")
+    pruefe(bestand._json_aus('{"titel": "Leitfaden", "verfasser": "x", "jahr": ""}') is None and bestand._json_aus('{"titel": "DVS_2213-1_Teil 1_10_2025-WZ", "verfasser": "", "jahr": ""}') is None, "Einwort-Titel und Dateinamen werden verworfen (Dateiname bleibt Titel)")
+    pruefe(bestand._englisch(["glass-fiber reinforced plastics", "leaf springs", "fatigue behavior"]) and not bestand._englisch(["Spritzgießverfahren", "Einspritzprofilierung", "Kunststoffverarbeitung"]), "englische Schlagworte erkannt")
 
 
 if __name__ == "__main__":

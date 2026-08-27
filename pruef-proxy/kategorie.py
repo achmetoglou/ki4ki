@@ -115,6 +115,8 @@ def aus_kopf(text):
         m = re.search(r"(?ms)^## %s\s*\n(.*?)(?=^## |\Z)" % abschnitt, kopf)
         if m:
             aus[schl] = [re.sub(r"^[-*]\s*", "", z).strip() for z in m.group(1).splitlines() if z.strip().startswith(("-", "*"))][:20]
+    m = re.search(r"(?ms)^## Kurzfassung \(Aufnahme\)\s*\n(.*?)(?=^## |\Z)", kopf)
+    aus["kurzfassung"] = re.sub(r"\s+", " ", m.group(1)).strip()[:1500] if m else ""
     return aus
 
 

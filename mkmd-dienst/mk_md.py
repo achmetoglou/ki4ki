@@ -121,6 +121,10 @@ def baue_markdown(rohtext, tagging, basisname, jetzt=None):
         if items:
             parts.append("\n".join(["## " + title, ""]
                                    + ["- " + i for i in items] + [""]))
+    # Kurzfassung der Verschlagwortung: bisher erzeugt und verworfen (28.08.)
+    kurz = str(tags.get("summary") or "").strip()
+    if kurz:
+        parts.append("\n".join(["## Kurzfassung (Aufnahme)", "", kurz[:1500], ""]))
     parts += ["## Inhalt", "", content]
     return "\n".join(parts), content, tags
 
