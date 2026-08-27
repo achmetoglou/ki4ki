@@ -13,6 +13,7 @@ Reine Textfunktionen, ohne Modell - pruefbar in dialogtest.py.
 import re
 
 DATEI = "prompt.md"
+MARKE_ABSCHNITT = "## Rolle dieses Bereichs"
 PLATZHALTER_MARKE = "<!-- noch nicht eingerichtet -->"
 
 FRAGEN = [
@@ -92,12 +93,19 @@ def vorlage(fach, nutzer, besonderes, slug=""):
     return "\n".join(zeilen) + "\n"
 
 
+def fuer_prompt(rolle):
+    """Die Rolle ohne Datei-Kopf und ohne Datei-Hinweis - das liest das Modell."""
+    t = re.sub(r"^# Rolle des Bereichs.*$", "", rolle or "", flags=re.M)
+    t = re.sub(r"\*\(Diese Datei darf frei bearbeitet werden.*?\)\*", "", t, flags=re.S)
+    return re.sub(r"\n{3,}", "\n\n", t).strip()
+
+
 def zusammensetzen(kern, rolle):
     """Der Prompt, der in AnythingLLM landet: Kern + Rolle (wenn eingerichtet)."""
     kern = (kern or "").rstrip()
     if not ist_eingerichtet(rolle):
         return kern
-    return kern + "\n\n## Rolle dieses Bereichs\n\n" + rolle.strip() + "\n"
+    return kern + "\n\n" + MARKE_ABSCHNITT + "\n\n" + fuer_prompt(rolle) + "\n"
 
 
 def fuer_gespraech(rolle, hoechstens=2400):
@@ -224,8 +232,6 @@ def vorlage_mit_glaettung(fach, nutzer, besonderes, geglaettet, slug=""):
         "\n\n*(Diese Datei darf frei bearbeitet werden — Änderungen wirken innerhalb von fünf Minuten.)*\n"
 
 
-MARKE_ABSCHNITT = "## Rolle dieses Bereichs"
-
 
 def aus_prompt(prompt):
     """Den Rollen-Abschnitt aus einem in der Oberflaeche gespeicherten Prompt
@@ -235,7 +241,12 @@ def aus_prompt(prompt):
     i = t.find(MARKE_ABSCHNITT)
     if i < 0:
         return ""
-    return t[i + len(MARKE_ABSCHNITT):].strip() + "\n"
+    kern_text = t[i + len(MARKE_ABSCHNITT):].strip()
+    if not kern_text:
+        return ""
+    if not kern_text.startswith("# Rolle des Bereichs"):
+        kern_text = "# Rolle des Bereichs\n\n" + kern_text
+    return kern_text + "\n\n*(Diese Datei darf frei bearbeitet werden — Änderungen wirken innerhalb von fünf Minuten.)*\n"
 
 
 def kern_aus_prompt(prompt):

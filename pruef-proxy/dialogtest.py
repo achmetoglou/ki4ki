@@ -605,14 +605,16 @@ def szenario_25_rolle():
            "Vorlage: Regeln aus den Antworten abgeleitet (Pruefung, Norm, Sicherheit; kein Stoerfall)")
     pruefe(rolle.ist_eingerichtet(v) and not rolle.ist_eingerichtet(rolle.platzhalter("auw")) and not rolle.ist_eingerichtet(""), "eingerichtet vs Platzhalter")
     k = "KERN: Belege Pflicht."
-    pruefe(rolle.zusammensetzen(k, rolle.platzhalter("auw")) == k and rolle.zusammensetzen(k, v).startswith(k + "\n\n## Rolle dieses Bereichs\n\n# Rolle"), "Kern + Rolle nur wenn eingerichtet")
+    zk = rolle.zusammensetzen(k, v)
+    pruefe(rolle.zusammensetzen(k, rolle.platzhalter("auw")) == k and zk.startswith(k + "\n\n## Rolle dieses Bereichs\n\n**Fachgebiet:**")
+           and "# Rolle des Bereichs" not in zk and "Diese Datei" not in zk, "Kern + Rolle nur wenn eingerichtet; ohne Datei-Kopf und Datei-Hinweis")
     g = rolle.fuer_gespraech(v)
     pruefe("Fachgebiet" in g and "# Rolle" not in g and "Diese Datei" not in g, "Kurzfassung fuer Stufe 2 ohne Kopf und Fussnote")
     pruefe("ROLLE DIESES BEREICHS" in gespraech.system_text(rolle=g) and "ROLLE DIESES BEREICHS" not in gespraech.system_text(), "Rolle im Systemtext des Gespraechsmodus")
     pruefe(all(rolle.ist_wunsch(x) for x in ("Rolle einrichten", "bitte die Rolle für den Bereich anpassen", "Prompt anpassen"))
            and not any(rolle.ist_wunsch(x) for x in ("Was ist die Rolle des Härters?", "Welche Rolle spielt Styrol?")), "Wunsch erkannt, Fachfragen mit 'Rolle' nicht")
     zp = rolle.zusammensetzen("KERN", v)
-    pruefe(rolle.aus_prompt(zp).strip() == v.strip() and rolle.kern_aus_prompt(zp) == "KERN" and rolle.aus_prompt("nur Kern") == "", "Rolle aus dem in der Oberflaeche gespeicherten Prompt zurueckgewinnen")
+    pruefe("**Fachgebiet:**" in rolle.aus_prompt(zp) and rolle.aus_prompt(zp).startswith("# Rolle des Bereichs") and rolle.kern_aus_prompt(zp) == "KERN" and rolle.aus_prompt("nur Kern") == "", "Rolle aus dem in der Oberflaeche gespeicherten Prompt zurueckgewinnen")
     a = rolle.glaett_auftrag("Kunststoffprüfung", "Azubis, Wissenschaftler", "Normstellen, Reperaturen helfen")
     pruefe("Kunststoffprüfung" in a and "Azubis, Wissenschaftler" in a and "Reperaturen" in a and "Ursache" in a and "{" not in a.replace("{}", ""),
            "Modell-Auftrag traegt die drei Angaben und die Hinweise, keine offenen Platzhalter")
