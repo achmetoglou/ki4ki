@@ -40,7 +40,7 @@ import time
 # Wie viele Gespraechsschritte je Unterhaltung behalten werden. Mehr
 # braucht es nicht: Anreichern stuetzt sich auf die letzte inhaltliche
 # Frage, nicht auf den ganzen Verlauf.
-SCHRITTE = 8
+SCHRITTE = 24      # 27.08.: 20 Zuege Gedaechtnis je Faden (Emrach: 'Gedaechtnis geht verloren')
 
 # Nach dieser Zeit ohne Frage gilt eine Unterhaltung als beendet. Wer nach
 # einer Stunde "und dazu?" schreibt, meint fast nie das Thema von vorhin.

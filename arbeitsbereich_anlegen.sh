@@ -77,7 +77,9 @@ ruf("/workspace/%s/update" % slug, {
     # wie viele frühere Nachrichten mitgehen. Zu viele, und das Modell sieht
     # seine eigene vorherige Antwort und schreibt etwas anderes - gemessen:
     # 14 % Aehnlichkeit zwischen zwei Antworten auf dieselbe Frage
-    "openAiHistory": 6,
+    # 27.08.: 20 statt 6 - mit 6 vergass der Bereich das Gespraech nach drei Fragen;
+    # den Faden haelt ohnehin der Proxy, AnythingLLM bekommt dieselbe Tiefe
+    "openAiHistory": 20,
     "openAiTemp": 0.2,
 })
 

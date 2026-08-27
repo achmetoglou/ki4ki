@@ -24,7 +24,7 @@ import json, sys, urllib.request
 schluessel = sys.argv[1]
 api = "http://127.0.0.1:3001/api/v1"
 kopf = {"Authorization": "Bearer " + schluessel, "Content-Type": "application/json"}
-WERTE = {"chatMode": "query", "topN": 25, "similarityThreshold": 0.25, "openAiHistory": 6, "openAiTemp": 0.2}
+WERTE = {"chatMode": "query", "topN": 25, "similarityThreshold": 0.25, "openAiHistory": 20, "openAiTemp": 0.2}
 
 def ruf(pfad, koerper=None):
     daten = json.dumps(koerper).encode() if koerper is not None else None

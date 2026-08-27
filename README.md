@@ -55,12 +55,16 @@ Wo etwas nicht ankam, steht der Grund in `dokumente/<bereich>/aussortiert/aussor
 | **Kennzahlen & Liste** | `http://<server>:3001/kpi` (eine Seite: quellenbasierte Antworten, Trefferquote, Eskalationsquote, Zeit bis zur ersten Quelle, Störfälle, Rückmeldungen, Nutzung je Tag) · `/rueckmeldungen` (alle Rückmeldungen) · `/protokoll` (Rohdaten, CSV-Export). Sichtbar für die Konten in `KI4KI_PROTOKOLL_EINSICHT` (Standard `admin`), nach Anmeldung in der Oberfläche. |
 | **Audit-Trail** | Jede Frage, Quelle, Antwort, Konto (pseudonym), Bereich, Dauer, Störfall-Kontext — manipulationssicher verkettet, Aufbewahrung `KI4KI_PROTOKOLL_TAGE` (90). |
 
-**Rolle je Bereich (Prompt).** Der Prompt eines Bereichs besteht aus dem **Kern** (`systemprompt.txt`:
-Belegpflicht, Zitierform, Verbote — gleich für alle) und der **Rolle** (`dokumente/<bereich>/prompt.md`:
-Fachgebiet, wer fragt, worauf achten). Die Rolle entsteht im Chat des Bereichs mit „Rolle einrichten"
-(drei Fragen, nur Admin/Betreiber) oder beim Anlegen (`./arbeitsbereich_anlegen.sh <Key> <Name> <Fach> <Wer> <Besonderes>`).
-Die Datei darf mit jedem Editor geändert werden — die Anlage spielt sie binnen fünf Minuten ein, in die
-Oberfläche und in den Gesprächsmodus. Solange sie nicht eingerichtet ist, gilt nur der Kern.
+**Rolle je Bereich (Prompt).** Der Prompt eines Bereichs besteht aus dem **Kern** (`systemprompt.txt`,
+19 Zeilen: Belegpflicht, Zitierform, Verbote — gleich für alle) und der **Rolle** (`dokumente/<bereich>/prompt.md`:
+Fachgebiet, wer fragt, worauf achten). **Beim Anlegen eines Bereichs in der Oberfläche** stehen die drei
+Felder direkt im Formular „Neuer Arbeitsbereich", dazu die Wahl des Modus mit Erklärung (Abfrage = nur
+Dokumente mit Beleg, Standard · Chat = plus Allgemeinwissen · Vertreter = ohne Quellen, nicht empfohlen).
+Das lokale Modell formuliert aus den Angaben den Rollen-Absatz (ohne neue Fakten; `KI4KI_ROLLE_GLAETTEN=0`
+schaltet das ab, dann gilt die Vorlage). Alternativ: im Chat „Rolle einrichten" (drei Fragen, nur
+Betreiber/Admin) oder `./arbeitsbereich_anlegen.sh <Key> <Name> <Fach> <Wer> <Besonderes>`. Die Datei darf
+mit jedem Editor geändert werden — die Anlage spielt sie binnen fünf Minuten ein, in die Oberfläche und in
+den Gesprächsmodus. Solange sie nicht eingerichtet ist, gilt nur der Kern. Gedächtnis je Faden: 20 Züge.
 
 **Index eines Bereichs.** „Was haben wir im Bestand?" liefert in jedem Bereich dieselbe Tabelle —
 Kennung (Link zur Datei) · Titel · Verfasser · Jahr · Art (Dissertation / PDF mit Seitenzahl / Excel /

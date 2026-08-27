@@ -67,6 +67,7 @@ ZIEL = os.environ.get("KI4KI_ZIEL") or "http://127.0.0.1:3001"
 # ============================================================================
 API_SCHLUESSEL = (os.environ.get("KI4KI_API_KEY") or "").strip()
 BEREICH_HEILEN = (os.environ.get("KI4KI_BEREICH_HEILEN", "1") != "0")
+ROLLE_GLAETTEN = (os.environ.get("KI4KI_ROLLE_GLAETTEN", "1") != "0")   # Rolle vom Modell formulieren lassen
 SYSTEMPROMPT_DATEI = (os.environ.get("KI4KI_SYSTEMPROMPT")
                       or "/systemprompt.txt")
 # Muss mit arbeitsbereich_anlegen.sh uebereinstimmen - die eine Wahrheit
@@ -75,7 +76,7 @@ GEPRUEFT_WERTE = {
     "chatMode": "query",
     "topN": 25,              # gemessen T4 04.08.: 25 > 9 > 100 (siehe arbeitsbereich_anlegen.sh)
     "similarityThreshold": 0.25,
-    "openAiHistory": 6,
+    "openAiHistory": 20,     # 27.08.: 6 vergass das Gespraech nach drei Fragen
     "openAiTemp": 0.2,
 }
 _SYSTEMPROMPT = {"text": None, "wann": 0.0}
@@ -2349,6 +2350,139 @@ EINHAENGER = """
     }
     return echtesOeffnen.apply(this, arguments);
   };
+})();
+</script>
+
+<script>
+(function () {
+  // ki4ki-rolle: Das Formular "Neuer Arbeitsbereich" bekommt die Felder fuer
+  // die ROLLE des Bereichs (Fachgebiet, wer fragt, Besonderheiten) und die
+  // Wahl des Modus mit Erklaerung. Nach dem Anlegen schickt das Skript die
+  // Angaben an /rolle - der Proxy schreibt dokumente/<bereich>/prompt.md,
+  // laesst das Modell den Text glaetten und spielt Prompt + Modus ein.
+  // AnythingLLM selbst bleibt unveraendert (Emrach 27.08.: "die wichtigsten
+  // Felder fuer den Prompt direkt in der Box 'Neues Workspace anlegen'").
+  var ID = "ki4ki-rolle-felder";
+  var werte = {fach: "", nutzer: "", besonderes: "", modus: "query"};
+
+  function feld(name, beschriftung, hinweis) {
+    var w = document.createElement("div");
+    w.style.cssText = "margin-top:10px";
+    var l = document.createElement("label");
+    l.textContent = beschriftung;
+    l.style.cssText = "display:block;font-size:13px;font-weight:600;margin-bottom:4px";
+    var i = document.createElement("input");
+    i.type = "text"; i.placeholder = hinweis; i.autocomplete = "off";
+    i.setAttribute("data-ki4ki", name);
+    i.style.cssText = "width:100%;box-sizing:border-box;padding:8px 10px;border-radius:8px;" +
+      "border:1px solid #3a4454;background:#11151c;color:#e8edf5;font:14px system-ui,sans-serif";
+    i.addEventListener("input", function () { werte[name] = i.value; });
+    i.addEventListener("keydown", function (e) { if (e.key === "Enter") e.preventDefault(); });
+    w.appendChild(l); w.appendChild(i);
+    return w;
+  }
+
+  function modusWahl() {
+    var w = document.createElement("div");
+    w.style.cssText = "margin-top:12px;font-size:13px";
+    var t = document.createElement("div");
+    t.textContent = "Modus";
+    t.style.cssText = "font-weight:600;margin-bottom:4px";
+    w.appendChild(t);
+    var optionen = [
+      ["query", "Abfrage", "antwortet nur aus den Dokumenten, jede Aussage mit Beleg — Standard"],
+      ["chat", "Chat", "zusätzlich Allgemeinwissen des Modells; Antworten dann nicht mehr vollständig belegbar"],
+      ["agent", "Vertreter", "Werkzeugmodus ohne Quellenangaben — für die Wissensdatenbank nicht empfohlen"]
+    ];
+    optionen.forEach(function (o) {
+      var z = document.createElement("label");
+      z.style.cssText = "display:flex;gap:8px;align-items:flex-start;margin:3px 0;cursor:pointer;font-weight:400";
+      var r = document.createElement("input");
+      r.type = "radio"; r.name = "ki4ki-modus"; r.value = o[0]; r.checked = (o[0] === "query");
+      r.addEventListener("change", function () { if (r.checked) werte.modus = o[0]; });
+      var s = document.createElement("span");
+      s.innerHTML = "<b>" + o[1] + "</b> — " + o[2];
+      z.appendChild(r); z.appendChild(s); w.appendChild(z);
+    });
+    return w;
+  }
+
+  function einbauen() {
+    if (document.getElementById(ID)) return;
+    var eingaben = document.querySelectorAll('input[name="name"]');
+    for (var i = 0; i < eingaben.length; i++) {
+      var inp = eingaben[i];
+      var form = inp.closest("form");
+      if (!form) continue;
+      var kasten = form.closest('[role="dialog"]') || form.parentElement;
+      var text = (kasten && kasten.textContent) || "";
+      if (!/workspace|arbeitsbereich/i.test(text)) continue;
+      if (/thread|faden|umbenennen|rename/i.test(text) && !/new|neu/i.test(text)) continue;
+      var block = document.createElement("div");
+      block.id = ID;
+      block.style.cssText = "margin-top:8px;padding:12px;border:1px dashed #3a4454;border-radius:10px;color:#e8edf5";
+      var kopf = document.createElement("div");
+      kopf.innerHTML = "<b>Rolle dieses Bereichs</b> <span style='opacity:.7'>— wird zum Prompt; später änderbar in <code>dokumente/&lt;bereich&gt;/prompt.md</code></span>";
+      kopf.style.cssText = "font-size:13px";
+      block.appendChild(kopf);
+      block.appendChild(feld("fach", "Fachgebiet", "z. B. Kunststoffschweißen und -kleben nach DVS"));
+      block.appendChild(feld("nutzer", "Wer fragt hier?", "z. B. Prüflinge und Ausbilder / Wissenschaftler / Instandhalter"));
+      block.appendChild(feld("besonderes", "Worauf achten?", "z. B. Normstellen nennen, Sicherheitshinweise immer dazu, Störfälle als Tabelle"));
+      block.appendChild(modusWahl());
+      var anker = inp.closest("label") || inp.parentElement;
+      anker.parentElement.insertBefore(block, anker.nextSibling);
+      return;
+    }
+  }
+
+  function melden(text, gut) {
+    var k = document.createElement("div");
+    k.style.cssText = "position:fixed;top:24px;left:50%;transform:translateX(-50%);z-index:2147483647;" +
+      "max-width:560px;background:#11151c;color:#e8edf5;border-left:5px solid " + (gut ? "#15803d" : "#b45309") +
+      ";border-radius:10px;padding:14px 18px;font:14px/1.5 system-ui,sans-serif;box-shadow:0 12px 40px rgba(0,0,0,.55)";
+    k.textContent = text;
+    document.body.appendChild(k);
+    setTimeout(function () { k.remove(); }, 9000);
+  }
+
+  function rolleSchicken(slug) {
+    var w = {slug: slug, fach: werte.fach, nutzer: werte.nutzer, besonderes: werte.besonderes, modus: werte.modus};
+    werte = {fach: "", nutzer: "", besonderes: "", modus: "query"};
+    if (!w.fach && !w.nutzer && !w.besonderes && w.modus === "query") return;
+    fetch("/rolle", {method: "POST", headers: {"Content-Type": "application/json"}, credentials: "include",
+                     body: JSON.stringify(w)})
+      .then(function (a) { return a.json(); })
+      .then(function (d) {
+        if (d && d.ok) melden("Rolle für „" + slug + "“ gespeichert" + (d.geglaettet ? " (vom Modell formuliert)" : "") +
+                              (d.datei ? " — " + d.datei : ""), true);
+        else melden("Rolle nicht gespeichert: " + ((d && d.fehler) || "unbekannt"), false);
+      })
+      .catch(function () { melden("Rolle nicht gespeichert (Verbindung).", false); });
+  }
+
+  var echtesFetch = window.fetch;
+  if (echtesFetch) {
+    window.fetch = function (eingabe, einst) {
+      var weg = typeof eingabe === "string" ? eingabe : (eingabe && eingabe.url) || "";
+      var antwort = echtesFetch.apply(this, arguments);
+      if (/\\/api\\/(v1\\/)?workspace\\/new\\/?(\\?|$)/.test(weg)) {
+        antwort.then(function (a) {
+          a.clone().json().then(function (d) {
+            var ws = d && d.workspace;
+            if (Array.isArray(ws)) ws = ws[0];
+            if (ws && ws.slug) rolleSchicken(ws.slug);
+          }).catch(function () {});
+        }).catch(function () {});
+      }
+      return antwort;
+    };
+  }
+
+  var wartend = null;
+  new MutationObserver(function () {
+    clearTimeout(wartend);
+    wartend = setTimeout(einbauen, 200);
+  }).observe(document.documentElement, {childList: true, subtree: true});
 })();
 </script>
 """
@@ -5920,7 +6054,7 @@ class Griff(BaseHTTPRequestHandler):
         _m = re.match(r"^/api/(?:v1/)?workspace/([^/]+)", self.path or "")
         _slug = _m.group(1) if _m else None
         e = gespraechsmodus.fuehren(
-            _frage_modell, GESPRAECHE.verlauf_kurz(gespraech_k), assistent._titel_saubern(faden_dok) if faden_dok else None,
+            _frage_modell, GESPRAECHE.verlauf_kurz(gespraech_k, hoechstens=20), assistent._titel_saubern(faden_dok) if faden_dok else None,
             zeilen, lambda n, a: self._werkzeug(n, a, zustand), kontakt=assistent.kontakt_zeile(),
             rolle=rolle.fuer_gespraech(_rolle_lesen(_slug)),
             melden=melden, vorwissen=vorwissen,
@@ -6389,6 +6523,64 @@ class Griff(BaseHTTPRequestHandler):
         # bestand, rueckmeldung, anlage, gesamtbestand: die bestehenden Wege nach `art`
         return False
 
+    def _rolle_festlegen(self, slug, fach, nutzer, besonderes, modus=None, glaetten=True):
+        """Rolle schreiben (Vorlage, optional vom Modell geglaettet), Prompt und
+        Modus einspielen. Rueckgabe (text, eingespielt, geglaettet)."""
+        name = _ordnername(slug)
+        text = rolle.vorlage(fach, nutzer, besonderes, slug=name)
+        geglaettet = False
+        if glaetten and ROLLE_GLAETTEN:
+            try:
+                antwort = self._modell_fragen(rolle.glaett_auftrag(text), zeitgrenze=90)
+                if rolle.geglaettet_brauchbar(antwort, fach, nutzer):
+                    text = rolle.vorlage_mit_glaettung(fach, nutzer, besonderes, antwort, slug=name)
+                    geglaettet = True
+            except Exception as e:
+                print("[Rolle] Glaetten nicht moeglich (%s) - Vorlage bleibt" % str(e)[:80], file=sys.stderr, flush=True)
+        _rolle_schreiben(slug, text)
+        eingespielt = _rolle_einspielen(slug, erzwingen=True)
+        if modus in rolle.MODI and API_SCHLUESSEL:
+            try:
+                _api("POST", "/api/v1/workspace/%s/update" % slug, {"chatMode": modus}, timeout=30)
+            except Exception as e:
+                print("[Rolle] Modus '%s' fuer '%s' nicht gesetzt: %s" % (modus, slug, str(e)[:80]), file=sys.stderr, flush=True)
+        return text, eingespielt, geglaettet
+
+    def _rolle_route(self):
+        """POST /rolle  {slug, fach, nutzer, besonderes, modus} - vom Formular
+        'Neuer Arbeitsbereich' (Skript in der Oberflaeche). Nur Einsichtsrecht."""
+        if not darf_sehen(self.headers):
+            self._json({"ok": False, "fehler": "Nicht angemeldet."}, code=401)
+            return
+        konto = pruefprotokoll.pseudonym(pruefprotokoll.konto_aus(self.headers))
+        if not pruefprotokoll.darf_einsehen(konto):
+            self._json({"ok": False, "fehler": "Nur Betreiber/Admin darf die Rolle eines Bereichs setzen."}, code=403)
+            return
+        try:
+            leib = json.loads(self._koerper() or b"{}") or {}
+        except Exception:
+            leib = {}
+        slug = re.sub(r"[^A-Za-z0-9_-]", "", str(leib.get("slug") or ""))[:80]
+        if not slug or not bereich_sichtbar("/api/workspace/%s" % slug, self.headers):
+            self._json({"ok": False, "fehler": "Bereich unbekannt."}, code=404)
+            return
+        fach, nutzer, bes = (str(leib.get(k) or "").strip()[:300] for k in ("fach", "nutzer", "besonderes"))
+        modus = str(leib.get("modus") or "").strip().lower() or None
+        if not (fach or nutzer or bes):
+            if modus in rolle.MODI:
+                try:
+                    _api("POST", "/api/v1/workspace/%s/update" % slug, {"chatMode": modus}, timeout=30)
+                except Exception:
+                    pass
+            self._json({"ok": True, "rolle": "", "hinweis": "keine Angaben - nur Kern-Prompt"})
+            return
+        bereich_ordner_anlegen(slug)
+        text, eingespielt, geglaettet = self._rolle_festlegen(slug, fach, nutzer, bes, modus=modus)
+        print("[Rolle] '%s' per Formular gesetzt von %s (%s)" % (slug, konto, "geglaettet" if geglaettet else "Vorlage"),
+              file=sys.stderr, flush=True)
+        self._json({"ok": True, "rolle": text, "eingespielt": eingespielt, "geglaettet": geglaettet,
+                    "datei": "dokumente/%s/%s" % (_ordnername(slug), rolle.DATEI)})
+
     def _rolle_antwort(self, frage):
         """Einrichtungsdialog fuer die Rolle des Bereichs - nur fuer Konten mit
         Einsichtsrecht (dieselbe Regel wie /kpi), weil die Rolle fuer ALLE im
@@ -6424,13 +6616,11 @@ class Griff(BaseHTTPRequestHandler):
             self._direkt_senden("rolle", frage, text)
             return True
         GESPRAECHE.notiz_setzen(gespraech_k, "rolle", None)
-        neu = rolle.vorlage(fertig.get("fach"), fertig.get("nutzer"), fertig.get("besonderes"), slug=_ordnername(slug))
         try:
-            _rolle_schreiben(slug, neu)
+            neu, eingespielt, _g = self._rolle_festlegen(slug, fertig.get("fach"), fertig.get("nutzer"), fertig.get("besonderes"))
         except Exception as e:
             self._direkt_senden("rolle", frage, "Die Rolle ließ sich nicht speichern (%s)." % str(e)[:100])
             return True
-        eingespielt = _rolle_einspielen(slug, erzwingen=True)
         print("[Rolle] '%s' eingerichtet von %s" % (slug, konto), file=sys.stderr, flush=True)
         text = ("**Rolle gespeichert** — `dokumente/%s/prompt.md`%s. Sie gilt ab jetzt in diesem Bereich, "
                 "in der Oberfläche und im Gesprächsmodus. Zum Anpassen die Datei bearbeiten oder erneut "
@@ -7967,6 +8157,10 @@ class Griff(BaseHTTPRequestHandler):
             print("[Anstoss] %s (%s)" % (meldung, grund[:60]),
                   file=sys.stderr, flush=True)
             self._json({"ok": ok, "meldung": meldung}, code=200 if ok else 500)
+            return
+
+        if pfad == "/rolle":
+            self._rolle_route()
             return
 
         # ⭐ K2 (Leitfaden S. 123, 128): Daumen hoch/runter der Oberflaeche

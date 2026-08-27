@@ -126,3 +126,43 @@ def schritt(zustand, eingabe):
     if n + 1 < len(FRAGEN):
         return {"schritt": n + 1, "antworten": antworten}, FRAGEN[n + 1][1], None
     return None, "", antworten
+
+
+# ---- Glaetten durch das Sprachmodell (Prompt-Optimierer) --------------------
+MODI = {
+    "query": ("Abfrage", "antwortet nur aus den Dokumenten des Bereichs, jede Aussage mit Beleg — Standard"),
+    "chat": ("Chat", "zusätzlich Allgemeinwissen des Modells; Antworten sind dann nicht mehr vollständig belegbar"),
+    "agent": ("Vertreter", "Werkzeugmodus ohne Quellenangaben — für die Wissensdatenbank nicht empfohlen"),
+}
+
+
+def glaett_auftrag(vorlage_text):
+    """Der Auftrag an das lokale Modell: die Vorlage als fluessigen
+    Rollen-Abschnitt formulieren - ohne neue Fakten."""
+    return ("Unten steht die Rolle eines Arbeitsbereichs einer Wissensdatenbank, aus drei Angaben "
+            "zusammengesetzt. Formuliere daraus einen klaren Systemprompt-Abschnitt auf Deutsch: "
+            "hoechstens 10 Zeilen, Du-Form an das Modell ('Du beantwortest hier ...'), keine "
+            "Ueberschriften, keine Aufzaehlungszeichen, keine Anfuehrungszeichen um den Text. "
+            "Nimm NUR auf, was in den Angaben steht - keine neuen Fachbegriffe, Normen, Zahlen "
+            "oder Beispiele erfinden. Die Regeln unter 'So antwortest du hier' muessen sinngemaess "
+            "alle enthalten sein. Antworte NUR mit dem Abschnitt.\n\n" + vorlage_text)
+
+
+def geglaettet_brauchbar(text, fach, nutzer):
+    """Hat das Modell etwas Brauchbares geliefert? Sonst bleibt die Vorlage."""
+    t = (text or "").strip()
+    if not (120 <= len(t) <= 1600) or t.count("\n") > 14:
+        return False
+    if re.search(r"^\s*(#|\*|-|\d+\.)", t, re.M):
+        return False
+    unten = t.lower()
+    kern = [w for w in re.findall(r"[A-Za-zÄÖÜäöüß]{5,}", (fach or "") + " " + (nutzer or ""))][:6]
+    return sum(1 for w in kern if w.lower() in unten) >= max(1, len(kern) // 2)
+
+
+def vorlage_mit_glaettung(fach, nutzer, besonderes, geglaettet, slug=""):
+    """Vorlage, deren Regelteil durch die Modellfassung ersetzt ist."""
+    v = vorlage(fach, nutzer, besonderes, slug=slug)
+    kopf = v.split("## So antwortest du hier")[0].rstrip()
+    return kopf + "\n\n## So antwortest du hier\n\n" + geglaettet.strip() + \
+        "\n\n*(Diese Datei darf frei bearbeitet werden — Änderungen wirken innerhalb von fünf Minuten.)*\n"
