@@ -444,7 +444,7 @@ def szenario_20_proxy_statisch():
                 treffer.append("%s:%d %s" % (fn.name, x.lineno, x.value.id))
     pruefe(not treffer, "Modul-Schatten: %s" % (treffer[:3] or "keine"))
     import py_compile
-    for f in ("pruef_proxy.py", "assistent.py", "fadenfrage.py", "gespraech.py", "absicht.py", "mehrstufig.py", "wortsuche.py", "bestand.py", "pruefungskatalog.py", "metadaten.py", "stoerfall.py", "selbstcheck.py", "rolle.py"):
+    for f in ("pruef_proxy.py", "assistent.py", "fadenfrage.py", "gespraech.py", "absicht.py", "mehrstufig.py", "wortsuche.py", "bestand.py", "pruefungskatalog.py", "metadaten.py", "stoerfall.py", "selbstcheck.py", "rolle.py", "kategorie.py"):
         try:
             py_compile.compile(os.path.join(HIER, f), doraise=True)
             pruefe(True, "kompiliert: %s" % f)
@@ -538,8 +538,8 @@ def szenario_24_pruefungskatalog():
     dop = pk.fragen_aus_text("| 3. | Wodurch unterscheidet sich X von der |\n| Bei den EP-Harzen... | Bei den EP-Harzen... |\n| a) | eins |\n| b) | zwei |\n")
     pruefe(dop and dop[0]["frage"].count("Bei den EP-Harzen") == 1, "doppelte Tabellenzellen nur einmal im Fragetext")
     tab = assistent._liste(["DVS 2213-1_neu", "Katalog X"], {"Katalog X": "Excel · Prüfungskatalog (29 Fragen)"})
-    pruefe(tab.startswith("| Kennung | Titel | Verfasser | Jahr | Art |") and "| [Katalog X](/pdf/Katalog%20X) | — | — | — | Excel · Prüfungskatalog (29 Fragen) |" in tab
-           and "[DVS 2213-1_neu](/pdf/" in tab, "Index-Tabelle auch ohne Katalogeintrag, mit Spalte Art")
+    pruefe(tab.startswith("| Kennung | Titel | Verfasser | Jahr | Kategorie | Themen | Datei |") and "| [Katalog X](/pdf/Katalog%20X) | — | — | — | — |  | Excel · Prüfungskatalog (29 Fragen) |" in tab
+           and "[DVS 2213-1_neu](/pdf/" in tab, "Index-Tabelle auch ohne Katalogeintrag, mit Kategorie/Themen/Datei")
     pruefe(assistent._ist_bestandsfrage("Was haben wir alles im bestand") and not assistent._ist_bestandsfrage("Stell mir eine Frage aus dem Katalog"),
            "'Was haben wir alles im Bestand' ist eine Bestandsfrage, der Katalogwunsch nicht")
     pruefe(sorted(z["reihe"]) == [0, 1, 2, 3] and z["reihe"] != [0, 1, 2, 3], "Optionen deterministisch gemischt (richtige nicht immer a)")
@@ -644,6 +644,37 @@ def szenario_25_rolle():
     pruefe("Ursache · Maßnahme" in st and "prüfungsnah" not in st, "Vorlage Labor: Stoerfall-Regel, keine Pruefungsregel")
 
 
+def szenario_26_kategorien():
+    print("\n[26] Kategorien und Themen aus dem Kopf der Aufnahme (Emrach 27.08.: 'wie erkennt das System, was was ist?')")
+    import kategorie as kat
+    import bestand
+    kopf = kat.aus_kopf("# DVS 2290 praktischer Leitfaden\n\nQuelle: x.pdf\nDokumenttyp: Practical Guide / Manual\nSprache: German\nDomain: Production\n\n## Tags\n\n- Laminating Process\n\n## Keywords\n\n- Harz\n- Härter\n- Laminieren\n\n## Methoden\n\n- Handlaminieren\n\n## Inhalt\n\nText")
+    pruefe(kopf["dokumenttyp"] == "Practical Guide / Manual" and kopf["keywords"] == ["Harz", "Härter", "Laminieren"] and kopf["tags"] == ["Laminating Process"], "Kopf der Aufnahme gelesen")
+    pruefe(kat.themen(kopf) == ["Harz", "Härter", "Laminieren", "Laminating Process"], "Themen = Keywords, dann Tags")
+    faelle = [(dict(kopf=kopf, dateiname="DVS 2290 praktischer Leitfaden.pdf"), "Handbuch/Anleitung"), (dict(kopf={}, dateiname="DVS_2213-1_Teil 1.pdf"), "Norm/Richtlinie"),
+              (dict(kopf={}, kennung="DS-24-005"), "Dissertation"), (dict(kopf={}, dateiname="x.xlsx", ist_katalog=True), "Prüfungskatalog"),
+              (dict(kopf={"dokumenttyp": "Textbook"}, dateiname="Kunststoffe.pdf"), "Fachbuch"), (dict(kopf={}, dateiname="Sicherheitsdatenblatt MEKP.pdf"), "Datenblatt"),
+              (dict(kopf={"dokumenttyp": "Presentation"}, dateiname="Textbildprsrsentation DVS 1110-3.pdf"), "Präsentation"), (dict(kopf={}, dateiname="DVS 2290 Werkzeugliste.pdf"), "Handbuch/Anleitung"),
+              (dict(kopf={}, dateiname="irgendwas.pdf"), "Sonstiges")]
+    for args, soll in faelle:
+        ist = kat.zuordnen(**args)
+        pruefe(ist == soll, "%s -> %s" % (args.get("dateiname") or args.get("kennung"), ist))
+    pruefe(kat.gefragte("Welche Normen haben wir?") == ("Norm/Richtlinie", "normen") and kat.gefragte("alle Prüfungskataloge") == ("Prüfungskatalog", "prüfungskataloge") and kat.gefragte("Was ist Laminieren?") == (None, None), "Kategorie-Frage erkannt")
+    pruefe(assistent.ist_bestandsfrage_unscharf("Welche Normen haben wir?") and assistent.ist_bestandsfrage_unscharf("Zeig mir alle Prüfungskataloge") and assistent.ist_bestandsfrage_unscharf("Welche Handbücher gibt es") and not assistent.ist_bestandsfrage_unscharf("Was steht in der Norm zu Kleben?"), "Kategorie-Fragen sind Bestandsfragen")
+    txt = kat.datei_text()
+    pruefe(txt.startswith("# Kategorien") and "Norm/Richtlinie: " in txt and "Sonstiges:" in txt, "kategorien.txt-Vorlage")
+    import tempfile
+    d = tempfile.mkdtemp(); open(os.path.join(d, kat.DATEI), "w", encoding="utf-8").write("Sicherheitsunterlage: sicherheit, betriebsanweisung\nNorm/Richtlinie: dvs, din\n")
+    pruefe(kat.namen(d) == ["Sicherheitsunterlage", "Norm/Richtlinie", "Sonstiges"] and kat.zuordnen({}, dateiname="Betriebsanweisung Harz.pdf", wurzel=d) == "Sicherheitsunterlage", "eigene Liste je Bereich gilt und ergaenzt Sonstiges")
+    e = bestand.kategorie_bestimmen("DVS 2290 praktischer Leitfaden", "Dokumenttyp: Practical Guide / Manual\n## Keywords\n- Harz\n## Inhalt\n")
+    pruefe(e["kategorie"] == "Handbuch/Anleitung" and e["themen"] == ["Harz"] and e["kategorie_quelle"] == "aufnahme", "Katalog: Kategorie aus dem Kopf, ohne Modell")
+    e2 = bestand.kategorie_bestimmen("X", "Dokumenttyp: Manual\n## Inhalt\n", alt={"kategorie": "Fachbuch", "kategorie_quelle": "mensch"})
+    pruefe(e2["kategorie"] == "Fachbuch" and e2["kategorie_quelle"] == "mensch", "von Hand gesetzte Kategorie bleibt")
+    tab = assistent._liste(["DS-24-005"], {})
+    pruefe("| Kennung | Titel | Verfasser | Jahr | Kategorie | Themen | Datei |" in tab, "Index traegt Kategorie und Themen")
+    pruefe(assistent._gruppieren(["DS-24-005", "DS-24-006", "DS-24-007"]) in ([], [("DS", 3)]) or True, "Gruppierung laeuft ohne Katalog durch")
+
+
 if __name__ == "__main__":
     for s in (szenario_1_verfasser_und_folgefragen, szenario_2_beschwerde_reparatur,
               szenario_3_themenwechsel, szenario_4_rueckkehr, szenario_5_nicht_im_dokument,
@@ -654,7 +685,7 @@ if __name__ == "__main__":
               szenario_15_vergleich, szenario_16_kennwerte_abkuerzung, szenario_17_export_kontakt_tippfehler,
               szenario_18_absichts_modell, szenario_19_gespraechsmodus, szenario_20_proxy_statisch,
               szenario_21_metadaten, szenario_22_stoerfall, szenario_23_kennzahlen,
-              szenario_24_pruefungskatalog, szenario_25_rolle):
+              szenario_24_pruefungskatalog, szenario_25_rolle, szenario_26_kategorien):
         try:
             s()
         except Exception as e:

@@ -49,6 +49,7 @@ import metadaten
 import stoerfall
 import pruefungskatalog
 import rolle
+import kategorie
 import mehrstufig
 import pdfstelle
 import pruefprotokoll
@@ -596,6 +597,16 @@ def bereich_ordner_anlegen(slug):
             try:
                 os.chown(konf, 1000, gid)
                 os.chmod(konf, 0o664)
+            except Exception:
+                pass
+        # Kategorien des Bereichs (Standardliste, zum Bearbeiten)
+        kt = os.path.join(wurzel, kategorie.DATEI)
+        if not os.path.exists(kt):
+            with open(kt, "w", encoding="utf-8") as fh:
+                fh.write(kategorie.datei_text())
+            try:
+                os.chown(kt, 1000, gid)
+                os.chmod(kt, 0o664)
             except Exception:
                 pass
         # Rolle des Bereichs: Datei mit Anleitung, solange nicht eingerichtet
@@ -4273,7 +4284,7 @@ class Griff(BaseHTTPRequestHandler):
                 traceback.print_exc(file=sys.stderr)
         # ⭐ ROLLE EINRICHTEN (27.08.): drei Fragen im Chat -> dokumente/<bereich>/prompt.md
         try:
-            if self._rolle_antwort(frage):
+            if self._rolle_antwort(frage) or self._kategorie_antwort(frage):
                 return
         except Exception:
             traceback.print_exc(file=sys.stderr)
@@ -7052,6 +7063,42 @@ class Griff(BaseHTTPRequestHandler):
         self._direkt_senden("rolle", frage, text)
         return True
 
+    _KATEGORIE_BEFEHL = re.compile(r"^\s*kategorie\s+(?:von|für|fuer)\s+(.+?)\s+(?:ist|=|:)\s+(.+?)\s*[.!]?\s*$", re.I)
+
+    def _kategorie_antwort(self, frage):
+        """'Kategorie von DVS 2290 Werkzeugliste ist Handbuch/Anleitung' - von Hand,
+        bleibt gegen jede Neuberechnung bestehen. Nur Betreiber/Admin."""
+        m = self._KATEGORIE_BEFEHL.match(frage or "")
+        if not m:
+            return False
+        if not _darf_rolle_setzen(self.headers):
+            self._direkt_senden("meta", frage, "Kategorien setzt nur ein Konto mit Einsichtsrecht (Betreiber/Admin).")
+            return True
+        namen = (titel_im_bereich(self.path, self.headers) or nur_erlaubte(BESTAND.titel(), self.headers) or [])
+        dok, kand = assistent.dokument_gemeint(m.group(1), namen)
+        slug = (re.match(r"^/api/(?:v1/)?workspace/([^/]+)", self.path or "") or [None, None])[1] \
+            if re.match(r"^/api/(?:v1/)?workspace/([^/]+)", self.path or "") else None
+        wurzel = os.path.join(EINGANG_ORDNER, _ordnername(slug)) if slug else None
+        erlaubt = kategorie.namen(wurzel)
+        ziel = next((k for k in erlaubt if k.lower() == m.group(2).strip().lower()), None)
+        if not dok:
+            self._direkt_senden("meta", frage, "Welches Dokument? %s" % (
+                ("Mehrere passen: " + "; ".join(assistent._titel_saubern(k) for k in kand[:5])) if kand else "Kennung aus der Bestandsliste nennen."))
+            return True
+        if not ziel:
+            self._direkt_senden("meta", frage, "„%s“ ist keine Kategorie dieses Bereichs. Möglich: %s — die Liste steht in `dokumente/%s/kategorien.txt`."
+                                % (m.group(2).strip(), ", ".join(erlaubt), _ordnername(slug) if slug else "<bereich>"))
+            return True
+        try:
+            import bestand as _bst
+            _bst.kategorie_setzen(assistent._titel_saubern(dok), ziel)
+        except Exception as e:
+            self._direkt_senden("meta", frage, "Nicht gespeichert (%s)." % str(e)[:80])
+            return True
+        print("[Kategorie] %s -> %s (von Hand)" % (dok, ziel), file=sys.stderr, flush=True)
+        self._direkt_senden("meta", frage, "Notiert: **%s** ist ab jetzt **%s** — von Hand gesetzt, bleibt bei jeder Neuberechnung." % (assistent._titel_saubern(dok), ziel), dok=dok)
+        return True
+
     def _bestand_vorab(self, frage):
         return bool(assistent.ist_bestandsfrage_unscharf(frage) and not assistent.ist_beschwerde(frage)
                     and self._bestandsauskunft(frage))
@@ -7147,7 +7194,7 @@ class Griff(BaseHTTPRequestHandler):
         self._sammeln = []
         try:
             getroffen = False
-            for hook in (self._rolle_antwort, self._pruefung_antwort, self._vergleich_vorab, self._bild_vorab,
+            for hook in (self._rolle_antwort, self._kategorie_antwort, self._pruefung_antwort, self._vergleich_vorab, self._bild_vorab,
                          self._fakten_vorab, self._bestand_vorab,
                          (self._gespraech_antwort if gespraechsmodus.AN else None)):
                 if hook is None:

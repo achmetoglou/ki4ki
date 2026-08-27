@@ -195,6 +195,21 @@ _DECKBLATT_ANWEISUNG = (
     "Was nicht dasteht, bleibt leer. Nichts erfinden.")
 
 
+def _wurzel_des_dokuments(name):
+    """dokumente/<bereich> zu einem Bestandsdokument (ueber den Ablageordner) - oder None."""
+    stamm = str(name)
+    if stamm.lower().endswith((".pdf", ".md")):
+        stamm = stamm.rsplit(".", 1)[0]
+    ziel = _grund(stamm)
+    eingang = os.environ.get("KI4KI_EINGANG") or "/daten/eingang"
+    for wurzel, _, dateien in os.walk(_BESTAND_ORDNER):
+        for d in dateien:
+            if d.endswith(".json") and _grund(d.split(".md-")[0]) == ziel:
+                bereich = os.path.basename(wurzel)
+                return os.path.join(eingang, bereich) if bereich and bereich != os.path.basename(_BESTAND_ORDNER) else None
+    return None
+
+
 def _volltext_anfang(name, zeichen=4000):
     """Der Anfang des aufbereiteten Textes (Deckblatt, Impressum) - oder ''."""
     stamm = str(name)
@@ -305,23 +320,68 @@ def entfernen(name, pfad=VERZEICHNIS):
         return len(weg)
 
 
+def kategorie_bestimmen(name, text, alt=None, ist_katalog=False):
+    """Kategorie, Themen, Sprache, Dokumenttyp aus dem Kopf der Aufnahme -
+    ohne Modell. Eine von Hand gesetzte Kategorie bleibt."""
+    import kategorie as _kat
+    kopf = _kat.aus_kopf(text)
+    alt = alt or {}
+    aus = {"themen": _kat.themen(kopf), "sprache": kopf.get("sprache") or "",
+           "dokumenttyp": kopf.get("dokumenttyp") or ""}
+    if alt.get("kategorie_quelle") == "mensch" and alt.get("kategorie"):
+        aus["kategorie"] = alt["kategorie"]
+        aus["kategorie_quelle"] = "mensch"
+    else:
+        aus["kategorie"] = _kat.zuordnen(kopf, dateiname=str(name), titel=alt.get("titel") or "",
+                                         kennung=str(name), ist_katalog=ist_katalog, wurzel=_wurzel_des_dokuments(name))
+        aus["kategorie_quelle"] = "aufnahme"
+    return aus
+
+
 def _einen_nachtragen(name):
     with _NACHTRAG_SPERRE:
         if name in _NACHTRAG_LAEUFT:
             return False
         _NACHTRAG_LAEUFT.add(name)
     try:
-        text = _volltext_anfang(name)
+        text = _volltext_anfang(name, zeichen=6000)
         if not text.strip():
             return False
-        angabe = _deckblatt_lesen(text)
-        if not angabe:
-            return False
-        eintragen(name, angabe, quelle="modell")
+        alt = angaben(name) or {}
+        if alt.get("titel"):
+            angabe = {k: alt.get(k) for k in ("titel", "verfasser", "jahr") if alt.get(k)}
+            quelle = alt.get("quelle") or "modell"
+        else:
+            angabe = _deckblatt_lesen(text)
+            if not angabe:
+                return False
+            quelle = "modell"
+        try:
+            import pruefungskatalog as _pk
+            ist_katalog = _pk.ist_katalog(text if len(text) >= 6000 else _volltext_anfang(name, zeichen=60000))
+        except Exception:
+            ist_katalog = False
+        angabe.update(kategorie_bestimmen(name, text, alt, ist_katalog=ist_katalog))
+        eintragen(name, angabe, quelle=quelle)
         return True
     finally:
         with _NACHTRAG_SPERRE:
             _NACHTRAG_LAEUFT.discard(name)
+
+
+def nach_kategorie(namen, kategorie_name):
+    import kategorie as _kat
+    return [n for n in namen if _kat.passt((angaben(n) or {}).get("kategorie"), kategorie_name)]
+
+
+def kategorie_setzen(name, kategorie_name):
+    """Von Hand (Chat, Betreiber): bleibt gegen jede Neuberechnung bestehen."""
+    alt = angaben(name) or {}
+    alt.pop("art", None)
+    alt["kategorie"] = kategorie_name
+    alt["kategorie_quelle"] = "mensch"
+    eintragen(name, alt, quelle=alt.get("quelle") or "modell")
+    return alt
 
 
 def nachtragen(namen, hoechstens=5):
@@ -334,9 +394,9 @@ def nachtragen(namen, hoechstens=5):
     offen = []
     for n in namen or []:
         a = angaben(n)
-        if a and a.get("titel"):
+        if a and a.get("titel") and a.get("kategorie"):
             continue
-        offen.append(n)
+        offen.append(n)          # ohne Titel (Modell) ODER ohne Kategorie (nur Kopf lesen)
     if not offen:
         return 0
     sofort, spaeter = offen[:hoechstens], offen[hoechstens:]

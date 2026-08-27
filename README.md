@@ -69,6 +69,18 @@ Rollen-Abschnitt übernimmt die Anlage ebenfalls (die Oberfläche ist die Wahrhe
 die Datei `prompt.md` kann auch mit einem Editor geändert werden (wirkt binnen fünf Minuten). Solange
 keine Rolle eingerichtet ist, gilt nur der Kern. Gedächtnis je Faden: 20 Züge.
 
+**Kategorien und Themen.** Die Aufnahme liest jedes Dokument und schreibt Dokumenttyp, Tags und Keywords
+in den Kopf der Textfassung. Daraus ordnet die Anlage jedes Dokument einer **Kategorie** aus einer festen,
+je Bereich pflegbaren Liste zu (`dokumente/<bereich>/kategorien.txt`: Dissertation, Masterarbeit,
+Norm/Richtlinie, Prüfungskatalog, Handbuch/Anleitung, Datenblatt, Verordnung/Gesetz, Fachbuch,
+Präsentation, Lehrunterlage, Protokoll/Bericht, Forschungsbericht, Fachartikel, Sonstiges — Zeile
+`Name: Stichwort, Stichwort` je Kategorie, Reihenfolge = Vorrang) und merkt sich bis zu sechs **Themen**
+(Keywords). Kein Modellaufruf, deterministisch. Vorrang: von Hand gesetzt > Kennung (DS-/BS-/M-) >
+Prüfungskatalog erkannt > Dokumenttyp der Aufnahme > Titel > Dateiname/Tags. Von Hand: im Chat als
+Betreiber „Kategorie von DVS 2290 Werkzeugliste ist Handbuch/Anleitung" (bleibt bei jeder Neuberechnung).
+Abfragen: „Welche Normen haben wir?", „Zeig mir alle Prüfungskataloge", „Was habt ihr zum Thema
+Laminieren?" (Titel, Themen und Tags). Ab 15 Dokumenten gruppiert der Index nach Kategorie.
+
 **Index eines Bereichs.** „Was haben wir im Bestand?" liefert in jedem Bereich dieselbe Tabelle —
 Kennung (Link zur Datei) · Titel · Verfasser · Jahr · Art (Dissertation / PDF mit Seitenzahl / Excel /
 Word / Prüfungskatalog) — egal, was hochgeladen wurde. Titel, Verfasser und Jahr liest das kleine

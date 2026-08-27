@@ -389,7 +389,9 @@ _BEZUG_AUF_ANTWORT = re.compile(
 # darf keinen weiteren Fachgegenstand tragen.
 _BESTAND_OBJEKT = re.compile(
     r"\b(dokument(?:e|en)?|unterlagen|dateien|quellen|literatur|"
-    r"arbeiten|normen|richtlinien|lerneinheiten|bestand|best(?:ä|ae)nde|bestandsliste)\b", re.I)
+    r"arbeiten|normen|richtlinien|lerneinheiten|bestand|best(?:ä|ae)nde|bestandsliste|"
+    r"pr(?:ü|ue)fungskataloge?|fragenkataloge?|handb(?:ü|ue)cher|anleitungen|leitf(?:ä|ae)den|verordnungen|"
+    r"datenbl(?:ä|ae)tter|pr(?:ä|ae)sentationen|fachb(?:ü|ue)cher|lehrunterlagen|protokolle|forschungsberichte)\b", re.I)
 # "Inhalte" gehoert BEWUSST nicht hierher: Wer nach dem INHALT fragt
 # ("Stichwortliste der wesentlichen Inhalte"), stellt keine Bestandsfrage.
 _BESITZ = re.compile(
@@ -785,8 +787,15 @@ def ist_bestandsfrage_unscharf(text):
     if _ist_bestandsfrage(text):
         return True
     t = (text or "").strip()
-    if not re.match(r"^\s*(?:was|welche[rsn]?|wie\s*viele?|zeig|liste|gibt)\b", t, re.I):
+    if not re.match(r"^\s*(?:was|welche[rsn]?|wie\s*viele?|zeig|liste|gibt|alle|nenn)\w*\b", t, re.I):
         return False
+    # "Zeig mir alle Pruefungskataloge" / "alle Normen" - Kategorie gefragt = Index
+    try:
+        import kategorie as _kat
+        if _kat.gefragte(t)[0] and not re.search(r"\b(?:zum\s+thema|was\s+(?:steht|sagt|ist))\b", t, re.I):
+            return True
+    except Exception:
+        pass
     if re.search(r"\bzum\s+thema\b|\b(?:ü|ue)ber\s+\w{4,}", t, re.I):
         return False          # Themenfrage - kein Index
     import difflib
@@ -995,7 +1004,7 @@ def bestandsauskunft(frage, titel, bereich=None, vorher=None, zusatz=None):
     # ⭐ Fragt jemand nach einer ART? Dann die Liste danach filtern und mit
     #   Titeln beantworten - aus dem Verzeichnis, nicht aus Textstellen.
     #   z.B. auf die Bitte "nenne mir alle Namen und deren Titel auf".
-    antwort = _liste_nach_art(frage, sauber, bereich)
+    antwort = _liste_nach_art(frage, sauber, bereich, zusatz)
     if antwort:
         return antwort
 
@@ -1044,7 +1053,7 @@ def bestandsauskunft(frage, titel, bereich=None, vorher=None, zusatz=None):
 
 
 
-def _liste_nach_art(frage, namen, bereich=None):
+def _liste_nach_art(frage, namen, bereich=None, zusatz=None):
     """Bestandsliste einer Art - mit Titel, Verfasser und Jahr.
 
     Gibt None zurueck, wenn keine Art gefragt ist; dann greift die
@@ -1059,12 +1068,33 @@ def _liste_nach_art(frage, namen, bereich=None):
     except Exception:
         return None
     kennzeichen, wort = bestand.gefragte_art(frage or "")
+    wo = "in diesem Arbeitsbereich" if bereich else "im Bestand"
     if not kennzeichen:
-        return None
+        # Kategorie aus der Aufnahme (Norm/Richtlinie, Pruefungskatalog, Handbuch ...)
+        try:
+            import kategorie as _kat
+            kat, kwort = _kat.gefragte(frage or "")
+        except Exception:
+            kat = None
+        if not kat:
+            return None
+        try:
+            bestand.nachtragen(list(namen)[:60])
+        except Exception:
+            pass
+        passend = sorted(bestand.nach_kategorie(namen, kat))
+        if not passend:
+            vorhanden = {}
+            for n in namen:
+                k = (bestand.angaben(n) or {}).get("kategorie")
+                if k:
+                    vorhanden[k] = vorhanden.get(k, 0) + 1
+            return ("Ich finde %s nichts in der Kategorie **%s**. Vorhandene Kategorien: %s."
+                    % (wo, kat, ", ".join("%s (%d)" % kv for kv in sorted(vorhanden.items(), key=lambda x: -x[1])) or "noch keine (Katalog wird nachgetragen)"))
+        return "**%s — %d %s**\n\n%s" % (kat, len(passend), wo, _liste(passend, zusatz))
 
     passend = sorted(bestand.nach_art(namen, kennzeichen))
     einzahl, mehrzahl = bestand.ARTEN[kennzeichen]
-    wo = "in diesem Arbeitsbereich" if bereich else "im Bestand"
 
     if not passend:
         return ("Ich finde %s keine **%s**. Im Katalog stehen "
@@ -1154,10 +1184,10 @@ def _treffer_im_katalog(stichwort, namen, bereich=None, gattung=None):
         if any(_t in a["titel"].lower() for _t in teile):
             grund = "Titel"
         else:
-            passende = [s for s in (a.get("schlagworte") or [])
+            passende = [s for s in (a.get("schlagworte") or []) + (a.get("themen") or [])
                         if any(_t in s.lower() for _t in teile)]
             if passende:
-                grund = "Schlagwort: " + ", ".join(passende[:3])
+                grund = "Thema: " + ", ".join(passende[:3])
         if grund:
             treffer.append((n, a, grund))
     if not treffer:
@@ -1206,20 +1236,24 @@ def _liste(titel, zusatz=None):
     def _zelle(x):
         return (x or "").replace("|", "\\|").replace("\n", " ").strip()
 
-    zeilen = ["| Kennung | Titel | Verfasser | Jahr | Art |", "|---|---|---|---|---|"]
+    zeilen = ["| Kennung | Titel | Verfasser | Jahr | Kategorie | Themen | Datei |", "|---|---|---|---|---|---|---|"]
     for t, a in angaben:
         verweis = "[%s](/pdf/%s)" % (_zelle(t), quote(t, safe=""))
-        art = zusatz.get(t) or (a.get("art") if a else "") or ""
+        datei = zusatz.get(t) or ""
+        kat = ((a.get("kategorie") or a.get("art")) if a else "") or "—"
+        if a and a.get("kategorie_quelle") == "mensch":
+            kat += "*"
+        them = ", ".join((a.get("themen") or [])[:5]) if a else ""
         if a and a.get("titel"):
             marke = "°" if a.get("quelle") == "modell" else ""
-            zeilen.append("| %s | %s%s | %s | %s | %s |" % (
+            zeilen.append("| %s | %s%s | %s | %s | %s | %s | %s |" % (
                 verweis, _zelle(a["titel"]), marke,
-                _zelle(a.get("verfasser")), _zelle(str(a.get("jahr") or "")), _zelle(art)))
+                _zelle(a.get("verfasser")), _zelle(str(a.get("jahr") or "")), _zelle(kat), _zelle(them), _zelle(datei)))
         else:
-            zeilen.append("| %s | — | — | — | %s |" % (verweis, _zelle(art)))
+            zeilen.append("| %s | — | — | — | %s | %s | %s |" % (verweis, _zelle(kat), _zelle(them), _zelle(datei)))
     if any(a and a.get("quelle") == "modell" for _, a in angaben):
         zeilen.append("")
-        zeilen.append("*° = aus dem Deckblatt gelesen · — = noch kein Deckblatt-Eintrag (wird nachgetragen).*")
+        zeilen.append("*° = aus dem Deckblatt gelesen · — = noch kein Eintrag (wird nachgetragen) · Kategorie aus der Aufnahme, * = von Hand gesetzt.*")
     return "\n".join(zeilen)
 
 
@@ -1228,12 +1262,21 @@ def _fussnote(gesamt):
 
 
 def _gruppieren(titel):
-    """Nach dem Kuerzel am Anfang gruppieren (BS-, DS-, DVS, LE ...).
-
-    Die Bestaende tragen sprechende Kuerzel; wer den Bestand
-    ueberblicken will, kommt damit schneller weiter als mit einer
-    alphabetischen Liste.
-    """
+    """Nach KATEGORIE gruppieren (Dissertation, Norm/Richtlinie, ...), sobald der
+    Katalog Kategorien kennt - sonst nach dem Kuerzel am Anfang (BS-, DS-, DVS).
+    Wer 3 000 Dokumente ueberblicken will, braucht Gruppen, keine Liste."""
+    try:
+        import bestand as _b
+        kats = {}
+        for t in titel:
+            a = _b.angaben(t) or {}
+            k = a.get("kategorie")
+            if k:
+                kats[k] = kats.get(k, 0) + 1
+        if sum(kats.values()) >= max(3, len(titel) // 2):
+            return sorted(kats.items(), key=lambda x: -x[1])[:12]
+    except Exception:
+        pass
     zaehler = {}
     for t in titel:
         m = re.match(r"^([A-Za-zÄÖÜ]{1,4})[\s\-_]", t)
