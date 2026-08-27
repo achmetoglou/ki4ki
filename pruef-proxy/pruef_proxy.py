@@ -4289,8 +4289,6 @@ class Griff(BaseHTTPRequestHandler):
                 return
             if self._fakten_vorab(frage):
                 return
-            if self._zusammenfassung_vorab(frage):
-                return
         except Exception:
             traceback.print_exc(file=sys.stderr)
         # ⭐ PRUEFUNGSKATALOG (26.08.): exakte Fragen aus der Datei, Antwort gegen
@@ -5083,14 +5081,22 @@ class Griff(BaseHTTPRequestHandler):
                 return
             zeilen = []
             for e in reversed(eintraege):
-                zeilen.append("<tr><td>%s</td><td>%s</td><td><b>%s</b></td><td>%s</td><td>%s</td><td>%s</td></tr>" % (
+                _fund = ", ".join(("%s S.%s" % (f.get("dok"), f.get("seiten"))) if f.get("seiten") else str(f.get("dok"))
+                                  for f in (e.get("fundstellen") or [])[:4])
+                _faden = str(e.get("faden") or "")
+                _link = ("<a href='/workspace/%s/t/%s'>Faden öffnen</a>" % (html.escape(str(e.get("bereich") or "")), html.escape(_faden))) \
+                    if _faden and _faden != "-" else ""
+                zeilen.append("<tr><td>%s</td><td>%s<br><span style='color:#666'>%s</span></td><td><b>%s</b></td><td>%s</td>"
+                              "<td style='color:#444'>%s</td><td>%s</td><td>%s<br>%s</td></tr>" % (
                     html.escape(str(e.get("ts", ""))[:16].replace("T", " ")), html.escape(str(e.get("bereich") or "")),
-                    html.escape(str(e.get("bewertung") or "")), html.escape(str(e.get("frage_original") or "")[:160]),
+                    html.escape(str(e.get("regel") or "")),
+                    html.escape(str(e.get("bewertung") or "")), html.escape(str(e.get("frage_original") or "")[:200]),
+                    html.escape(str(e.get("antwort") or "")[:400]),
                     html.escape(str(e.get("text") or "")[:300]),
-                    html.escape(", ".join("%s S.%s" % (f.get("dok"), f.get("seiten")) for f in (e.get("fundstellen") or [])[:4]))))
+                    html.escape(_fund), _link))
             seite = ("<h1>Rückmeldungen</h1><p>%d Einträge. <a href='/kpi'>Kennzahlen</a> · <a href='/protokoll'>Protokoll</a></p>"
                      "<table border=1 cellpadding=6 style='border-collapse:collapse;font-family:sans-serif;font-size:14px'>"
-                     "<tr><th>Zeit</th><th>Bereich</th><th>Bewertung</th><th>Frage</th><th>Hinweis</th><th>Fundstellen</th></tr>%s</table>"
+                     "<tr><th>Zeit</th><th>Bereich · Weg</th><th>Bewertung</th><th>Frage</th><th>Antwort (Auszug)</th><th>Hinweis der Person</th><th>Fundstellen · Faden</th></tr>%s</table>"
                      % (len(eintraege), "".join(zeilen) or "<tr><td colspan=6>noch keine</td></tr>"))
             self._sende_html(seite)
             return
@@ -6282,6 +6288,7 @@ class Griff(BaseHTTPRequestHandler):
             except Exception as e:
                 return "Zusammenfassung nicht moeglich: %s" % str(e)[:100]
             zustand["zusammengefasst"].append(dok)
+            zustand.setdefault("gelesen", {})[dok] = (_g, _z)
             return text or "Zusammenfassung nicht moeglich."
         if name == "zaehlen":
             w = self._fakten_zaehlen(dok, str(args.get("was") or "seiten"))
@@ -6382,6 +6389,18 @@ class Griff(BaseHTTPRequestHandler):
                                       pruefungskatalog.zeile_fuer_modell(_f, assistent._titel_saubern(_pf["dok"]))))
                     if _pf["dok"] not in zustand["dokumente"]:
                         zustand["dokumente"].append(_pf["dok"])
+            # Zusammenfassung gewuenscht: die VOLLSTAENDIGE Lesung (mehrstufig, mit Vorrat)
+            # liegt dem Modell vor, bevor es antwortet - es kann sie mit Belegen aus
+            # seiten_lesen ergaenzen und weitere Wuensche im selben Satz erledigen.
+            _zdok = None
+            if self._will_zusammenfassung(frage) and not assistent.ist_bestandsfrage_unscharf(frage):
+                _zdok = assistent.dokument_gemeint(frage, namen)[0] or faden_dok
+            if _zdok:
+                self._stand(stand, "Lese %s vollständig …" % assistent._titel_saubern(_zdok))
+                _zerg = self._werkzeug("zusammenfassen", {"dokument": _zdok}, zustand)
+                vorwissen.append(("zusammenfassen", {"dokument": assistent._titel_saubern(_zdok)}, _zerg))
+                if _zdok not in zustand["dokumente"]:
+                    zustand["dokumente"].append(_zdok)
             optionen = assistent.optionen_finden(frage)
             if len(optionen) >= 2:
                 self._stand(stand, "Prüfungsfrage: suche Belege je Option …")
@@ -6572,6 +6591,8 @@ class Griff(BaseHTTPRequestHandler):
             fuss.append("Quelle: %s" % _doks)
         if _was:
             fuss.append(", ".join(_was))
+        for _d, (_g, _z) in (zustand.get("gelesen") or {}).items():
+            fuss.append("vollständig gelesen: %s (%s)" % (assistent._titel_saubern(_d), ("%d von %d Zeichen" % (_g, _z)) if _g and _z and _g < _z else "ganzer Text"))
         if ok or nein:
             fuss.append("%d Zitat%s geprüft%s" % (ok + nein, "" if ok + nein == 1 else "e", (", %d nicht gefunden" % nein) if nein else ""))
         if gestrichen:
@@ -7057,25 +7078,25 @@ class Griff(BaseHTTPRequestHandler):
         aspekt = v[2] if len(v) > 2 else ""
         return bool(self._vergleich_antwort(frage, a, b, aspekt or ""))
 
-    def _zusammenfassung_vorab(self, frage):
-        """'Fasse X zusammen' / 'Lies das Dokument komplett' -> die vollstaendige
-        mehrstufige Lesung (mit Vorrat), nicht ein paar Seiten durchs Modell
-        (gemessen 27.08.: 14,7 s fuer 'komplett lesen' = nicht komplett)."""
-        if not assistent._ZUSAMMENFASSUNG.search(frage or "") and not re.search(
-                r"\b(?:komplett|vollst(?:ä|ae)ndig|ganz(?:es)?)\b.{0,40}\b(?:les|zusammenfass)", frage or "", re.I):
-            return False
-        if assistent.ist_bestandsfrage_unscharf(frage):
-            return False
-        namen = (titel_im_bereich(self.path, self.headers) or nur_erlaubte(BESTAND.titel(), self.headers) or [])
-        dok = assistent.dokument_gemeint(frage, namen)[0] or GESPRAECHE.letztes_dokument(GESPRAECHE.kennung(self.path, self.headers))
-        if not dok:
-            return False
-        return bool(self._zusammenfassung(frage, erzwinge=dok))
+    @staticmethod
+    def _will_zusammenfassung(frage):
+        return bool(assistent._ZUSAMMENFASSUNG.search(frage or "") or re.search(
+            r"\b(?:komplett|vollst(?:ä|ae)ndig|ganz(?:es)?)\b.{0,40}\b(?:les|zusammenfass)|\bkernaussage|\bzusammenfass", frage or "", re.I))
+
+    @staticmethod
+    def _mehrfachauftrag(frage):
+        """Zwei Wuensche in einem Satz ('Kernaussage und danach eine Bilderliste')
+        -> nichts abkuerzen, Stufe 2 erledigt beide (gemessen 27.08.: der
+        Zusammenfassungs-Kurzweg liess den zweiten Teil unter den Tisch fallen)."""
+        f = (frage or "").lower()
+        absichten = sum(1 for m in (r"zusammenfass|kernaussage|worum geht", r"bild|abbildung|grafik|diagramm", r"vergleich",
+                                    r"wie viele|anzahl", r"liste|tabelle", r"zitat|beleg|seite") if re.search(m, f))
+        return absichten >= 2 or bool(re.search(r"\b(?:und (?:dann|danach|anschließend|anschliessend|außerdem|zeig)|anschließend|anschliessend|danach)\b", f))
 
     def _fakten_vorab(self, frage):
         """'Wie viele Abbildungen/Seiten/Tabellen hat ...' -> gezaehlt, nicht geraten
         (gemessen 27.08.: das Modell nannte 38 und 91 in einer Antwort)."""
-        if not assistent.dokument_fakten_frage(frage):
+        if not assistent.dokument_fakten_frage(frage) or self._mehrfachauftrag(frage):
             return False
         namen = (titel_im_bereich(self.path, self.headers) or nur_erlaubte(BESTAND.titel(), self.headers) or [])
         dok = assistent.dokument_gemeint(frage, namen)[0] or GESPRAECHE.letztes_dokument(GESPRAECHE.kennung(self.path, self.headers))
@@ -7087,6 +7108,11 @@ class Griff(BaseHTTPRequestHandler):
         """'Zeig mir Bild 2.1' mit Faden-Dokument -> direkt das Bild (kein Modell)."""
         m = re.match(r"^\s*(?:ok\s+|okay\s+|dann\s+|ja\s+|gut\s+)*zeig\w*\s+(?:mir\s+)?(?:mal\s+|bitte\s+)*(?:das\s+|die\s+)?(?:bild|abbildung|abb\.?|grafik|diagramm)\s*(\d{1,2}[.\-]\d{1,3})\b",
                      frage or "", re.I)
+        if not m and len((frage or "").split()) <= 8:
+            # "Danke und jetzt Bild 1.1?" / "und 4.4?" nach einem Bild
+            m = re.search(r"\b(?:bild|abbildung|abb\.?|grafik|diagramm)\s*(\d{1,2}[.\-]\d{1,3})\b", frage or "", re.I)
+            if not m and GESPRAECHE.letzte_art(GESPRAECHE.kennung(self.path, self.headers)) == "bild":
+                m = re.search(r"(?<![\d.])(\d{1,2}[.\-]\d{1,3})(?![\d.])", frage or "")
         if not m:
             return False
         k = GESPRAECHE.kennung(self.path, self.headers)
@@ -7122,7 +7148,7 @@ class Griff(BaseHTTPRequestHandler):
         try:
             getroffen = False
             for hook in (self._rolle_antwort, self._pruefung_antwort, self._vergleich_vorab, self._bild_vorab,
-                         self._fakten_vorab, self._zusammenfassung_vorab, self._bestand_vorab,
+                         self._fakten_vorab, self._bestand_vorab,
                          (self._gespraech_antwort if gespraechsmodus.AN else None)):
                 if hook is None:
                     continue
@@ -8743,6 +8769,7 @@ class Griff(BaseHTTPRequestHandler):
                     text=_kommentar or None,
                     faden=(letzte or {}).get("faden"),
                     frage_original=(letzte or {}).get("frage_original"),
+                    antwort=re.sub(r"\s+", " ", (letzte or {}).get("antwort") or "")[:500] or None,
                     regel=(letzte or {}).get("regel"),
                     fundstellen=(letzte or {}).get("fundstellen"))
                 print("[Rueckmeldung] %s in %s (Chat %s)" % (bewertung, _fb.group(1), _fb.group(2)),
