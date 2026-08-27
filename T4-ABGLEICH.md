@@ -101,6 +101,15 @@ GPU-OCR) — oder Volumes kopieren (schneller, aber alte Einbettung).
 (Skript-Kette, durch n8n ersetzt), `fix_*` (einmal gelaufen), `bauen.sh` (baute `partner/`, das
 heute dieses Repo ist).
 
+## Stand nach Emrachs Entscheidung (26.08., abends)
+- **L1 umgesetzt:** topN 25 / Temp 0,2 für neue Bereiche; `bereiche_nachziehen.sh` für bestehende. Emrach: „dann messen wir nochmal."
+- **L2 bewusst NICHT:** Notizspalten bleiben im Text („vielleicht sind das auch Anweisungen für die KI"). Der Prüfungskatalog wertet sie nicht als Antwortoption.
+- **L3 offen:** Erklärung an Emrach, Entscheidung ausstehend.
+- **L4 umgesetzt:** `pruef-proxy/selbstcheck.py` + `/selbstcheck`.
+- **L5 umgesetzt:** `_gpu_pruefen()` alle 10 min, `/pruef-status` → `gpu`.
+- **L6 umgesetzt:** neue Fassung gleichen Namens in `input/` ersetzt die alte automatisch.
+- **Daten D1–D3:** nicht übernehmen (Emrach: „wir testen mit denselben Dokumenten, wir wipen eh nochmal").
+
 ## Reihenfolge
 1. L1 + L2 (heute, klein) → 2. L3 (vor der nächsten Auslieferung) → 3. L5 → 4. L4 → 5. L6/L7 →
 Daten D1–D3 nach Emrachs Entscheidung.

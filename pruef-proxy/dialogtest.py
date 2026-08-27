@@ -444,7 +444,7 @@ def szenario_20_proxy_statisch():
                 treffer.append("%s:%d %s" % (fn.name, x.lineno, x.value.id))
     pruefe(not treffer, "Modul-Schatten: %s" % (treffer[:3] or "keine"))
     import py_compile
-    for f in ("pruef_proxy.py", "assistent.py", "fadenfrage.py", "gespraech.py", "absicht.py", "mehrstufig.py", "wortsuche.py", "bestand.py", "pruefungskatalog.py", "metadaten.py", "stoerfall.py"):
+    for f in ("pruef_proxy.py", "assistent.py", "fadenfrage.py", "gespraech.py", "absicht.py", "mehrstufig.py", "wortsuche.py", "bestand.py", "pruefungskatalog.py", "metadaten.py", "stoerfall.py", "selbstcheck.py"):
         try:
             py_compile.compile(os.path.join(HIER, f), doraise=True)
             pruefe(True, "kompiliert: %s" % f)

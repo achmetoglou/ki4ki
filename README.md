@@ -60,6 +60,24 @@ Kennung (Link zur Datei) · Titel · Verfasser · Jahr · Art (Dissertation / PD
 Word / Prüfungskatalog) — egal, was hochgeladen wurde. Titel, Verfasser und Jahr liest das kleine
 Modell aus dem Deckblatt nach (° in der Tabelle); bis dahin steht ein „—".
 
+**Neue Fassung eines Dokuments.** Einfach die neue Datei unter demselben Namen nach `input/` legen:
+Erkennt die Anlage im Archiv eine Datei gleichen Namens mit anderem Inhalt, entfernt sie die alte
+Fassung (Bestand, Vektoren, Archiv) und nimmt die neue beim nächsten Durchgang auf — ein Handgriff.
+Eine byteweise identische Datei gilt als Doppel und wandert nach einer Stunde nach `aussortiert/`.
+
+**Selbst-Check.** `docker exec ki4ki-pruef-proxy python3 /app/selbstcheck.py` (optional `<bereich> <anzahl>`)
+zieht je Lauf zufällige Fachwörter aus dem eigenen Bestand, stellt daraus Bestands- und Inhaltsfragen
+über die Anlage und urteilt mechanisch: Kommt die Index-Tabelle? Deckt jede belegte Seite die Aussage
+davor? Ampel-Bericht im Browser unter `/selbstcheck` (Einsichtsrecht wie `/kpi`). Kein externer Dienst.
+
+**Grafikkarten-Wächter.** Alle 10 Minuten prüft der Proxy bei Ollama, ob die geladenen Modelle im
+VRAM liegen. Rechnet eines auf der CPU (Treiberproblem — alles wird 10× langsamer, ohne dass man es
+sieht), steht das im Log (`[GPU] ⚠`) und unter `curl localhost:3001/pruef-status` (`gpu.warnung`).
+
+**Gemessene Werte nachziehen.** Neue Bereiche bekommen topN 25 · Schwelle 0,25 · Modus query · Verlauf 6 ·
+Temperatur 0,2 (auf dem Testserver gemessen: 25 Textstellen liefern mehr Inhalt als 9, 100 bringen nur Wartezeit).
+Bestehende Bereiche fasst die Anlage nie an — `./bereiche_nachziehen.sh` holt sie einmalig nach.
+
 **Prüfungskatalog (Fragen abfragen).** Liegt im Bereich eine Datei mit Fragen und Antwortoptionen
 (Excel mit Spalten `Frage | Antwort richtig | Antwort falsch | … | Bereich | LE`, oder ein Katalog mit
 a)/b)/c)-Optionen), stellt die Anlage auf „stell mir eine Prüfungsfrage", „frag mich ab", „Frage 7",

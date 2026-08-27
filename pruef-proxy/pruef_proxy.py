@@ -72,10 +72,10 @@ SYSTEMPROMPT_DATEI = (os.environ.get("KI4KI_SYSTEMPROMPT")
 # fuer einen frisch angelegten Bereich.
 GEPRUEFT_WERTE = {
     "chatMode": "query",
-    "topN": 6,
+    "topN": 25,              # gemessen T4 04.08.: 25 > 9 > 100 (siehe arbeitsbereich_anlegen.sh)
     "similarityThreshold": 0.25,
     "openAiHistory": 6,
-    "openAiTemp": 0.3,
+    "openAiTemp": 0.2,
 }
 _SYSTEMPROMPT = {"text": None, "wann": 0.0}
 
@@ -300,6 +300,24 @@ def _dokument_loeschen(pdf):
     return True
 
 
+def _gleicher_inhalt(a, b):
+    """Zwei Dateien byteweise gleich? (Groesse zuerst, dann Hash.)"""
+    try:
+        if os.path.getsize(a) != os.path.getsize(b):
+            return False
+        import hashlib
+        h = []
+        for p in (a, b):
+            m = hashlib.md5()
+            with open(p, "rb") as fh:
+                for block in iter(lambda: fh.read(1 << 20), b""):
+                    m.update(block)
+            h.append(m.hexdigest())
+        return h[0] == h[1]
+    except Exception:
+        return True          # im Zweifel KEIN Tausch
+
+
 def _liegengebliebene_einraeumen():
     """PDFs, die laenger als eine Stunde in input/ liegen, obwohl ihre
     Textfassung laengst im Bestand ist, an ihren Platz bringen.
@@ -341,12 +359,34 @@ def _liegengebliebene_einraeumen():
             if d.startswith(".") or _stamm(d) == d:
                 continue          # keine Dokumentdatei
             pfad = os.path.join(eingang, d)
+            if _loesch_grund(_stamm(d)) not in im_bestand:
+                continue
+            # ⭐ NEUE FASSUNG (26.08., T4 hatte dafuer ersetzen.py): Liegt im Archiv
+            #   eine Datei gleichen Namens mit ANDEREM Inhalt, ist das eine neue
+            #   Fassung - kein Doppel. Dann wandert die alte nach loeschen/ (die
+            #   Wache raeumt Bestand + Archiv binnen einer Minute), und die
+            #   Aufnahme nimmt die neue beim naechsten Durchgang. Ein Handgriff
+            #   statt zwei. Sofort, ohne die Stunde Karenz.
+            ziel_archiv = os.path.join(wurzel, "archiv", d)
+            if os.path.exists(ziel_archiv) and not _gleicher_inhalt(pfad, ziel_archiv):
+                try:
+                    lo = os.path.join(wurzel, "loeschen")
+                    os.makedirs(lo, exist_ok=True)
+                    os.replace(ziel_archiv, os.path.join(lo, d))
+                    zeit = time.strftime("%Y-%m-%d %H:%M:%S")
+                    _loesch_protokoll(wurzel, "%s: NEUE FASSUNG im Eingang erkannt - alte Fassung wird "
+                                      "entfernt, die neue kommt beim naechsten Durchgang in den Bestand" % d)
+                    log = os.path.join(wurzel, "aussortiert", "aussortiert.log")
+                    os.makedirs(os.path.dirname(log), exist_ok=True)
+                    with open(log, "a", encoding="utf-8") as fh:
+                        fh.write("[%s] %s | neue Fassung erkannt - alte geloescht, neue wird aufgenommen\n" % (zeit, d))
+                except Exception as e:
+                    print("[Eingang] %s: neue Fassung nicht tauschbar: %s" % (d, str(e)[:100]), file=sys.stderr, flush=True)
+                continue
             try:
                 if jetzt - os.stat(pfad).st_ctime < 3600:
                     continue
             except OSError:
-                continue
-            if _loesch_grund(_stamm(d)) not in im_bestand:
                 continue
             zeit = time.strftime("%Y-%m-%d %H:%M:%S")
             ziel_archiv = os.path.join(wurzel, "archiv", d)
@@ -510,10 +550,53 @@ def _seiten_vorwaermen(hoechstens=3):
               % (getan, max(0, len(fehlend) - getan)), file=sys.stderr, flush=True)
 
 
+OLLAMA_URL = (os.environ.get("KI4KI_OLLAMA_URL") or "http://ollama:11434").rstrip("/")
+GPU_STAND = {"wann": 0, "modelle": [], "warnung": ""}
+
+
+def _gpu_pruefen():
+    """Rechnen die geladenen Modelle auf der Grafikkarte? Ollama faellt bei
+    einem Treiberproblem STILL auf die CPU zurueck - alles wird 10x langsamer,
+    und niemand sieht es (T4: waechter.sh 'ollama_auf_cpu'). Hier: /api/ps
+    liefert je Modell size und size_vram; liegt weniger als 90 % im VRAM,
+    ist das eine Warnung - im Log und unter /pruef-status."""
+    try:
+        with urllib.request.urlopen(OLLAMA_URL + "/api/ps", timeout=8) as r:
+            d = json.loads(r.read() or b"{}")
+    except Exception as e:
+        GPU_STAND.update({"wann": time.time(), "modelle": [],
+                          "warnung": "Ollama nicht erreichbar (%s)" % str(e)[:60]})
+        return GPU_STAND
+    modelle, warn = [], []
+    for m in d.get("models") or []:
+        size = float(m.get("size") or 0)
+        vram = float(m.get("size_vram") or 0)
+        anteil = (vram / size) if size else 1.0
+        modelle.append({"modell": m.get("name"), "gb": round(size / 1e9, 1),
+                        "vram_gb": round(vram / 1e9, 1), "gpu_anteil": round(anteil, 2)})
+        if size and anteil < 0.9:
+            warn.append("%s rechnet %s auf der CPU (%.1f von %.1f GB im VRAM)" % (
+                m.get("name"), "ganz" if vram == 0 else "teilweise", vram / 1e9, size / 1e9))
+    neu = "; ".join(warn)
+    if neu and neu != GPU_STAND.get("warnung"):
+        print("[GPU] ⚠ " + neu, file=sys.stderr, flush=True)
+    elif not neu and GPU_STAND.get("warnung"):
+        print("[GPU] wieder alles auf der Grafikkarte", file=sys.stderr, flush=True)
+    GPU_STAND.update({"wann": time.time(), "modelle": modelle, "warnung": neu})
+    return GPU_STAND
+
+
 def _loesch_wache():
     """Jede Minute nach <bereich>/loeschen/* sehen (jede Dokumentdatei) - und liegengebliebene
-    Eingangsdateien einraeumen."""
+    Eingangsdateien einraeumen. Alle 10 Minuten: Grafikkarten-Pruefung."""
+    runde = 0
     while True:
+        runde += 1
+        if runde % 10 == 1:
+            try:
+                _gpu_pruefen()
+            except Exception:
+                traceback.print_exc(file=sys.stderr)
         try:
             _liegengebliebene_einraeumen()
         except Exception:
@@ -4381,6 +4464,27 @@ class Griff(BaseHTTPRequestHandler):
             return
         seit = (felder.get("seit") or [None])[0]
         bis = (felder.get("bis") or [None])[0]
+        if pfad == "/selbstcheck":
+            # Der letzte Selbst-Check-Bericht (docker exec ki4ki-pruef-proxy python3 /app/selbstcheck.py)
+            ordner = os.path.join(os.path.dirname(os.environ.get("KI4KI_PROTOKOLL") or "/daten/pruefung/protokoll"), "selbstcheck")
+            datei = os.path.join(ordner, "ergebnis.json" if (felder.get("format") or [""])[0] == "json" else "bericht.html")
+            try:
+                with open(datei, "rb") as fh:
+                    roh = fh.read()
+            except OSError:
+                self._sende_html("<p>Noch kein Selbst-Check gelaufen. Auf dem Server: "
+                                 "<code>docker exec ki4ki-pruef-proxy python3 /app/selbstcheck.py</code></p>")
+                return
+            if datei.endswith(".json"):
+                self.send_response(200)
+                self.send_header("Content-Type", "application/json; charset=utf-8")
+            else:
+                self.send_response(200)
+                self.send_header("Content-Type", "text/html; charset=utf-8")
+            self.send_header("Content-Length", str(len(roh)))
+            self.end_headers()
+            self.wfile.write(roh)
+            return
         if pfad == "/rueckmeldungen":
             eintraege = [e for e in pruefprotokoll.alle_eintraege(seit, bis) if e.get("art") == "rueckmeldung"]
             if (felder.get("format") or [""])[0] == "json":
@@ -7000,7 +7104,7 @@ class Griff(BaseHTTPRequestHandler):
         if pfad == "/protokoll" or pfad.startswith("/protokoll/"):
             self._protokoll(pfad, felder)
             return
-        if pfad in ("/rueckmeldungen", "/kpi"):
+        if pfad in ("/rueckmeldungen", "/kpi", "/selbstcheck"):
             self._kennzahlen_seite(pfad, felder)
             return
         if pfad in ("/stelle", "/seitenbild", "/abbildung") or pfad.startswith("/pdf/"):
@@ -7046,9 +7150,16 @@ class Griff(BaseHTTPRequestHandler):
             except Exception:
                 pass
             _pdfs_erneuern_wenn_faellig()
+            if time.time() - GPU_STAND.get("wann", 0) > 300:
+                try:
+                    _gpu_pruefen()
+                except Exception:
+                    pass
             daten = json.dumps({"bestand": len(BESTAND.titel()),
                                 "verwaiste_bereiche": list(VERWAISTE_BEREICHE),
-                                "pdfs": len(PDFS)}).encode()
+                                "pdfs": len(PDFS),
+                                "gpu": {"modelle": GPU_STAND.get("modelle"), "warnung": GPU_STAND.get("warnung")}},
+                               ensure_ascii=False).encode("utf-8")
             self.send_response(200)
             self.send_header("Content-Type", "application/json")
             self.send_header("Content-Length", str(len(daten)))

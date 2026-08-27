@@ -50,15 +50,17 @@ ruf("/workspace/%s/update" % slug, {
     # "query" statt der Voreinstellung "automatic": im automatischen Modus
     # springt der Chat in den Agent-Modus und liefert GAR KEINE Quellen
     "chatMode": "query",
-    # wie viele Textstellen die Suche vorlegen darf
-    "topN": 6,
+    # wie viele Textstellen die Suche vorlegen darf. GEMESSEN (T4, 04.08.,
+    # 5 Fragen x 5 Fassungen): 25 schlaegt 9 und 100 - mehr Inhalt aus mehr
+    # Arbeiten; 100 kostet nur 40 s mehr und bringt nichts.
+    "topN": 25,
     # Voreinstellung 0,75 laesst kaum etwas durch
     "similarityThreshold": 0.25,
     # wie viele frühere Nachrichten mitgehen. Zu viele, und das Modell sieht
     # seine eigene vorherige Antwort und schreibt etwas anderes - gemessen:
     # 14 % Aehnlichkeit zwischen zwei Antworten auf dieselbe Frage
     "openAiHistory": 6,
-    "openAiTemp": 0.3,
+    "openAiTemp": 0.2,
 })
 
 nach = ruf("/workspace/%s" % slug)
