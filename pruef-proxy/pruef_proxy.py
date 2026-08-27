@@ -98,6 +98,25 @@ def _systemprompt_lesen():
 
 
 _ROLLEN_STAND = {}      # slug -> (mtime_ns, size) der eingespielten prompt.md
+_MODUS_JE_BEREICH = {}  # slug -> (chatMode, wann)
+
+
+def _bereich_modus(slug):
+    """chatMode des Bereichs aus AnythingLLM (query/chat/automatic), 5 min gemerkt."""
+    if not slug or not API_SCHLUESSEL:
+        return "query"
+    alt = _MODUS_JE_BEREICH.get(slug)
+    if alt and time.time() - alt[1] < 300:
+        return alt[0]
+    modus = "query"
+    try:
+        w = (_api("GET", "/api/v1/workspace/%s" % slug, timeout=15) or {}).get("workspace")
+        w = w[0] if isinstance(w, list) else (w or {})
+        modus = str(w.get("chatMode") or "query")
+    except Exception:
+        pass
+    _MODUS_JE_BEREICH[slug] = (modus, time.time())
+    return modus
 _ADMINS = {"wann": 0.0, "namen": set()}
 
 
@@ -841,7 +860,7 @@ def chat_gemeldet():
 # Beide bekommen dieselbe Pruefung, damit die Belege ueberall gleich sind.
 CHAT = re.compile(r"^/api/workspace/[^/]+(?:/thread/[^/]+)?/stream-chat/?$")
 CHAT_JSON = re.compile(r"^/api/v1/workspace/[^/]+/chat/?$")
-FEEDBACK = re.compile(r"^/api/workspace/([^/]+)/chat-feedback/(\d+)/?$")
+FEEDBACK = re.compile(r"^/api/workspace/([^/]+)/chat-feedback/(-?\d+)/?$")
 _RUECKMELDUNG_CHAT = re.compile(
     r"^\s*(?:feedback|r(?:ü|ue)ckmeldung|falsche\s+quelle|falscher\s+beleg|quelle\s+falsch)\s*[:\-–]\s*(.+)$",
     re.I | re.S)
@@ -4187,6 +4206,18 @@ class Griff(BaseHTTPRequestHandler):
                 return
         except Exception:
             traceback.print_exc(file=sys.stderr)
+        # 'Tu das Dokument raus' / Vergleich zweier Dokumente / 'Zeig Bild 2.1' - ohne Modell
+        try:
+            _weg = self._faden_raus(frage)
+            if _weg and len(re.sub(r"[^\wäöüÄÖÜß]+", " ", frage).split()) <= 8:
+                self._direkt_senden("meta", frage, "In Ordnung — %s ist nicht mehr das Faden-Dokument. Die nächste Frage geht wieder über den ganzen Bestand." % assistent._titel_saubern(_weg))
+                return
+            if self._vergleich_vorab(frage):
+                return
+            if self._bild_vorab(frage):
+                return
+        except Exception:
+            traceback.print_exc(file=sys.stderr)
         # ⭐ PRUEFUNGSKATALOG (26.08.): exakte Fragen aus der Datei, Antwort gegen
         #   den Katalog - deterministisch, ohne Modell. Emrach: "er sollte doch
         #   exakte Fragen aus der Datei mir nennen ... pruefst du anhand des
@@ -5957,7 +5988,7 @@ class Griff(BaseHTTPRequestHandler):
                     % (len(bloecke), (" ab Position %d" % (ab + 1)) if ab else "")
                     + "\n\n---\n\n".join(bloecke))
         if len(GESPRAECHE.verlauf_kurz(gespraech, 10)) < 2:
-            text += "\n\n<sub>Klick auf Bild oder Seite öffnet das Original.</sub>"
+            text += "\n\n*Klick auf Bild oder Seite öffnet das Original.*"
             if gewaehlt:
                 text += "\n" + assistent.naechste_schritte("bild", gewaehlt)
         text = vorspann + text
@@ -6090,9 +6121,14 @@ class Griff(BaseHTTPRequestHandler):
                 return ("Zu '%s' keine belegte Stelle in den %d Dokumenten des Bereichs. Sag das ehrlich; "
                         "Ansprechpartner: %s" % (begriffe, len(namen), assistent.kontakt_zeile() or "nicht hinterlegt"))
             aus = []
+            _kat = set(self._kataloge_im_bereich(namen))
+            # Katalogseiten (Antwortoptionen!) ans Ende und gekennzeichnet
+            treffer = sorted(treffer, key=lambda t: t[0] in _kat)
             for dok, seite, text in treffer:
                 st = dokument_status(dok)
                 warn = dokument_warnung(dok)
+                if dok in _kat:
+                    warn = (warn + "; " if warn else "") + "PRUEFUNGSKATALOG - Antwortoptionen, keine belegten Aussagen"
                 aus.append("=== %s, Seite %d%s ===\n%s" % (
                     assistent._titel_saubern(dok), seite,
                     (" [%s]" % (warn or st)) if (warn or st) else "", text[:2500]))
@@ -6280,7 +6316,8 @@ class Griff(BaseHTTPRequestHandler):
                 args = {"anlage": _kx.get("anlage", ""), "fehlercode": _kx.get("fehlercode", ""), "symptom": _kx.get("symptom", "")}
                 vorwissen.append(("stoerfall_suchen", args, self._werkzeug("stoerfall_suchen", args, zustand)))
             elif not assistent.ist_anlagefrage(frage) and not assistent._ist_bestandsfrage(frage) \
-                    and fadenfrage.suchwoerter(frage) and not assistent.dokument_gemeint(frage, namen)[0]:
+                    and fadenfrage.suchwoerter(frage) and not any(assistent.dokument_gemeint(frage, namen)) \
+                    and not re.search(r"\b(?:bild|abbildung|grafik|diagramm|foto|zeig)\w*", frage, re.I):
                 # Gemessen 27.08. (Selbst-Check): Mit Faden-Dokument bekam das Modell
                 # keine Belege vorab, rief kein Werkzeug und schrieb in 1,7 s "nicht
                 # enthalten" - bei 'Laminieren' in einem Laminier-Bestand. Deshalb:
@@ -6303,6 +6340,7 @@ class Griff(BaseHTTPRequestHandler):
             _frage_modell, GESPRAECHE.verlauf_kurz(gespraech_k, hoechstens=20), assistent._titel_saubern(faden_dok) if faden_dok else None,
             zeilen, lambda n, a: self._werkzeug(n, a, zustand), kontakt=assistent.kontakt_zeile(),
             rolle=rolle.fuer_gespraech(_rolle_lesen(_slug)),
+            allgemeinwissen=(_bereich_modus(_slug) == "chat"),
             melden=melden, vorwissen=vorwissen,
             denken=True if (len(assistent.optionen_finden(frage)) >= 2 or assistent.ist_negativfrage(frage)) else None,
             kennungen=[assistent._titel_saubern(n) for n in namen])
@@ -6387,6 +6425,12 @@ class Griff(BaseHTTPRequestHandler):
         # Kennungen mit Endung ("(X.md, S. 32)") auf die nackte Kennung bringen -
         # sonst greifen Belegpruefung und Verlinkung nicht (gemessen 27.08.).
         text = re.sub(r"\(\s*([^(),\n]{2,90}?)\.(?:md|pdf)\s*,\s*S\.", r"(\1, S.", text)
+        # Belege OHNE Klammern ("... Testfragen DVS 2290, S. 1.") einklammern - sonst
+        # weder geprueft noch verlinkt (gemessen 27.08.). Laengste Kennung zuerst.
+        _kenn = sorted({assistent._titel_saubern(n) for n in namen if n}, key=len, reverse=True)
+        if _kenn:
+            text = re.sub(r"(?<![\(\[\w])(%s)\s*,\s*S\.?\s*(\d{1,4})(?![\w)])" % "|".join(re.escape(k) for k in _kenn),
+                          r"(\1, S. \2)", text)
         # ---- Jede Aussage mit Seitenangabe gegen die Seite pruefen --------
         # Gemessen 26.08.: Das Modell schrieb "die Klemmung erhoeht die
         # Lebensdauer (DS-24-005, S. 12)" - erfunden, Gegenteil der Arbeit.
@@ -6452,8 +6496,10 @@ class Griff(BaseHTTPRequestHandler):
         _warn = [w for w in _warn if w]
         if _warn:
             fuss.append("⚠ " + "; ".join(_warn))
+        if "Aus Allgemeinwissen" in text:
+            fuss.append("⚠ enthält Allgemeinwissen des Modells (nicht aus den Dokumenten)")
         if fuss:
-            text += "\n\n<sub>" + " · ".join(fuss) + "</sub>"
+            text += "\n\n*" + " · ".join(fuss) + "*"
         # ---- Merken und senden -------------------------------------------
         if zustand["dokumente"]:
             GESPRAECHE.dokument_merken(gespraech_k, zustand["dokumente"][-1])
@@ -6466,9 +6512,11 @@ class Griff(BaseHTTPRequestHandler):
                          pruefungen=_pruef or None, seit=begonnen)
         GESPRAECHE.merken(gespraech_k, frage, "gespraech",
                           [{"title": d} for d in zustand["dokumente"][:3]],
-                          antwort=re.sub(r"\s*<sub>.*?</sub>\s*", " ", text.split("\n\n---\n")[0], flags=re.S).strip())
-        self._strom_stueck({"uuid": _neue_marke("gespraech"), "type": "textResponseChunk",
-                            "textResponse": text, "sources": [], "close": True, "error": False})
+                          antwort=re.sub(r"\n\n\*(?:Quelle:|Bestand|Katalog|gelesen|Bilder|Störfall)[^\n]*\*\s*$", "", text.split("\n\n---\n")[0]).strip())
+        _marke = _neue_marke("gespraech")
+        self._strom_stueck({"uuid": _marke, "type": "textResponseChunk",
+                            "textResponse": text, "sources": [], "close": False, "error": False})
+        self._strom_stueck(self._abschluss_stueck(_marke, self._quellen_fuer_oberflaeche(zustand), e.get("nutzung"), e.get("ms")))
         self._strom_schliessen()
         print("[Gespraech] %d Werkzeuge in %d ms, Zitate %d/%d, unbelegt %d, Bilder %d%s <- %r"
               % (len(e["aufrufe"]), e["ms"], ok, ok + nein, unbelegt, len(gezeigt),
@@ -6635,7 +6683,8 @@ class Griff(BaseHTTPRequestHandler):
         # 0) Ein genanntes Dokument, das es nicht gibt oder kein Katalog ist -
         #    nie stillschweigend einen anderen Katalog nehmen (gemessen 26.08.:
         #    "aus den Pruefungsfragen zu DVS 2291" -> Frage aus "Testfragen DVS 2290").
-        if nennung and (wunsch or offen) and (not genannt or genannt not in kat):
+        _sachfrage = re.search(r"\b(?:zeig|bild|abbildung|was|wie|warum|wieso|welche|erkl(?:ä|ae)r|fasse|vergleich|liste)\w*", frage, re.I)
+        if nennung and (wunsch or (offen and not _sachfrage)) and (not genannt or genannt not in kat):
             if genannt and genannt not in kat:
                 t = ("**%s** ist kein Prüfungskatalog — darin stehen keine Fragen mit Antwortoptionen.\n\n"
                      "Kataloge in diesem Bereich:\n%s" % (assistent._titel_saubern(genannt), _kataloge_zeile()))
@@ -6651,7 +6700,7 @@ class Griff(BaseHTTPRequestHandler):
         if offen.get("dok") and offen.get("nr") and not wunsch:
             f = self._katalogfrage(offen["dok"], offen["nr"])
             if f:
-                if genannt and genannt in kat and genannt != offen["dok"]:
+                if genannt and genannt in kat and genannt != offen["dok"] and not _sachfrage:
                     t = self._pruefungsfrage_stellen(gespraech_k, genannt)
                     if t:
                         self._direkt_senden("pruefung", frage, t, dok=genannt)
@@ -6896,8 +6945,42 @@ class Griff(BaseHTTPRequestHandler):
         return True
 
     def _bestand_vorab(self, frage):
-        return bool(assistent._ist_bestandsfrage(frage) and not assistent.ist_beschwerde(frage)
+        return bool(assistent.ist_bestandsfrage_unscharf(frage) and not assistent.ist_beschwerde(frage)
                     and self._bestandsauskunft(frage))
+
+    def _faden_raus(self, frage):
+        """'Tu das Dokument raus' - Faden-Dokument vergessen; der Rest der Frage laeuft weiter."""
+        if not assistent.ist_faden_raus(frage):
+            return None
+        k = GESPRAECHE.kennung(self.path, self.headers)
+        alt = GESPRAECHE.letztes_dokument(k)
+        GESPRAECHE.dokument_vergessen(k)
+        return alt
+
+    def _vergleich_vorab(self, frage):
+        """'Vergleiche DS-24-005 und DS-24-007' -> die feste Vergleichstabelle, nicht das Modell
+        (gemessen 27.08.: Stufe 2 las stur im alten Faden-Dokument und verglich Titel)."""
+        if not assistent._VERGLEICH.search(frage or ""):
+            return False
+        namen = (titel_im_bereich(self.path, self.headers) or nur_erlaubte(BESTAND.titel(), self.headers) or [])
+        v = assistent.vergleichs_dokumente(frage, namen)
+        if not v:
+            return False
+        a, b = v[0], v[1]
+        aspekt = v[2] if len(v) > 2 else ""
+        return bool(self._vergleich_antwort(frage, a, b, aspekt or ""))
+
+    def _bild_vorab(self, frage):
+        """'Zeig mir Bild 2.1' mit Faden-Dokument -> direkt das Bild (kein Modell)."""
+        m = re.match(r"^\s*(?:ok\s+|okay\s+|dann\s+|ja\s+|gut\s+)*zeig\w*\s+(?:mir\s+)?(?:mal\s+|bitte\s+)*(?:das\s+|die\s+)?(?:bild|abbildung|abb\.?|grafik|diagramm)\s*(\d{1,2}[.\-]\d{1,3})\b",
+                     frage or "", re.I)
+        if not m:
+            return False
+        k = GESPRAECHE.kennung(self.path, self.headers)
+        dok = GESPRAECHE.letztes_dokument(k)
+        if not dok:
+            return False
+        return bool(self._bild_antwort(frage, erzwinge=dok))
 
     def _json_ueber_gespraech(self, frage):
         """⭐ Der JSON-Weg (/api/v1/workspace/<slug>/chat - n8n, Partner-
@@ -6913,7 +6996,7 @@ class Griff(BaseHTTPRequestHandler):
         self._sammeln = []
         try:
             getroffen = False
-            for hook in (self._rolle_antwort, self._pruefung_antwort, self._bestand_vorab,
+            for hook in (self._rolle_antwort, self._pruefung_antwort, self._vergleich_vorab, self._bild_vorab, self._bestand_vorab,
                          (self._gespraech_antwort if gespraechsmodus.AN else None)):
                 if hook is None:
                     continue
@@ -6956,9 +7039,7 @@ class Griff(BaseHTTPRequestHandler):
         self._sende_strom([
             {"uuid": _neue_marke(art), "type": "textResponseChunk",
              "textResponse": text, "sources": [], "close": False, "error": False},
-            {"uuid": _neue_marke(art), "type": "textResponseChunk",
-             "textResponse": "", "sources": [], "close": True, "error": False},
-        ])
+        ], quellen=[{"title": assistent._titel_saubern(dok), "text": "", "chunkSource": assistent._titel_saubern(dok)}] if dok else [])
 
     def _vergleich_antwort(self, frage, dok_a, dok_b, aspekt):
         """Zwei Dokumente nebeneinander - Tabelle, jede Zelle mit Seite."""
@@ -7263,7 +7344,7 @@ class Griff(BaseHTTPRequestHandler):
                                                   seiten, nummern)
             text = vorspann + text
         _schritte = len(GESPRAECHE.verlauf_kurz(gespraech, 10))
-        text += "\n\n<sub>Quelle: %s · S. %s%s%s</sub>" % (
+        text += "\n\n*Quelle: %s · S. %s%s%s*" % (
             titel, ", ".join(str(n) for n in nummern),
             (" · %d Zitat%s geprüft" % (ok + nein, "" if ok + nein == 1 else "e")) if (ok or nein) else "",
             (" · ⚠ %d nicht gefunden" % nein) if nein else "")
@@ -7421,6 +7502,41 @@ class Griff(BaseHTTPRequestHandler):
         return True
 
     _sammeln = None      # Liste -> Sammelmodus (JSON-Weg): Stuecke werden gepuffert
+    _CHAT_ZAEHLER = [0]
+
+    def _abschluss_stueck(self, uuid, quellen=None, nutzung=None, ms=None):
+        """Das letzte Stueck, wie AnythingLLM es sendet: mit Chat-Kennung (-> Daumen
+        hoch/runter), Quellenliste (-> Quellenleiste) und Kennzahlen (-> graue
+        Fusszeile). Gemessen 27.08.: ohne dieses Stueck fehlten alle drei bei
+        jeder Antwort der Anlage. Dieselbe uuid wie die Antwort - sonst ordnet
+        die Oberflaeche es nicht zu."""
+        Griff._CHAT_ZAEHLER[0] += 1
+        cid = -(2000000 + (int(time.time()) % 100000000) * 10 + (Griff._CHAT_ZAEHLER[0] % 10))
+        metr = {}
+        if nutzung and (nutzung.get("antwort") or nutzung.get("prompt")):
+            dauer_s = max(0.001, (ms or nutzung.get("dauer_ms") or 0) / 1000.0)
+            metr = {"prompt_tokens": int(nutzung.get("prompt") or 0), "completion_tokens": int(nutzung.get("antwort") or 0),
+                    "total_tokens": int(nutzung.get("prompt") or 0) + int(nutzung.get("antwort") or 0),
+                    "outputTps": round(int(nutzung.get("antwort") or 0) / dauer_s, 1), "duration": round(dauer_s, 2)}
+        elif ms:
+            metr = {"duration": round(ms / 1000.0, 2)}
+        return {"uuid": uuid, "type": "finalizeResponseStream", "textResponse": "", "close": True, "error": False,
+                "chatId": cid, "sources": quellen or [], "metrics": metr}
+
+    def _quellen_fuer_oberflaeche(self, zustand):
+        """Die beruehrten Seiten als Quellen fuer die Quellenleiste der Oberflaeche."""
+        aus = []
+        for dok in zustand.get("dokumente") or []:
+            titel = assistent._titel_saubern(dok)
+            seiten = (zustand.get("seiten") or {}).get(dok) or []
+            if seiten:
+                _sch, texte = _seitentexte_von(dok)
+                for n in seiten[:4]:
+                    t = (texte[n - 1] if 0 < n <= len(texte) else "") or ""
+                    aus.append({"title": "%s · Seite %d" % (titel, n), "text": re.sub(r"\s+", " ", t)[:600], "chunkSource": "%s.pdf · Seite %d" % (titel, n)})
+            else:
+                aus.append({"title": titel, "text": "", "chunkSource": titel})
+        return aus[:12]
 
     def _strom_beginnen(self):
         """Antwort in Stuecken senden (chunked).
@@ -7471,7 +7587,7 @@ class Griff(BaseHTTPRequestHandler):
                             "content": "", "sources": [],
                             "close": True, "error": None})
 
-    def _sende_strom(self, nachrichten):
+    def _sende_strom(self, nachrichten, quellen=None, nutzung=None, ms=None):
         """SSE-Antwort ueber den chunked-Weg - GENAU wie die normalen
         Antworten (Bestandsauskunft, Zusammenfassung), damit der Sende-Knopf
         sauber zurueckspringt und die Formatierung greift. Der fruehere
@@ -7494,9 +7610,7 @@ class Griff(BaseHTTPRequestHandler):
         # finalizeResponseStream mit passender uuid - NICHT bei
         # close=True eines textResponseChunk. Ohne dies haengt der Knopf
         # auf "Stop".
-        self._strom_stueck({"uuid": marke, "type": "finalizeResponseStream",
-                            "textResponse": "", "sources": [],
-                            "close": True, "error": False})
+        self._strom_stueck(self._abschluss_stueck(marke, quellen, nutzung, ms))
         self._strom_schliessen()
 
     # ------------------------------------------------------------ Einstiege
@@ -8505,6 +8619,11 @@ class Griff(BaseHTTPRequestHandler):
                       file=sys.stderr, flush=True)
             except Exception:
                 traceback.print_exc(file=sys.stderr)
+            if _fb.group(2).startswith("-"):
+                # Antwort der Anlage (nicht in AnythingLLMs Datenbank): Daumen ist notiert,
+                # AnythingLLM kennt die Kennung nicht - selbst bestaetigen.
+                self._json({"success": True, "error": None})
+                return
             self._weiterleiten("POST", koerper)
             return
 

@@ -584,6 +584,21 @@ def szenario_24_pruefungskatalog():
     pruefe(gespraech.waechter_belege("Es gilt (siehe oben, S. 12).", [], None, "", [], [], kennungen=["DVS 2213-1_neu"]) is None, "Klammertext ohne Dokument -> kein Alarm")
     pruefe(gespraech.waechter_belege("Es gilt (DVS 2213-1_neu, S. 12).", [("seiten_lesen", {"dokument": "DVS 2213-1_neu"}, 1)], None, "", ["=== DVS 2213-1_neu, Seite 12 ===\nText"], [], kennungen=["DVS 2213-1_neu"]) is None, "gelesene Seite -> ok")
     pruefe(any(w["function"]["name"] == "pruefungsfrage" for w in gespraech.WERKZEUGE) and "16. PRUEFUNGSKATALOG" in gespraech.system_text(), "Werkzeug und Regel 16 vorhanden")
+    pruefe(gespraech.pseudo_aufrufe("Text\n\n[abbildung_zeigen(dokument=“DS-24-005”, nummer=“2.1”)]") == [("abbildung_zeigen", {"dokument": "DS-24-005", "nummer": "2.1"})]
+           and gespraech.ohne_pseudo("A abbildungen_auflisten(dokument=“X”) B") == "A B", "als Text geschriebene Werkzeugaufrufe werden erkannt und entfernt")
+    lauf3 = {"n": 0}
+    def rufen3(msgs):
+        lauf3["n"] += 1
+        if lauf3["n"] == 1:
+            return {"content": "Hier: [abbildung_zeigen(dokument=“DS-24-005”, nummer=“6.12”)]", "tool_calls": []}
+        return {"content": "Bild 6.12 zeigt es. [[BILD:DS-24-005:141:6.12]]", "tool_calls": []}
+    e4 = gespraech.fuehren("zeig 6.12", [], "DS-24-005", [], lambda n, a: "[[BILD:DS-24-005:141:6.12]]", rufen=rufen3)
+    pruefe([n for n, _, _ in e4["aufrufe"]] == ["abbildung_zeigen"] and "[[BILD:" in e4["text"], "Pseudo-Aufruf wird ausgefuehrt und das Bild kommt")
+    pruefe("ALLGEMEINWISSEN ERLAUBT" in gespraech.system_text(allgemeinwissen=True) and "ALLGEMEINWISSEN" not in gespraech.system_text(), "Allgemeinwissen nur im Chat-Modus")
+    pruefe(assistent.ist_bestandsfrage_unscharf("Was haben wi rim Besdant?") and not assistent.ist_bestandsfrage_unscharf("Was ist Laminieren?"), "Bestandsfrage trotz Tippfehler")
+    pruefe(assistent.ist_faden_raus("Tue das mal raus und vergleiche") and assistent.ist_faden_raus("Vergiss das Dokument") and not assistent.ist_faden_raus("Was ist Kleben?"), "'Dokument raus' erkannt")
+    v3 = assistent.Verlauf(); k3 = "wissensdatenbank|f24"; v3.dokument_merken(k3, "DS-24-002.md")
+    pruefe(v3.dokument_vergessen(k3) and v3.letztes_dokument(k3) is None, "Faden-Dokument vergessen")
 
 
 def szenario_25_rolle():

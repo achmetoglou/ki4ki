@@ -123,9 +123,33 @@ WERKZEUGE = [
 ]
 
 BILD_MARKE = re.compile(r"\[\[BILD:([^:\]]+):(\d{1,4}):([^\]]*)\]\]")
+# Gemessen 27.08.: Das 12B schreibt Werkzeugaufrufe gelegentlich als TEXT
+# ("[abbildung_zeigen(dokument=“DS-24-005”, nummer=“2.1”)]") statt sie zu
+# rufen - das Bild kam nie. Solche Zeilen werden erkannt und ausgefuehrt.
+_PSEUDO = re.compile(r"\[?\b(seiten_lesen|abbildungen_auflisten|abbildung_zeigen|seite_zeigen|zusammenfassen|zaehlen|"
+                     r"bestand_durchsuchen|stoerfall_suchen|dokument_finden|abkuerzung|pruefungsfrage|exportieren|bestand)"
+                     r"\s*\(([^()]*)\)\]?")
+_PSEUDO_ARG = re.compile(r"(\w+)\s*[=:]\s*[\"“”„']([^\"“”„']*)[\"“”„']")
 
 
-def system_text(faden_dok=None, dokumente=None, kontakt="", rolle=""):
+def pseudo_aufrufe(text):
+    """[(name, args)] aus als Text geschriebenen Aufrufen; '' wenn keine."""
+    aus = []
+    for m in _PSEUDO.finditer(text or ""):
+        args = {k: v for k, v in _PSEUDO_ARG.findall(m.group(2))}
+        if m.group(1) in ("seiten_lesen", "abbildungen_auflisten", "abbildung_zeigen", "seite_zeigen", "zusammenfassen",
+                          "zaehlen", "abkuerzung") and not args.get("dokument"):
+            continue
+        aus.append((m.group(1), args))
+    return aus
+
+
+def ohne_pseudo(text):
+    t = re.sub(_PSEUDO.pattern, " ", text or "")
+    return re.sub(r"[ \t]{2,}", " ", t).strip()
+
+
+def system_text(faden_dok=None, dokumente=None, kontakt="", rolle="", allgemeinwissen=False):
     teile = [
         "Du bist die Wissensdatenbank dieses Bereichs und fuehrst ein Gespraech ueber die "
         "hinterlegten Dokumente - was immer dort liegt: Berichte, Normen, Arbeitsanweisungen, "
@@ -168,11 +192,20 @@ def system_text(faden_dok=None, dokumente=None, kontakt="", rolle=""):
         "15. Ohne Faden-Dokument und ohne genanntes Dokument: bestand_durchsuchen statt raten oder nachfragen.\n"
         "17. LINKS: Schreibe (Kennung, S. n) - die Anlage macht daraus einen Link auf die Seite. Ein ganzes Dokument "
         "verlinkst du als [Kennung](/pdf/Kennung). Sag NIE, du koenntest keine Links erzeugen.\n"
+        "18. WERKZEUGE rufst du NUR ueber die Funktionsschnittstelle auf - nie als Text wie "
+        "'abbildung_zeigen(dokument=...)' in die Antwort schreiben. Ein solcher Text ist kein Aufruf.\n"
+        "19. PRUEFUNGSKATALOGE (Dokumente, die als Katalog markiert sind) enthalten Antwortoptionen, keine belegten "
+        "Aussagen: zitiere eine Option NIE als Tatsache. Fakten kommen aus Normen, Handbuechern, Arbeiten.\n"
         "16. PRUEFUNGSKATALOG ('stell mir eine Pruefungsfrage', 'frag mich ab', 'Frage 7'): NUR pruefungsfrage nutzen und "
         "dessen Text UNVERAENDERT ausgeben - nie eigene Fragen oder Optionen erfinden. Antwortet der Mensch auf eine "
         "Frage, gilt allein die Loesung aus dem Katalogeintrag (RICHTIG/FALSCH im Werkzeugtext); fehlt sie, sag das.",
         "GESPRAECHSZUSTAND:\nFaden-Dokument: %s" % (faden_dok or "keins (frag nach oder nutze dokument_finden/bestand)"),
     ]
+    if allgemeinwissen:
+        teile.append("ALLGEMEINWISSEN ERLAUBT (dieser Bereich steht auf Modus 'Chat'): Findet sich im Bestand nichts "
+                     "oder fragt der Mensch ausdruecklich nach 'ausserhalb der Dokumente', darfst du aus eigenem Wissen "
+                     "antworten - als EIGENER Absatz, der woertlich mit 'Aus Allgemeinwissen (nicht aus den Dokumenten):' "
+                     "beginnt, ohne Belege, ohne erfundene Kennungen. Nie mit Aussagen aus den Dokumenten vermischen.")
     if rolle:
         teile.append("ROLLE DIESES BEREICHS (vom Betreiber festgelegt - gilt zusaetzlich zu den Grundsaetzen):\n" + rolle.strip())
     if dokumente:
@@ -218,7 +251,10 @@ def _modell_aufruf(messages, tools=True, denken=None):
                                  method="POST")
     with urllib.request.urlopen(req, timeout=TIMEOUT) as r:
         antwort = json.load(r)
-    return antwort.get("message") or {}
+    m = dict(antwort.get("message") or {})
+    m["_nutzung"] = {"prompt": int(antwort.get("prompt_eval_count") or 0), "antwort": int(antwort.get("eval_count") or 0),
+                     "dauer_ms": int((antwort.get("total_duration") or 0) / 1e6)}
+    return m
 
 
 _BILDNENNUNG = re.compile(r"\[?\b(?:Abbildung|Abb\.?|Bild|Figure|Fig\.?)\s*(\d{1,2}[.\-]\d{1,3})\b\]?", re.I)
@@ -318,14 +354,16 @@ def waechter(text, aufrufe, faden_dok=None, frage="", tool_texte=None, verlauf_t
 
 
 def fuehren(frage, verlauf, faden_dok, dokumente, werkzeug, rufen=None, kontakt="",
-            melden=None, max_runden=None, pruefer=None, vorwissen=None, denken=None, kennungen=None, rolle=""):
+            melden=None, max_runden=None, pruefer=None, vorwissen=None, denken=None, kennungen=None, rolle="",
+            allgemeinwissen=False):
     """Ein Gespraechszug. werkzeug(name, args) -> str. rufen(messages) -> message.
     Rueckgabe dict: text, aufrufe [(name, args, ms)], dokumente (beruehrte
     Kennungen), runden, ms, fehler."""
     begonnen = time.time()
     rufen = rufen or (lambda m: _modell_aufruf(m, denken=denken))
-    msgs = nachrichten(system_text(faden_dok, dokumente, kontakt, rolle), verlauf, frage)
+    msgs = nachrichten(system_text(faden_dok, dokumente, kontakt, rolle, allgemeinwissen), verlauf, frage)
     aufrufe, beruehrt, texte = [], [], []
+    nutzung = {"prompt": 0, "antwort": 0, "dauer_ms": 0}
     # ⭐ VORWISSEN: Belege, die der Proxy VOR dem Modell deterministisch geholt
     #   hat (Pruefungsfragen je Option, Stoerfall ohne Dokument, Frage ohne
     #   Faden-Dokument). Sie stehen als Werkzeugergebnis im Gespraech - das
@@ -350,6 +388,15 @@ def fuehren(frage, verlauf, faden_dok, dokumente, werkzeug, rufen=None, kontakt=
             break
         inhalt = bereinigen(m.get("content") or "")
         calls = m.get("tool_calls") or []
+        for k, v in (m.get("_nutzung") or {}).items():
+            nutzung[k] = nutzung.get(k, 0) + int(v or 0)
+        if not calls:
+            # Als Text hingeschriebene Aufrufe -> echte Aufrufe (einmal je Runde)
+            ps = pseudo_aufrufe(inhalt)
+            if ps and len(aufrufe) < (max_runden or MAX_RUNDEN) * 3:
+                calls = [{"function": {"name": n, "arguments": a}} for n, a in ps]
+                inhalt = ohne_pseudo(inhalt)
+                m = dict(m); m["content"] = inhalt
         if inhalt and calls:
             texte.append(inhalt)     # Text VOR den Aufrufen (Teilantwort) behalten
         if not calls:
@@ -434,4 +481,4 @@ def fuehren(frage, verlauf, faden_dok, dokumente, werkzeug, rufen=None, kontakt=
             text = (text + "\n\n" + t).strip() if text else t
     return {"text": text, "aufrufe": aufrufe, "dokumente": beruehrt,
             "runden": len(aufrufe), "ms": int((time.time() - begonnen) * 1000),
-            "fehler": fehler}
+            "fehler": fehler, "nutzung": nutzung}

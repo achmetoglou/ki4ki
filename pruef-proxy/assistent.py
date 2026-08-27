@@ -243,6 +243,16 @@ class Verlauf:
         eintrag = self._hol(kennung)
         return (eintrag.get("notizen") or {}).get(name) if eintrag else None
 
+    def dokument_vergessen(self, kennung):
+        """'Tu das Dokument raus' - der Faden haengt nicht mehr an einem Dokument."""
+        with self._sperre:
+            eintrag = self._gespraeche.get(kennung)
+            if eintrag and eintrag.pop("dokument", None) is not None:
+                eintrag["zuletzt"] = time.time()
+                self._sichern()
+                return True
+        return False
+
     def dokument_merken(self, kennung, name):
         """Welches Dokument in diesem Faden gerade Thema ist.
 
@@ -760,6 +770,36 @@ def _ist_bestandsfrage(text):
                  r"empfiehlt|fordern|fordert)\b", text, re.I):
         return False
     return bool(_BESITZ.search(text) or _BESTAND_DIREKT.search(text))
+
+
+_BESTAND_KERNWOERTER = ("bestand", "dokumente", "dokumenten", "unterlagen", "dateien", "arbeiten", "literatur")
+_FADEN_RAUS = re.compile(r"\bvergiss\w*\s+(?:das|die|den|dieses|dieser|jenes)?\s*(?:dokument|faden|arbeit|dissertation)|"
+                         r"\b(?:tu|tue|nimm|mach|nehm|lass|schmeiss|schmeiß|hau)\w*\s+(?:das|die|es|ihn|sie|den)?\s*(?:dokument\w*|faden|arbeit|dissertation)?\s*(?:mal\s+|bitte\s+|doch\s+)*(?:raus|weg)\b|"
+                         r"\b(?:kein|ohne)\s+faden(?:-?dokument)?\b|faden\s+(?:zur(?:ü|ue)cksetzen|l(?:ö|oe)schen)|"
+                         r"\bneues\s+thema\b|\bnicht\s+mehr\s+(?:in|aus)\s+(?:dem|der)\s+dokument", re.I)
+
+
+def ist_bestandsfrage_unscharf(text):
+    """Bestandsfrage trotz Tippfehlern ('Was haben wi rim Besdant?'): ein
+    Fragewort am Anfang und ein Wort, das einem Bestandswort aehnelt."""
+    if _ist_bestandsfrage(text):
+        return True
+    t = (text or "").strip()
+    if not re.match(r"^\s*(?:was|welche[rsn]?|wie\s*viele?|zeig|liste|gibt)\b", t, re.I):
+        return False
+    if re.search(r"\bzum\s+thema\b|\b(?:ü|ue)ber\s+\w{4,}", t, re.I):
+        return False          # Themenfrage - kein Index
+    import difflib
+    for w in re.findall(r"[A-Za-zÄÖÜäöüß]{5,}", t):
+        wl = w.lower()
+        for k in _BESTAND_KERNWOERTER:
+            if difflib.SequenceMatcher(None, wl, k).ratio() >= 0.7 and abs(len(wl) - len(k)) <= 2:
+                return True
+    return False
+
+
+def ist_faden_raus(text):
+    return bool(_FADEN_RAUS.search(text or ""))
 
 
 def _ist_folgefrage(text):
