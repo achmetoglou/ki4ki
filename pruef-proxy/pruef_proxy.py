@@ -2744,6 +2744,77 @@ EINHAENGER = """
   }).observe(document.documentElement, {childList: true, subtree: true});
 })();
 </script>
+
+<script>
+(function () {
+  // ki4ki-daumen: AnythingLLM zeigt nur "Gute Antwort" (Daumen hoch). Der
+  // Leitfaden (K2) verlangt auch das Gegenteil - mit Grund. Neben jeden
+  // Daumen hoch kommt ein Daumen runter; ein Klick fragt kurz "Was war falsch?"
+  // und meldet es an den Proxy (/api/workspace/<slug>/chat-feedback/<id>),
+  // der es ins Pruefprotokoll und auf /rueckmeldungen bringt.
+  var SVG = '<svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" fill="currentColor" viewBox="0 0 256 256" class="mb-1" style="transform:scaleY(-1)"><path d="M234,80.12A24,24,0,0,0,216,72H160V56a40,40,0,0,0-40-40,8,8,0,0,0-7.16,4.42L75.06,96H32a16,16,0,0,0-16,16v88a16,16,0,0,0,16,16H204a24,24,0,0,0,23.82-21l12-96A24,24,0,0,0,234,80.12ZM32,112H72v88H32ZM223.94,97l-12,96a8,8,0,0,1-7.94,7H88V105.89l36.71-73.43A24,24,0,0,1,144,56V80a8,8,0,0,0,8,8h64a8,8,0,0,1,7.94,9Z"></path></svg>';
+  function slug() {
+    var m = /\\/workspace\\/([^\\/]+)/.exec(location.pathname);
+    return m ? decodeURIComponent(m[1]) : "";
+  }
+  function anmeldung() {
+    try {
+      var t = window.localStorage.getItem("anythingllm_authToken");
+      return t ? ("Bearer " + t.replace(/^"|"$/g, "")) : "";
+    } catch (e) { return ""; }
+  }
+  function chatIdVon(knopf) {
+    var el = knopf;
+    for (var i = 0; el && i < 8; i++, el = el.parentElement) {
+      var t = el.querySelector && el.querySelector("[data-auto-play-chat-id]");
+      if (t) return t.getAttribute("data-auto-play-chat-id");
+    }
+    return null;
+  }
+  function melden(text, gut) {
+    var k = document.createElement("div");
+    k.style.cssText = "position:fixed;top:24px;left:50%;transform:translateX(-50%);z-index:2147483647;max-width:520px;" +
+      "background:#11151c;color:#e8edf5;border-left:5px solid " + (gut ? "#15803d" : "#b45309") +
+      ";border-radius:10px;padding:12px 16px;font:14px/1.5 system-ui,sans-serif;box-shadow:0 12px 40px rgba(0,0,0,.55)";
+    k.textContent = text; document.body.appendChild(k); setTimeout(function () { k.remove(); }, 6000);
+  }
+  function senden(id, kommentar, knopf) {
+    var kopf = {"Content-Type": "application/json"};
+    var a = anmeldung(); if (a) kopf["Authorization"] = a;
+    fetch("/api/workspace/" + encodeURIComponent(slug()) + "/chat-feedback/" + id,
+          {method: "POST", headers: kopf, credentials: "include", body: JSON.stringify({feedback: false, kommentar: kommentar || ""})})
+      .then(function (r) { if (!r.ok) throw new Error(r.status); knopf.style.color = "#f87171"; melden("Notiert — danke. Landet in der Rückmeldungsliste des Betreibers.", true); })
+      .catch(function () { melden("Rückmeldung nicht gespeichert (Verbindung).", false); });
+  }
+  function einbauen() {
+    var alle = document.querySelectorAll('button[data-tooltip-id="feedback-button"]');
+    for (var i = 0; i < alle.length; i++) {
+      var hoch = alle[i];
+      var halter = hoch.parentElement;
+      if (!halter || halter.parentElement.querySelector(".ki4ki-daumen-runter")) continue;
+      var w = document.createElement("div");
+      w.className = "mt-3 relative ki4ki-daumen-runter";
+      var b = document.createElement("button");
+      b.type = "button"; b.title = "Schlechte Antwort — kurz sagen, was falsch war";
+      b.setAttribute("aria-label", "Schlechte Antwort");
+      b.className = hoch.className; b.innerHTML = SVG;
+      b.addEventListener("click", function () {
+        var id = chatIdVon(b);
+        if (!id) { melden("Kennung der Antwort nicht gefunden.", false); return; }
+        var k = window.prompt("Was war falsch? (optional — z. B. „falsche Quelle“, „Zahl stimmt nicht“, „Bild fehlt“)", "");
+        if (k === null) return;
+        senden(id, k, b);
+      });
+      w.appendChild(b);
+      halter.parentElement.insertBefore(w, halter.nextSibling);
+    }
+  }
+  var wartend = null;
+  new MutationObserver(function () { clearTimeout(wartend); wartend = setTimeout(einbauen, 250); })
+    .observe(document.documentElement, {childList: true, subtree: true});
+  setTimeout(einbauen, 1500);
+})();
+</script>
 """
 
 
@@ -8650,7 +8721,9 @@ class Griff(BaseHTTPRequestHandler):
             except Exception:
                 koerper = b""
             try:
-                wert = (json.loads(koerper or b"{}") or {}).get("feedback")
+                _leib = json.loads(koerper or b"{}") or {}
+                wert = _leib.get("feedback")
+                _kommentar = str(_leib.get("kommentar") or "").strip()[:600]
                 bewertung = ("hilfreich" if wert in (1, True, "1", "true") else
                              "nicht hilfreich" if wert in (-1, False, "-1", "false", 0, "0") else
                              "zurueckgenommen")
@@ -8667,6 +8740,7 @@ class Griff(BaseHTTPRequestHandler):
                     art="rueckmeldung",
                     konto=pruefprotokoll.pseudonym(pruefprotokoll.konto_aus(self.headers)),
                     bereich=_fb.group(1), chat_id=_fb.group(2), bewertung=bewertung,
+                    text=_kommentar or None,
                     faden=(letzte or {}).get("faden"),
                     frage_original=(letzte or {}).get("frage_original"),
                     regel=(letzte or {}).get("regel"),
