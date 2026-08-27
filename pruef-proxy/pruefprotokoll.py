@@ -154,7 +154,12 @@ def darf_einsehen(konto):
     erlaubt = [k.strip() for k in
                (os.environ.get("KI4KI_PROTOKOLL_EINSICHT") or "").split(",")
                if k.strip()]
-    return bool(konto) and konto in erlaubt
+    if not konto or not erlaubt:
+        return False
+    # ⚠ Die Aufrufer reichen das PSEUDONYM ("n-c814...") herein, die Liste
+    #   traegt Klarnamen ("admin"). Gemessen 27.08.: /kpi, /rueckmeldungen und
+    #   /rolle wiesen den Admin ab. Deshalb gelten beide Schreibweisen.
+    return konto in erlaubt or konto in {pseudonym(k) for k in erlaubt}
 
 
 def konto_aus(kopfzeilen):

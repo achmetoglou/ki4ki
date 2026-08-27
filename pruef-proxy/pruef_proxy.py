@@ -98,6 +98,27 @@ def _systemprompt_lesen():
 
 
 _ROLLEN_STAND = {}      # slug -> (mtime_ns, size) der eingespielten prompt.md
+_ADMINS = {"wann": 0.0, "namen": set()}
+
+
+def _ist_admin(kopfzeilen):
+    """Hat dieses Konto in AnythingLLM die Admin-Rolle? (Liste alle 5 min
+    ueber den Anlagen-Schluessel; ohne Schluessel: nein.)"""
+    if not API_SCHLUESSEL:
+        return False
+    if time.time() - _ADMINS["wann"] > 300:
+        try:
+            d = _api("GET", "/api/v1/admin/users", timeout=15) or {}
+            _ADMINS["namen"] = {str(u.get("username")) for u in (d.get("users") or []) if u.get("role") == "admin"}
+        except Exception:
+            pass
+        _ADMINS["wann"] = time.time()
+    return pruefprotokoll.konto_aus(kopfzeilen) in _ADMINS["namen"]
+
+
+def _darf_rolle_setzen(kopfzeilen):
+    konto = pruefprotokoll.pseudonym(pruefprotokoll.konto_aus(kopfzeilen))
+    return pruefprotokoll.darf_einsehen(konto) or _ist_admin(kopfzeilen)
 
 
 def _rolle_lesen(slug):
@@ -543,6 +564,13 @@ def bereich_ordner_aufraeumen(slug):
         for d in dateien:
             if d == "bereich.json":
                 continue
+            if d == rolle.DATEI:
+                try:
+                    with open(os.path.join(w, d), encoding="utf-8") as fh:
+                        if not rolle.ist_eingerichtet(fh.read()):
+                            continue          # nur der Platzhalter - kein Inhalt
+                except Exception:
+                    pass
             try:
                 if os.path.getsize(os.path.join(w, d)) > 0:
                     inhalt.append(os.path.relpath(os.path.join(w, d), wurzel))
@@ -6586,7 +6614,7 @@ class Griff(BaseHTTPRequestHandler):
             self._json({"ok": False, "fehler": "Nicht angemeldet."}, code=401)
             return
         konto = pruefprotokoll.pseudonym(pruefprotokoll.konto_aus(self.headers))
-        if not pruefprotokoll.darf_einsehen(konto):
+        if not _darf_rolle_setzen(self.headers):
             print("[Rolle] /rolle abgewiesen: Konto %s ohne Einsichtsrecht (Authorization %s)" % (
                 konto, "vorhanden" if self.headers.get("Authorization") else "FEHLT"), file=sys.stderr, flush=True)
             self._json({"ok": False, "fehler": "Nur Betreiber/Admin darf die Rolle eines Bereichs setzen."}, code=403)
@@ -6630,7 +6658,7 @@ class Griff(BaseHTTPRequestHandler):
         if not slug or not bereich_sichtbar(self.path, self.headers):
             return False
         konto = pruefprotokoll.pseudonym(pruefprotokoll.konto_aus(self.headers))
-        if not pruefprotokoll.darf_einsehen(konto):
+        if not _darf_rolle_setzen(self.headers):
             if wunsch:
                 self._direkt_senden("meta", frage, "Die Rolle eines Bereichs darf nur ein Konto mit Einsichtsrecht "
                                     "(Betreiber/Admin) einrichten — sie gilt für alle, die hier fragen.")
