@@ -2768,7 +2768,7 @@ def _themenfremde_nennungen_tilgen(text):
                 if not kand:
                     continue
                 try:
-                    seiten = pdfstelle.seitentexte(kand) or []
+                    seiten = _seitentexte_pdf(kand) or []
                 except Exception:
                     seiten = []
                 if seiten:
@@ -3209,7 +3209,7 @@ def _dok_hat_aussage(name, kontext):
     if not schluessel:
         return True
     try:
-        seiten = pdfstelle.seitentexte(schluessel) or []
+        seiten = _seitentexte_pdf(schluessel) or []
     except Exception:
         return True
     if not seiten:
@@ -5451,7 +5451,7 @@ class Griff(BaseHTTPRequestHandler):
         bloecke = []
         for doku, seite in gute:
             try:
-                seiten = pdfstelle.seitentexte(_pdf_schluessel(doku)) or []
+                seiten = _seitentexte_pdf(_pdf_schluessel(doku)) or []
             except Exception:
                 seiten = []
             seitentext = seiten[seite - 1] if 0 < seite <= len(seiten) else ""
@@ -5519,7 +5519,7 @@ class Griff(BaseHTTPRequestHandler):
         if schluessel in cache:
             return cache[schluessel]
         try:
-            seiten = pdfstelle.seitentexte(schluessel) or []
+            seiten = _seitentexte_pdf(schluessel) or []
         except Exception:
             seiten = []
         # ⚠ KEINE Filterung nach Rasterbild (gemessen 26.08.: Vektorgrafiken
@@ -6408,7 +6408,7 @@ class Griff(BaseHTTPRequestHandler):
         if not schluessel or not dokument_erlaubt(schluessel, self.headers):
             return False
         try:
-            seiten = pdfstelle.seitentexte(schluessel) or []
+            seiten = _seitentexte_pdf(schluessel) or []
         except Exception:
             seiten = []
         if not seiten:
@@ -6477,7 +6477,7 @@ class Griff(BaseHTTPRequestHandler):
         if not schluessel or not dokument_erlaubt(schluessel, self.headers):
             return None
         try:
-            seiten = pdfstelle.seitentexte(schluessel) or []
+            seiten = _seitentexte_pdf(schluessel) or []
         except Exception:
             seiten = []
         if was == "seiten":
@@ -6539,7 +6539,7 @@ class Griff(BaseHTTPRequestHandler):
         if not schluessel or not dokument_erlaubt(schluessel, self.headers):
             return False
         try:
-            seiten = pdfstelle.seitentexte(schluessel) or []
+            seiten = _seitentexte_pdf(schluessel) or []
         except Exception:
             seiten = []
         try:
@@ -6600,7 +6600,7 @@ class Griff(BaseHTTPRequestHandler):
         if not schluessel or not dokument_erlaubt(schluessel, self.headers):
             return False
         try:
-            seiten = pdfstelle.seitentexte(schluessel) or []
+            seiten = _seitentexte_pdf(schluessel) or []
         except Exception:
             seiten = []
         if not seiten:
@@ -8218,7 +8218,7 @@ def _abbildungs_seiten(anfrage, kandidaten, namen):
         if not schluessel:
             continue
         try:
-            seiten = pdfstelle.seitentexte(schluessel) or []
+            seiten = _seitentexte_pdf(schluessel) or []
         except Exception:
             continue
         if gewuenscht:
