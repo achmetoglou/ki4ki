@@ -85,53 +85,6 @@
     },
     {
       "parameters": {
-        "jsCode": "const items = $input.all();\n\nreturn items.map((item, index) => {\n  const quelle = $('Code').itemMatching(index).json;\n\n  return {\n    json: {\n      ...item.json,\n      processed_filename: quelle.filename,\n      // Der volle Pfad, wie er wirklich ist. Frueher stand hier\n      // \"/files/inbox/\" + Name fest - fuer alles in einem Unterordner war\n      // das schlicht der falsche Pfad, und das Loeschen lief ins Leere.\n      original_path: quelle.source_path,\n      archiv_path: quelle.archiv_path,\n      bereich: quelle.bereich,\n      ablage: quelle.ablage\n    },\n    binary: $('Daten vom Server laden').itemMatching(index).binary\n  };\n});\n"
-      },
-      "type": "n8n-nodes-base.code",
-      "typeVersion": 2,
-      "position": [
-        576,
-        -16
-      ],
-      "id": "bd614c34-6ec2-4b52-9e25-88d55e5bd337",
-      "name": "Code in JavaScript",
-      "onError": "continueRegularOutput"
-    },
-    {
-      "parameters": {
-        "operation": "write",
-        "fileName": "={{ $json.processed_path }}",
-        "options": {}
-      },
-      "type": "n8n-nodes-base.readWriteFile",
-      "typeVersion": 1.1,
-      "position": [
-        800,
-        -16
-      ],
-      "id": "0a7a70b2-eaff-4824-a37c-4ca607aee8c5",
-      "name": "Read/Write Files from Disk2",
-      "disabled": true,
-      "onError": "continueRegularOutput"
-    },
-    {
-      "parameters": {
-        "executeOnce": false,
-        "command": "=mkdir -p \"$(dirname '{{ $json.archiv_path }}')\" && mv -n \"{{ $json.original_path }}\" \"{{ $json.archiv_path }}\""
-      },
-      "type": "n8n-nodes-base.executeCommand",
-      "typeVersion": 1,
-      "position": [
-        1024,
-        -16
-      ],
-      "id": "5394abc5-fbe9-49f3-a6d8-ae20020067ca",
-      "name": "Execute Command",
-      "disabled": true,
-      "onError": "continueRegularOutput"
-    },
-    {
-      "parameters": {
         "method": "POST",
         "url": "=http://anythingllm:3001/api/v1/document/upload/{{$('Code').first().json.ablage}}",
         "sendHeaders": true,
@@ -354,25 +307,6 @@
       ],
       "id": "102d1e7a-5ced-47d1-8197-81c37a695426",
       "name": "ErrorProtokoll",
-      "onError": "continueRegularOutput"
-    },
-    {
-      "parameters": {
-        "operation": "write",
-        "fileName": "/files/json/fehler.log",
-        "options": {
-          "append": true
-        }
-      },
-      "type": "n8n-nodes-base.readWriteFile",
-      "typeVersion": 1.1,
-      "position": [
-        544,
-        1008
-      ],
-      "id": "cd019145-d3fe-4c5a-910b-ac3291a4ef98",
-      "name": "Read/Write Files from Disk",
-      "disabled": true,
       "onError": "continueRegularOutput"
     },
     {
@@ -671,35 +605,7 @@
     },
     "Read/Write Files from Disk1": {
       "main": [
-        [
-          {
-            "node": "Code in JavaScript",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "Code in JavaScript": {
-      "main": [
-        [
-          {
-            "node": "Read/Write Files from Disk2",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "Read/Write Files from Disk2": {
-      "main": [
-        [
-          {
-            "node": "Execute Command",
-            "type": "main",
-            "index": 0
-          }
-        ]
+        []
       ]
     },
     "When clicking ‘Execute workflow’": {
