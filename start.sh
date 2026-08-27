@@ -159,7 +159,7 @@ sagen "Belegpruefung und Markdown-Dienst bauen"
 # lokal (echte Null-Installation), versucht 'compose up' es aus einer
 # Registry zu ziehen und zeigt ein beunruhigendes "pull access denied" -
 # das Image gibt es nirgends zu ziehen, es entsteht nur hier.
-docker compose $DATEIEN build pruef-proxy mkmd-dienst
+docker compose $DATEIEN build pruef-proxy mkmd-dienst office-dienst
 
 sagen "Anlage starten"
 docker compose $DATEIEN up -d
