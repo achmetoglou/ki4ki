@@ -38,7 +38,10 @@ API = (os.environ.get("KI4KI_SELBSTCHECK_API") or "http://127.0.0.1:3001/api/v1"
 SCHLUESSEL = (os.environ.get("KI4KI_API_KEY") or "").strip()
 BESTAND_ORDNER = os.environ.get("KI4KI_BESTAND") or "/daten/bestand/documents"
 ZIEL = os.path.join(os.path.dirname(os.environ.get("KI4KI_PROTOKOLL") or "/daten/pruefung/protokoll"), "selbstcheck")
-BELEG = re.compile(r"\(\s*([A-Za-z0-9ÄÖÜäöüß][^(),\n]{1,90}?)\s*,\s*S\.?\s*(\d{1,4})\s*\)")
+BELEG = re.compile(r"\(\s*([A-Za-z0-9ÄÖÜäöüß][^(),\n]{1,90}?)\s*,\s*S\.?\s*(\d{1,4})\s*(?:—\s*nicht belegt\s*)?\)")
+# Vom Proxy schon geprueft und verlinkt: "[Kennung, Seite 81](/stelle?...)" bzw. "[Kennung, S. 81](/stelle?...)"
+BELEG_LINK = re.compile(r"\[([^\]\n]{1,90}?),\s*(?:S\.|Seite)\s*(\d{1,4})\]\(/stelle\?")
+NICHT_BELEGT = re.compile(r"\(\s*([^(),\n]{1,90}?),\s*S\.?\s*(\d{1,4})\s*—\s*nicht belegt\s*\)")
 FUELL = {"werden", "wurden", "zwischen", "sowie", "dieser", "dieses", "diesem", "welche", "welcher", "koennen",
          "können", "sollte", "sollten", "jedoch", "dadurch", "hierbei", "bereits", "weitere", "weiteren", "innerhalb",
          "während", "waehrend", "aufgrund", "anhand", "hinsichtlich", "beispielsweise", "insbesondere", "verschiedene",
@@ -87,8 +90,12 @@ def fachwoerter(texte, n):
     allgemein = {"forschung", "lehrgang", "verbesserung", "digitale", "beschreibung", "bedeutung", "grundlagen",
                  "anwendung", "anwendungen", "einleitung", "uebersicht", "übersicht", "zusammenfassung", "ergebnisse",
                  "erfahrungen", "hinweise", "allgemeines", "einführung", "einfuehrung", "beispiele", "vorschriften"}
+    einheiten = {"kilogramm", "millimeter", "zentimeter", "sekunden", "minuten", "stunden", "prozent", "temperaturen",
+                 "mechanische", "thermische", "chemische", "physikalische", "elektrische", "technische", "allgemeine",
+                 "folgende", "weitere", "verschiedene", "entsprechende", "jeweilige", "sicherheit", "qualität"}
     kand = [w for w, c in zaehl.items() if (je_dok.get(w, 0) >= 2 or c >= 4) and w.lower() not in FUELL
-            and w.lower() not in allgemein and c >= 3]
+            and w.lower() not in allgemein and w.lower() not in einheiten and c >= 3
+            and not re.search(r"(?:isch|ische|ischen|liche|lichen|ige|igen|ende|enden)$", w)]
     random.shuffle(kand)
     return kand[:n]
 
@@ -131,6 +138,13 @@ def seiten_von(name):
 
 def belege_pruefen(text):
     gedeckt, offen = [], []
+    # 1) Was der Proxy schon geprueft hat, zaehlt ohne zweite Pruefung
+    for m in BELEG_LINK.finditer(text or ""):
+        gedeckt.append("%s, S. %s" % (m.group(1).strip(), m.group(2)))
+    for m in NICHT_BELEGT.finditer(text or ""):
+        offen.append("%s, S. %s (Proxy: nicht belegt)" % (m.group(1).strip(), m.group(2)))
+    text = NICHT_BELEGT.sub("", text or "")
+    # 2) Klammerbelege ohne Link: selbst gegen die Seite pruefen
     for m in BELEG.finditer(text or ""):
         kennung, seite = re.sub(r"\.(?:md|pdf)$", "", m.group(1).strip(), flags=re.I), int(m.group(2))
         satz = text[max(0, m.start() - 260):m.start()]
