@@ -6673,15 +6673,9 @@ class Griff(BaseHTTPRequestHandler):
         Modus einspielen. Rueckgabe (text, eingespielt, geglaettet)."""
         name = _ordnername(slug)
         text = rolle.vorlage(fach, nutzer, besonderes, slug=name)
-        geglaettet = False
-        if glaetten and ROLLE_GLAETTEN:
-            try:
-                antwort = self._modell_fragen(rolle.glaett_auftrag(text), zeitgrenze=90)
-                if rolle.geglaettet_brauchbar(antwort, fach, nutzer):
-                    text = rolle.vorlage_mit_glaettung(fach, nutzer, besonderes, antwort, slug=name)
-                    geglaettet = True
-            except Exception as e:
-                print("[Rolle] Glaetten nicht moeglich (%s) - Vorlage bleibt" % str(e)[:80], file=sys.stderr, flush=True)
+        # 1) SOFORT: Vorlage + Modus eintragen - wer gleich die Einstellungen
+        #    oeffnet, sieht schon Rolle und Modus (gemessen 27.08.: Emrach sah
+        #    den alten Stand, weil das Glaetten noch lief).
         _rolle_schreiben(slug, text)
         eingespielt = _rolle_einspielen(slug, erzwingen=True)
         if modus in rolle.MODI and API_SCHLUESSEL:
@@ -6689,6 +6683,18 @@ class Griff(BaseHTTPRequestHandler):
                 _api("POST", "/api/v1/workspace/%s/update" % slug, {"chatMode": modus}, timeout=30)
             except Exception as e:
                 print("[Rolle] Modus '%s' fuer '%s' nicht gesetzt: %s" % (modus, slug, str(e)[:80]), file=sys.stderr, flush=True)
+        # 2) DANN: das Modell den Regelteil formulieren lassen und nachziehen
+        geglaettet = False
+        if glaetten and ROLLE_GLAETTEN:
+            try:
+                antwort = self._modell_fragen(rolle.glaett_auftrag(text), zeitgrenze=90)
+                if rolle.geglaettet_brauchbar(antwort, fach, nutzer):
+                    text = rolle.vorlage_mit_glaettung(fach, nutzer, besonderes, antwort, slug=name)
+                    _rolle_schreiben(slug, text)
+                    eingespielt = _rolle_einspielen(slug, erzwingen=True) or eingespielt
+                    geglaettet = True
+            except Exception as e:
+                print("[Rolle] Glaetten nicht moeglich (%s) - Vorlage bleibt" % str(e)[:80], file=sys.stderr, flush=True)
         return text, eingespielt, geglaettet
 
     def _rolle_route(self):
