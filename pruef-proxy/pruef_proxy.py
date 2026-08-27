@@ -3716,8 +3716,7 @@ class Griff(BaseHTTPRequestHandler):
         #   Kennung/Titel/Verfasser/Jahr und Links (gemessen 26.08.: Stufe 2
         #   antwortete aus der Dokumentliste im Kopf - nackte Aufzaehlung).
         try:
-            if assistent._ist_bestandsfrage(frage) and not assistent.ist_beschwerde(frage) \
-                    and self._bestandsauskunft(frage):
+            if self._bestand_vorab(frage):
                 return
         except Exception:
             traceback.print_exc(file=sys.stderr)
@@ -4753,6 +4752,13 @@ class Griff(BaseHTTPRequestHandler):
             frage_roh = (json.loads(koerper or b"{}") or {}).get("message") or ""
         except Exception:
             frage_roh = ""
+
+        # ⭐ Erst die Wege, die auch der Browser nimmt (Katalog, Bestand, Stufe 2).
+        try:
+            if frage_roh and self._json_ueber_gespraech(frage_roh):
+                return
+        except Exception:
+            traceback.print_exc(file=sys.stderr)
 
         # Dieselbe Einordnung wie im Browser-Weg - damit n8n und das
         # Partner-Paket nicht auf halbem Stand bleiben.
@@ -6247,6 +6253,56 @@ class Griff(BaseHTTPRequestHandler):
         # bestand, rueckmeldung, anlage, gesamtbestand: die bestehenden Wege nach `art`
         return False
 
+    def _bestand_vorab(self, frage):
+        return bool(assistent._ist_bestandsfrage(frage) and not assistent.ist_beschwerde(frage)
+                    and self._bestandsauskunft(frage))
+
+    def _json_ueber_gespraech(self, frage):
+        """⭐ Der JSON-Weg (/api/v1/workspace/<slug>/chat - n8n, Partner-
+        Anbindungen, Selbst-Check) bekommt DIESELBE Antwort wie der Browser:
+        Pruefungskatalog, Bestandstabelle, Stufe 2. Die Antwortwege schreiben
+        in den Datenstrom - hier wird er gesammelt und als ein JSON zurueck-
+        gegeben. Gemessen 27.08.: Der Selbst-Check lief ueber die alte
+        Logik und mass etwas anderes als das, was ein Mensch im Chat sieht.
+        True = beantwortet."""
+        if not bereich_sichtbar(self.path, self.headers):
+            self._json({"error": "Workspace does not exist."}, code=404)
+            return True
+        self._sammeln = []
+        try:
+            getroffen = False
+            for hook in (self._pruefung_antwort, self._bestand_vorab,
+                         (self._gespraech_antwort if gespraechsmodus.AN else None)):
+                if hook is None:
+                    continue
+                try:
+                    if hook(frage):
+                        getroffen = True
+                        break
+                except Exception:
+                    traceback.print_exc(file=sys.stderr)
+            if not getroffen:
+                return False
+            stuecke = self._sammeln
+        finally:
+            self._sammeln = None
+        text = "".join(str(s.get("textResponse") or "") for s in stuecke
+                       if isinstance(s, dict) and s.get("type") in ("textResponseChunk", "textResponse"))
+        quellen = []
+        for s in stuecke:
+            for q in (s.get("sources") or []) if isinstance(s, dict) else []:
+                if q not in quellen:
+                    quellen.append(q)
+        daten = json.dumps({"id": "gespraech", "type": "textResponse", "textResponse": text,
+                            "sources": quellen, "close": True, "error": None}, ensure_ascii=False).encode()
+        self.send_response(200)
+        self.send_header("Content-Type", "application/json; charset=utf-8")
+        self.send_header("Content-Length", str(len(daten)))
+        self.send_header("Connection", "close")
+        self.end_headers()
+        self.wfile.write(daten)
+        return True
+
     def _direkt_senden(self, art, frage, text, merk_art=None, dok=None):
         """Eine fertige Antwort senden, festhalten, merken. Wirft nie."""
         gespraech = GESPRAECHE.kennung(self.path, self.headers)
@@ -6720,6 +6776,8 @@ class Griff(BaseHTTPRequestHandler):
               file=sys.stderr, flush=True)
         return True
 
+    _sammeln = None      # Liste -> Sammelmodus (JSON-Weg): Stuecke werden gepuffert
+
     def _strom_beginnen(self):
         """Antwort in Stuecken senden (chunked).
 
@@ -6728,6 +6786,8 @@ class Griff(BaseHTTPRequestHandler):
         etwas ankommen: Der Nutzer soll sehen, WORAN gerade gearbeitet
         wird, statt eine Minute lang drei Punkte anzustarren.
         """
+        if self._sammeln is not None:
+            return
         self.send_response(200)
         self.send_header("Content-Type", "text/event-stream; charset=utf-8")
         self.send_header("Cache-Control", "no-cache")
@@ -6736,11 +6796,16 @@ class Griff(BaseHTTPRequestHandler):
         self.end_headers()
 
     def _strom_stueck(self, nachricht):
+        if self._sammeln is not None:
+            self._sammeln.append(nachricht)
+            return
         roh = b"data: " + json.dumps(nachricht, ensure_ascii=False).encode() + b"\n\n"
         self.wfile.write(b"%x\r\n" % len(roh) + roh + b"\r\n")
         self.wfile.flush()
 
     def _strom_schliessen(self):
+        if self._sammeln is not None:
+            return
         self.wfile.write(b"0\r\n\r\n")
         self.wfile.flush()
 

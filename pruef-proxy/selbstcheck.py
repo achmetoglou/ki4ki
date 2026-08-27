@@ -89,10 +89,23 @@ def fachwoerter(texte, n):
     return kand[:n]
 
 
+def titelwoerter(texte):
+    """Woerter aus den Dokumentnamen/-titeln - dazu MUSS die Bestandsliste
+    etwas finden (sie sucht in Titeln, nicht im Text)."""
+    aus = []
+    for titel, _ in texte:
+        for w in re.findall(r"[A-Za-zÄÖÜäöüß]{6,}", titel):
+            if w.lower() not in FUELL and w not in aus:
+                aus.append(w)
+    random.shuffle(aus)
+    return aus
+
+
 def fragen_bauen(texte, anzahl):
     sw = fachwoerter(texte, 40)
+    tw = titelwoerter(texte)
     fragen = [("Welche Dokumente habt ihr?", "bestand")]
-    for w in sw[:2]:
+    for w in (tw[:1] + sw[:1]):
         fragen.append(("Was habt ihr zum Thema %s?" % w, "bestand"))
     for w in sw[2:2 + max(2, anzahl - 4)]:
         fragen.append(("Was ist %s?" % w, "inhalt"))
@@ -139,11 +152,13 @@ def pruefen(slug, frage, erwartet):
         return {"frage": frage, "art": erwartet, "urteil": "FEHLER", "detail": str(e)[:80], "gedeckt": [], "offen": [], "s": round(time.time() - t0, 1)}
     text = res.get("textResponse") or ""
     dauer = round(time.time() - t0, 1)
+    kurz = re.sub(r"\s+", " ", text)[:700]
     if erwartet == "bestand":
         tabelle = "| Kennung |" in text or re.search(r"\|\s*Kennung", text) is not None
-        return {"frage": frage, "art": erwartet, "urteil": "PASS" if tabelle else "WARN",
-                "detail": "Index-Tabelle geliefert" if tabelle else "keine Tabelle: " + text[:80].replace("\n", " "),
-                "gedeckt": [], "offen": [], "s": dauer}
+        ehrlich = re.search(r"finde ich .{0,40}keinen Dokumenttitel|keine .{0,30}zum Thema", text, re.I) is not None
+        return {"frage": frage, "art": erwartet, "urteil": "PASS" if (tabelle or ehrlich) else "WARN",
+                "detail": "Index-Tabelle geliefert" if tabelle else ("ehrlich: kein Titel zum Thema" if ehrlich else "keine Tabelle"),
+                "gedeckt": [], "offen": [], "s": dauer, "antwort": kurz}
     gedeckt, offen = belege_pruefen(text)
     if offen and not gedeckt:
         urteil, detail = "WARN", "Beleg(e) ohne Deckung"
@@ -155,7 +170,7 @@ def pruefen(slug, frage, erwartet):
         urteil, detail = "PASS", "ehrlich: nichts Belegtes gefunden"
     else:
         urteil, detail = "INFO", "Antwort ohne pruefbaren Beleg"
-    return {"frage": frage, "art": erwartet, "urteil": urteil, "detail": detail, "gedeckt": gedeckt, "offen": offen, "s": dauer}
+    return {"frage": frage, "art": erwartet, "urteil": urteil, "detail": detail, "gedeckt": gedeckt, "offen": offen, "s": dauer, "antwort": kurz}
 
 
 # ---- 4) Bericht ------------------------------------------------------------
@@ -173,9 +188,11 @@ def bericht(alle, wann):
         det = html.escape(o.get("detail") or "")
         if o.get("offen"):
             det += " — ohne Deckung: " + html.escape(", ".join(o["offen"]))
-        rows.append('<tr><td style="font-size:16pt;color:%s">●</td><td>%s</td><td><b>%s</b><br><span style="color:#666;font-size:9pt">%s · %s s</span></td>'
+        rows.append('<tr><td style="font-size:16pt;color:%s">●</td><td>%s</td><td><b>%s</b><br><span style="color:#666;font-size:9pt">%s · %s s</span>'
+                    '<details style="font-size:9pt;color:#444;margin-top:4px"><summary>Antwort</summary>%s</details></td>'
                     '<td style="color:%s"><b>%s</b><br><span style="font-size:9pt;color:#444">%s</span></td><td style="font-size:9pt;color:#333">%s</td></tr>'
                     % (FARBE.get(u, "#333"), html.escape(o.get("bereich", "")), html.escape(o["frage"]), html.escape(o["art"]), o.get("s", ""),
+                       html.escape(o.get("antwort") or ""),
                        FARBE.get(u, "#333"), u, det, html.escape(", ".join(o.get("gedeckt") or [])) or "—"))
     ampel = "#1e7d34" if not n_warn and not n_fehler else "#b3261e"
     return """<!doctype html><html><head><meta charset="utf-8"><title>KI4KI Selbst-Check</title></head>
@@ -222,6 +239,8 @@ def main():
             alle.append(r)
             print("  %s %-50s [%s] %s (%s s)" % ({"PASS": "OK ", "WARN": "!! ", "FEHLER": "XX ", "INFO": ".. "}.get(r["urteil"], "?? "),
                                                 frage[:50], r["art"], r["detail"], r.get("s")))
+            if r["urteil"] in ("WARN", "FEHLER") and r.get("antwort"):
+                print("      Antwort: " + r["antwort"][:220])
     wann = datetime.datetime.now().strftime("%d.%m.%Y, %H:%M")
     os.makedirs(ZIEL, exist_ok=True)
     with open(os.path.join(ZIEL, "ergebnis.json"), "w", encoding="utf-8") as fh:
