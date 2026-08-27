@@ -53,6 +53,9 @@ if docker exec ki4ki-n8n n8n import:workflow --separate --input=/tmp/wf >/dev/nu
     docker exec ki4ki-n8n n8n update:workflow --id="$_wid" --active=true >/dev/null 2>&1 || _ok=0
   done
   docker restart ki4ki-n8n >/dev/null 2>&1
+  # Der Neustart bricht einen laufenden Durchgang ab - seine Sperre waere
+  # sonst bis zu 120 Minuten verwaist und die Aufnahme so lange dicht.
+  docker exec ki4ki-n8n rmdir /files/json/.lauf.sperre >/dev/null 2>&1 || true
   [ "$_ok" = 1 ] && echo "  Ablaufplaene eingespielt und aktiviert (n8n neu gestartet)" \
     || echo "  ⚠ Nicht alle Ablaufplaene aktiviert - bitte in n8n (Port 5678) pruefen"
 else

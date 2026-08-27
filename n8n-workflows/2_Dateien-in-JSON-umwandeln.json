@@ -62,7 +62,11 @@
             },
             {
               "name": "ocr_lang",
-              "value": "de,en"
+              "value": "de"
+            },
+            {
+              "name": "ocr_lang",
+              "value": "en"
             }
           ]
         },
@@ -444,7 +448,11 @@
             },
             {
               "name": "ocr_lang",
-              "value": "de,en"
+              "value": "de"
+            },
+            {
+              "name": "ocr_lang",
+              "value": "en"
             }
           ]
         },
