@@ -125,7 +125,7 @@ WERKZEUGE = [
 BILD_MARKE = re.compile(r"\[\[BILD:([^:\]]+):(\d{1,4}):([^\]]*)\]\]")
 
 
-def system_text(faden_dok=None, dokumente=None, kontakt=""):
+def system_text(faden_dok=None, dokumente=None, kontakt="", rolle=""):
     teile = [
         "Du bist die Wissensdatenbank dieses Bereichs und fuehrst ein Gespraech ueber die "
         "hinterlegten Dokumente - was immer dort liegt: Berichte, Normen, Arbeitsanweisungen, "
@@ -173,6 +173,8 @@ def system_text(faden_dok=None, dokumente=None, kontakt=""):
         "Frage, gilt allein die Loesung aus dem Katalogeintrag (RICHTIG/FALSCH im Werkzeugtext); fehlt sie, sag das.",
         "GESPRAECHSZUSTAND:\nFaden-Dokument: %s" % (faden_dok or "keins (frag nach oder nutze dokument_finden/bestand)"),
     ]
+    if rolle:
+        teile.append("ROLLE DIESES BEREICHS (vom Betreiber festgelegt - gilt zusaetzlich zu den Grundsaetzen):\n" + rolle.strip())
     if dokumente:
         teile.append("DOKUMENTE IM BEREICH (%d):\n%s" % (len(dokumente), "\n".join("- " + d for d in dokumente[:40])))
     if kontakt:
@@ -316,13 +318,13 @@ def waechter(text, aufrufe, faden_dok=None, frage="", tool_texte=None, verlauf_t
 
 
 def fuehren(frage, verlauf, faden_dok, dokumente, werkzeug, rufen=None, kontakt="",
-            melden=None, max_runden=None, pruefer=None, vorwissen=None, denken=None, kennungen=None):
+            melden=None, max_runden=None, pruefer=None, vorwissen=None, denken=None, kennungen=None, rolle=""):
     """Ein Gespraechszug. werkzeug(name, args) -> str. rufen(messages) -> message.
     Rueckgabe dict: text, aufrufe [(name, args, ms)], dokumente (beruehrte
     Kennungen), runden, ms, fehler."""
     begonnen = time.time()
     rufen = rufen or (lambda m: _modell_aufruf(m, denken=denken))
-    msgs = nachrichten(system_text(faden_dok, dokumente, kontakt), verlauf, frage)
+    msgs = nachrichten(system_text(faden_dok, dokumente, kontakt, rolle), verlauf, frage)
     aufrufe, beruehrt, texte = [], [], []
     # ⭐ VORWISSEN: Belege, die der Proxy VOR dem Modell deterministisch geholt
     #   hat (Pruefungsfragen je Option, Stoerfall ohne Dokument, Frage ohne

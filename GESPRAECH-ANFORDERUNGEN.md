@@ -237,3 +237,12 @@ Nein, das fehlte im Paket. Jetzt `office-dienst` (LibreOffice Writer+Impress, nu
 WF2 wandelt Word/PowerPoint vor Docling nach PDF und legt die PDF neben das Original ins Archiv
 (`X-Ziel`, Rechte 664 · 1000:GID); der Original-Dateiname bleibt der Schlüssel (Paarung in WF1).
 Excel/CSV wie auf der T4 **nicht** — Tabellen bleiben Tabellen. Index-Spalte „Art" zeigt „Word → PDF · n S.".
+
+## Stand 27.08.2026 — Rolle je Bereich (Prompt-Generator)
+Kern (`systemprompt.txt`) + Rolle (`dokumente/<bereich>/prompt.md`). Rolle entsteht im Chat aus drei
+Fragen („Rolle einrichten", nur Konten mit Einsichtsrecht) oder per `arbeitsbereich_anlegen.sh`; Regeln
+werden ohne Modell aus den Antworten abgeleitet (Prüfung/Norm/Sicherheit/Störfall/Wissenschaft/Sprache).
+Der Proxy spielt Änderungen an der Datei alle 5 Minuten in AnythingLLM ein (`_rolle_einspielen`) und gibt
+sie dem Gesprächsmodus als Abschnitt „ROLLE DIESES BEREICHS" mit. `prompt_aktualisieren.sh` rollt Kern +
+Rolle je Bereich aus. Begründung: T4 hatte je Bereich 4 500–6 200 Zeichen Prompt, nur in der Datenbank,
+nur von Hand — nicht partnertauglich.

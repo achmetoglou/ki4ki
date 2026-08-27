@@ -48,6 +48,7 @@ import gespraech as gespraechsmodus   # nicht 'gespraech': so heisst die Faden-K
 import metadaten
 import stoerfall
 import pruefungskatalog
+import rolle
 import mehrstufig
 import pdfstelle
 import pruefprotokoll
@@ -95,12 +96,70 @@ def _systemprompt_lesen():
     return _SYSTEMPROMPT["text"]
 
 
+_ROLLEN_STAND = {}      # slug -> (mtime_ns, size) der eingespielten prompt.md
+
+
+def _rolle_lesen(slug):
+    """Text von dokumente/<slug>/prompt.md - oder ''."""
+    if not slug:
+        return ""
+    try:
+        with open(os.path.join(EINGANG_ORDNER, _ordnername(slug), rolle.DATEI), encoding="utf-8") as fh:
+            return fh.read()
+    except Exception:
+        return ""
+
+
+def _rolle_schreiben(slug, text):
+    wurzel = os.path.join(EINGANG_ORDNER, _ordnername(slug))
+    os.makedirs(wurzel, exist_ok=True)
+    pfad = os.path.join(wurzel, rolle.DATEI)
+    with open(pfad + ".neu", "w", encoding="utf-8") as fh:
+        fh.write(text)
+    os.replace(pfad + ".neu", pfad)
+    try:
+        os.chown(pfad, 1000, int(os.environ.get("KI4KI_GID") or 1000))
+        os.chmod(pfad, 0o664)
+    except Exception:
+        pass
+    return pfad
+
+
+def _prompt_fuer_bereich(slug):
+    """Kern (systemprompt.txt) + Rolle (prompt.md) - der eine Prompt eines Bereichs."""
+    return rolle.zusammensetzen(_systemprompt_lesen() or "", _rolle_lesen(slug))
+
+
+def _rolle_einspielen(slug, erzwingen=False):
+    """prompt.md geaendert? -> Prompt in AnythingLLM nachziehen. True = eingespielt."""
+    if not (API_SCHLUESSEL and slug):
+        return False
+    pfad = os.path.join(EINGANG_ORDNER, _ordnername(slug), rolle.DATEI)
+    try:
+        st = os.stat(pfad)
+        stempel = (st.st_mtime_ns, st.st_size)
+    except OSError:
+        stempel = None
+    if not erzwingen and _ROLLEN_STAND.get(slug) == stempel:
+        return False
+    try:
+        _api("POST", "/api/v1/workspace/%s/update" % slug, {"openAiPrompt": _prompt_fuer_bereich(slug)}, timeout=30)
+        _ROLLEN_STAND[slug] = stempel
+        print("[Rolle] '%s': Prompt eingespielt (%s)" % (
+            slug, "Rolle eingerichtet" if rolle.ist_eingerichtet(_rolle_lesen(slug)) else "nur Kern"),
+            file=sys.stderr, flush=True)
+        return True
+    except Exception as e:
+        print("[Rolle] '%s' nicht eingespielt: %s" % (slug, str(e)[:120]), file=sys.stderr, flush=True)
+        return False
+
+
 def bereich_setzen(slug):
     """Schreibt die gepruef-ten Werte in einen frisch angelegten Bereich."""
     if not (BEREICH_HEILEN and API_SCHLUESSEL and slug):
         return False
     werte = dict(GEPRUEFT_WERTE)
-    sp = _systemprompt_lesen()
+    sp = _prompt_fuer_bereich(slug)
     if sp:
         werte["openAiPrompt"] = sp
     daten = json.dumps(werte).encode()
@@ -444,6 +503,16 @@ def bereich_ordner_anlegen(slug):
                 os.chmod(konf, 0o664)
             except Exception:
                 pass
+        # Rolle des Bereichs: Datei mit Anleitung, solange nicht eingerichtet
+        pr = os.path.join(wurzel, rolle.DATEI)
+        if not os.path.exists(pr):
+            with open(pr, "w", encoding="utf-8") as fh:
+                fh.write(rolle.platzhalter(_ordnername(slug)))
+            try:
+                os.chown(pr, 1000, gid)
+                os.chmod(pr, 0o664)
+            except Exception:
+                pass
         if neu:
             print("[Bereich] Ordner angelegt: dokumente/%s" % _ordnername(slug), file=sys.stderr, flush=True)
         return True
@@ -511,6 +580,10 @@ def _bereiche_abgleichen():
             if w.get("slug"):
                 bereich_ordner_anlegen(w["slug"])
                 slugs.add(_ordnername(w["slug"]))
+                try:
+                    _rolle_einspielen(w["slug"])      # prompt.md geaendert -> Prompt nachziehen
+                except Exception:
+                    traceback.print_exc(file=sys.stderr)
         # Verwaiste Ordner (Bereich geloescht oder neu angelegt): leer -> weg,
         # sonst nur melden - darin koennen Archiv-PDFs liegen.
         verwaist = []
@@ -3734,6 +3807,12 @@ class Griff(BaseHTTPRequestHandler):
                 return
             except Exception:
                 traceback.print_exc(file=sys.stderr)
+        # ⭐ ROLLE EINRICHTEN (27.08.): drei Fragen im Chat -> dokumente/<bereich>/prompt.md
+        try:
+            if self._rolle_antwort(frage):
+                return
+        except Exception:
+            traceback.print_exc(file=sys.stderr)
         # ⭐ PRUEFUNGSKATALOG (26.08.): exakte Fragen aus der Datei, Antwort gegen
         #   den Katalog - deterministisch, ohne Modell. Emrach: "er sollte doch
         #   exakte Fragen aus der Datei mir nennen ... pruefst du anhand des
@@ -5838,9 +5917,12 @@ class Griff(BaseHTTPRequestHandler):
                     vorwissen.append(("bestand_durchsuchen", {"begriffe": frage}, self._werkzeug("bestand_durchsuchen", {"begriffe": frage}, zustand)))
         except Exception:
             traceback.print_exc(file=sys.stderr)
+        _m = re.match(r"^/api/(?:v1/)?workspace/([^/]+)", self.path or "")
+        _slug = _m.group(1) if _m else None
         e = gespraechsmodus.fuehren(
             _frage_modell, GESPRAECHE.verlauf_kurz(gespraech_k), assistent._titel_saubern(faden_dok) if faden_dok else None,
             zeilen, lambda n, a: self._werkzeug(n, a, zustand), kontakt=assistent.kontakt_zeile(),
+            rolle=rolle.fuer_gespraech(_rolle_lesen(_slug)),
             melden=melden, vorwissen=vorwissen,
             denken=True if (len(assistent.optionen_finden(frage)) >= 2 or assistent.ist_negativfrage(frage)) else None,
             kennungen=[assistent._titel_saubern(n) for n in namen])
@@ -6307,6 +6389,56 @@ class Griff(BaseHTTPRequestHandler):
         # bestand, rueckmeldung, anlage, gesamtbestand: die bestehenden Wege nach `art`
         return False
 
+    def _rolle_antwort(self, frage):
+        """Einrichtungsdialog fuer die Rolle des Bereichs - nur fuer Konten mit
+        Einsichtsrecht (dieselbe Regel wie /kpi), weil die Rolle fuer ALLE im
+        Bereich gilt. True = erledigt."""
+        gespraech_k = GESPRAECHE.kennung(self.path, self.headers)
+        offen = GESPRAECHE.notiz(gespraech_k, "rolle")
+        wunsch = rolle.ist_wunsch(frage)
+        if not wunsch and not offen:
+            return False
+        m = re.match(r"^/api/(?:v1/)?workspace/([^/]+)", self.path or "")
+        slug = m.group(1) if m else None
+        if not slug or not bereich_sichtbar(self.path, self.headers):
+            return False
+        konto = pruefprotokoll.pseudonym(pruefprotokoll.konto_aus(self.headers))
+        if not pruefprotokoll.darf_einsehen(konto):
+            if wunsch:
+                self._direkt_senden("meta", frage, "Die Rolle eines Bereichs darf nur ein Konto mit Einsichtsrecht "
+                                    "(Betreiber/Admin) einrichten — sie gilt für alle, die hier fragen.")
+                return True
+            return False
+        if wunsch and not offen:
+            zustand, text, _ = rolle.schritt(None, "")
+            vorhanden = _rolle_lesen(slug)
+            if rolle.ist_eingerichtet(vorhanden):
+                text = ("Für diesen Bereich ist schon eine Rolle hinterlegt (`dokumente/%s/prompt.md`). "
+                        "Ich frage die drei Punkte neu ab und ersetze sie.\n\n" % _ordnername(slug)) + text
+            GESPRAECHE.notiz_setzen(gespraech_k, "rolle", zustand)
+            self._direkt_senden("rolle", frage, text)
+            return True
+        zustand, text, fertig = rolle.schritt(offen, frage)
+        if fertig is None:
+            GESPRAECHE.notiz_setzen(gespraech_k, "rolle", zustand)
+            self._direkt_senden("rolle", frage, text)
+            return True
+        GESPRAECHE.notiz_setzen(gespraech_k, "rolle", None)
+        neu = rolle.vorlage(fertig.get("fach"), fertig.get("nutzer"), fertig.get("besonderes"), slug=_ordnername(slug))
+        try:
+            _rolle_schreiben(slug, neu)
+        except Exception as e:
+            self._direkt_senden("rolle", frage, "Die Rolle ließ sich nicht speichern (%s)." % str(e)[:100])
+            return True
+        eingespielt = _rolle_einspielen(slug, erzwingen=True)
+        print("[Rolle] '%s' eingerichtet von %s" % (slug, konto), file=sys.stderr, flush=True)
+        text = ("**Rolle gespeichert** — `dokumente/%s/prompt.md`%s. Sie gilt ab jetzt in diesem Bereich, "
+                "in der Oberfläche und im Gesprächsmodus. Zum Anpassen die Datei bearbeiten oder erneut "
+                "„Rolle einrichten“ sagen.\n\n---\n\n%s" % (
+                    _ordnername(slug), "" if eingespielt else " (Einspielen in die Oberfläche folgt binnen 5 Minuten)", neu))
+        self._direkt_senden("rolle", frage, text)
+        return True
+
     def _bestand_vorab(self, frage):
         return bool(assistent._ist_bestandsfrage(frage) and not assistent.ist_beschwerde(frage)
                     and self._bestandsauskunft(frage))
@@ -6325,7 +6457,7 @@ class Griff(BaseHTTPRequestHandler):
         self._sammeln = []
         try:
             getroffen = False
-            for hook in (self._pruefung_antwort, self._bestand_vorab,
+            for hook in (self._rolle_antwort, self._pruefung_antwort, self._bestand_vorab,
                          (self._gespraech_antwort if gespraechsmodus.AN else None)):
                 if hook is None:
                     continue

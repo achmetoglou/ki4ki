@@ -2,7 +2,10 @@
 # ============================================================================
 #  Arbeitsbereich anlegen - mit den Einstellungen, auf die alles aufbaut
 #
-#  Aufruf:  ./arbeitsbereich_anlegen.sh <API-Schluessel>
+#  Aufruf:  ./arbeitsbereich_anlegen.sh <API-Schluessel> [Name] [Fachgebiet] [Wer fragt] [Besonderheiten]
+#           Die drei letzten Angaben ergeben die ROLLE des Bereichs
+#           (dokumente/<bereich>/prompt.md) - sonst spaeter im Chat
+#           "Rolle einrichten" sagen oder die Datei bearbeiten.
 #
 #  Warum das nicht von Hand geht: AnythingLLMs Voreinstellungen bauen die
 #  Belegpruefung still ab. Drei Werte entscheiden darueber, und keiner davon
@@ -19,12 +22,17 @@ NAME="${2:-Wissensdatenbank}"
 
 [ -f systemprompt.txt ] || { echo "systemprompt.txt fehlt"; exit 1; }
 
-python3 - "$SCHLUESSEL" "$API" "$NAME" <<'ENDE'
-import json, sys, urllib.request
+FACH="${3:-}"; NUTZER="${4:-}"; BESONDERES="${5:-}"
+python3 - "$SCHLUESSEL" "$API" "$NAME" "$FACH" "$NUTZER" "$BESONDERES" <<'ENDE'
+import json, os, re, sys, urllib.request
+sys.path.insert(0, "pruef-proxy")
+import rolle
 
 schluessel, api, name = sys.argv[1], sys.argv[2], sys.argv[3]
+fach, nutzer, besonderes = sys.argv[4], sys.argv[5], sys.argv[6]
 kopf = {"Authorization": "Bearer " + schluessel, "Content-Type": "application/json"}
-prompt = open("systemprompt.txt", encoding="utf-8").read()
+kern = open("systemprompt.txt", encoding="utf-8").read()
+prompt = kern
 
 
 def ruf(pfad, koerper=None):
@@ -41,6 +49,16 @@ slug = w.get("slug")
 if not slug:
     print("Anlegen fehlgeschlagen:", neu)
     sys.exit(1)
+
+# 1b. Rolle des Bereichs (Datei) - wenn die drei Angaben mitkommen
+ordner = os.path.join("dokumente", re.sub(r"[^A-Za-z0-9_-]+", "-", slug).strip("-"))
+if fach or nutzer or besonderes:
+    os.makedirs(ordner, exist_ok=True)
+    text = rolle.vorlage(fach, nutzer, besonderes, slug=os.path.basename(ordner))
+    with open(os.path.join(ordner, rolle.DATEI), "w", encoding="utf-8") as fh:
+        fh.write(text)
+    prompt = rolle.zusammensetzen(kern, text)
+    print("  Rolle geschrieben: %s" % os.path.join(ordner, rolle.DATEI))
 
 # 2. die drei entscheidenden Werte setzen
 ruf("/workspace/%s/update" % slug, {

@@ -444,7 +444,7 @@ def szenario_20_proxy_statisch():
                 treffer.append("%s:%d %s" % (fn.name, x.lineno, x.value.id))
     pruefe(not treffer, "Modul-Schatten: %s" % (treffer[:3] or "keine"))
     import py_compile
-    for f in ("pruef_proxy.py", "assistent.py", "fadenfrage.py", "gespraech.py", "absicht.py", "mehrstufig.py", "wortsuche.py", "bestand.py", "pruefungskatalog.py", "metadaten.py", "stoerfall.py", "selbstcheck.py"):
+    for f in ("pruef_proxy.py", "assistent.py", "fadenfrage.py", "gespraech.py", "absicht.py", "mehrstufig.py", "wortsuche.py", "bestand.py", "pruefungskatalog.py", "metadaten.py", "stoerfall.py", "selbstcheck.py", "rolle.py"):
         try:
             py_compile.compile(os.path.join(HIER, f), doraise=True)
             pruefe(True, "kompiliert: %s" % f)
@@ -586,6 +586,35 @@ def szenario_24_pruefungskatalog():
     pruefe(any(w["function"]["name"] == "pruefungsfrage" for w in gespraech.WERKZEUGE) and "16. PRUEFUNGSKATALOG" in gespraech.system_text(), "Werkzeug und Regel 16 vorhanden")
 
 
+def szenario_25_rolle():
+    print("\n[25] Rolle je Bereich: Dialog aus drei Fragen, Vorlage, Kern+Rolle, Gespraechsmodus")
+    import rolle
+    import gespraech
+    z, t, f = rolle.schritt(None, "")
+    pruefe(z == {"schritt": 0, "antworten": {}} and "1/3" in t and f is None, "Start: erste Frage")
+    z, t, f = rolle.schritt(z, "x")
+    pruefe(z["schritt"] == 0 and "kurze Antwort" in t, "zu kurze Antwort -> Frage wiederholt")
+    z, t, f = rolle.schritt(z, "Kunststoffschweißen nach DVS")
+    z, t, f = rolle.schritt(z, "Prüflinge und Ausbilder")
+    pruefe(z["schritt"] == 2 and "3/3" in t and f is None, "zweite und dritte Frage")
+    z, t, f = rolle.schritt(z, "Normstellen nennen, Sicherheit immer dazu")
+    pruefe(z is None and f == {"fach": "Kunststoffschweißen nach DVS", "nutzer": "Prüflinge und Ausbilder", "besonderes": "Normstellen nennen, Sicherheit immer dazu"}, "fertig: drei Antworten")
+    pruefe(rolle.schritt({"schritt": 1, "antworten": {"fach": "x"}}, "abbrechen")[0] is None, "abbrechen beendet")
+    v = rolle.vorlage(f["fach"], f["nutzer"], f["besonderes"], slug="auw")
+    pruefe(v.startswith("# Rolle des Bereichs „auw“") and "prüfungsnah" in v and "Normstelle" in v and "Sicherheits-" in v and "Störung" not in v,
+           "Vorlage: Regeln aus den Antworten abgeleitet (Pruefung, Norm, Sicherheit; kein Stoerfall)")
+    pruefe(rolle.ist_eingerichtet(v) and not rolle.ist_eingerichtet(rolle.platzhalter("auw")) and not rolle.ist_eingerichtet(""), "eingerichtet vs Platzhalter")
+    k = "KERN: Belege Pflicht."
+    pruefe(rolle.zusammensetzen(k, rolle.platzhalter("auw")) == k and rolle.zusammensetzen(k, v).startswith(k + "\n\n## Rolle dieses Bereichs\n\n# Rolle"), "Kern + Rolle nur wenn eingerichtet")
+    g = rolle.fuer_gespraech(v)
+    pruefe("Fachgebiet" in g and "# Rolle" not in g and "Diese Datei" not in g, "Kurzfassung fuer Stufe 2 ohne Kopf und Fussnote")
+    pruefe("ROLLE DIESES BEREICHS" in gespraech.system_text(rolle=g) and "ROLLE DIESES BEREICHS" not in gespraech.system_text(), "Rolle im Systemtext des Gespraechsmodus")
+    pruefe(all(rolle.ist_wunsch(x) for x in ("Rolle einrichten", "bitte die Rolle für den Bereich anpassen", "Prompt anpassen"))
+           and not any(rolle.ist_wunsch(x) for x in ("Was ist die Rolle des Härters?", "Welche Rolle spielt Styrol?")), "Wunsch erkannt, Fachfragen mit 'Rolle' nicht")
+    st = rolle.vorlage("Prüflabor Werkstoffe", "Instandhalter an der Anlage", "Störfälle: Ursache und Maßnahme")
+    pruefe("Ursache · Maßnahme" in st and "prüfungsnah" not in st, "Vorlage Labor: Stoerfall-Regel, keine Pruefungsregel")
+
+
 if __name__ == "__main__":
     for s in (szenario_1_verfasser_und_folgefragen, szenario_2_beschwerde_reparatur,
               szenario_3_themenwechsel, szenario_4_rueckkehr, szenario_5_nicht_im_dokument,
@@ -596,7 +625,7 @@ if __name__ == "__main__":
               szenario_15_vergleich, szenario_16_kennwerte_abkuerzung, szenario_17_export_kontakt_tippfehler,
               szenario_18_absichts_modell, szenario_19_gespraechsmodus, szenario_20_proxy_statisch,
               szenario_21_metadaten, szenario_22_stoerfall, szenario_23_kennzahlen,
-              szenario_24_pruefungskatalog):
+              szenario_24_pruefungskatalog, szenario_25_rolle):
         try:
             s()
         except Exception as e:
