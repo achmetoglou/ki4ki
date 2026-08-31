@@ -679,6 +679,37 @@ def szenario_26_kategorien():
     pruefe(bestand._englisch(["glass-fiber reinforced plastics", "leaf springs", "fatigue behavior"]) and not bestand._englisch(["Spritzgießverfahren", "Einspritzprofilierung", "Kunststoffverarbeitung"]), "englische Schlagworte erkannt")
 
 
+def szenario_28_aufnahme_uebersicht():
+    print("\n[28] Aufnahme-Uebersicht fuer /kpi (Zaehlung, Gruende, Log-Ausschluss)")
+    import tempfile
+    quelle = open(os.path.join(HIER, "pruef_proxy.py"), encoding="utf-8").read()
+    start = quelle.index("def _aufnahme_uebersicht"); ende = quelle.index("\ndef ", start + 1)
+    ns = {"os": os, "re": __import__("re"), "time": __import__("time"), "EINGANG_ORDNER": None}
+    exec(quelle[start:ende], ns)
+    wurzel = tempfile.mkdtemp()
+    b = os.path.join(wurzel, "auw")
+    for u in ("input/Normen", "archiv", "aussortiert"):
+        os.makedirs(os.path.join(b, u))
+    os.makedirs(os.path.join(wurzel, "kein-bereich"))          # ohne input/ -> ignoriert
+    open(os.path.join(b, "input", "Normen", "wartet.pdf"), "w").write("x")
+    for d in ("a.pdf", "b.docx"):
+        open(os.path.join(b, "archiv", d), "w").write("x")
+    open(os.path.join(b, "aussortiert", "kaputt.pdf"), "w").write("x")
+    open(os.path.join(b, "aussortiert", "ohne-grund.pdf"), "w").write("x")
+    with open(os.path.join(b, "aussortiert", "aussortiert.log"), "w", encoding="utf-8") as fh:
+        fh.write("[2026-08-27 16:00:00] kaputt.pdf | alter Grund\n")
+        fh.write("[2026-08-31 10:00:00] kaputt.pdf | juengster Grund gewinnt\n")
+    aus = ns["_aufnahme_uebersicht"](wurzel)
+    pruefe(len(aus) == 1 and aus[0]["bereich"] == "auw", "nur echte Bereiche (mit input/) tauchen auf")
+    a = aus[0]
+    pruefe(a["archiv"] == 2 and a["eingang"] == 1, "Archiv=2, Eingang=1 (auch im Unterordner) gezaehlt")
+    namen = {x["datei"]: x for x in a["aussortiert"]}
+    pruefe(set(namen) == {"kaputt.pdf", "ohne-grund.pdf"}, "aussortierte Dateien ohne die .log-Dateien")
+    pruefe(namen["kaputt.pdf"]["grund"] == "juengster Grund gewinnt", "je Datei zaehlt die juengste Log-Zeile")
+    pruefe(namen["ohne-grund.pdf"]["grund"] == "kein Log-Eintrag", "Datei ohne Log-Zeile wird trotzdem gelistet")
+    pruefe(len(a["letzte_meldungen"]) == 2, "letzte Log-Meldungen kommen mit")
+
+
 def szenario_27_wegabgleich_und_bildarten():
     print("\n[27] A2 Rechtepruefung je Ausgabeweg (wegabgleich) · Bildarten · Kategorie-Vorgabe per Unterordner")
     import wegabgleich
@@ -712,7 +743,8 @@ if __name__ == "__main__":
               szenario_18_absichts_modell, szenario_19_gespraechsmodus, szenario_20_proxy_statisch,
               szenario_21_metadaten, szenario_22_stoerfall, szenario_23_kennzahlen,
               szenario_24_pruefungskatalog, szenario_25_rolle, szenario_26_kategorien,
-              szenario_27_wegabgleich_und_bildarten):
+              szenario_27_wegabgleich_und_bildarten,
+              szenario_28_aufnahme_uebersicht):
         try:
             s()
         except Exception as e:

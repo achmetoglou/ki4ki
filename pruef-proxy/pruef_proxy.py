@@ -719,6 +719,73 @@ def _bereiche_abgleichen():
         print("[Bereich] Abgleich nicht moeglich: %s" % str(e)[:100], file=sys.stderr, flush=True)
 
 
+def _aufnahme_uebersicht(wurzelordner=None):
+    """Zustand der Dokumenten-Aufnahme je Bereich - fuer /kpi.
+
+    n8n meldet Durchgaenge als "succeeded", auch wenn einzelne Dateien
+    scheitern: "Bei Fehler weitermachen" haelt die 25er-Schuebe am Leben,
+    die Wahrheit landet nur in aussortiert/aussortiert.log. Gemessen
+    27.-31.08.: OCR-Fehler aller PDFs und 18 liegengebliebene Dateien,
+    in der n8n-Liste alles gruen. Hier wird beides sichtbar, ohne dass
+    jemand per FileZilla in Logdateien schauen muss."""
+    wurzelordner = wurzelordner or EINGANG_ORDNER
+    aus = []
+    try:
+        bereiche = sorted(os.listdir(wurzelordner))
+    except OSError:
+        return aus
+    jetzt = time.time()
+    for bereich in bereiche:
+        wurzel = os.path.join(wurzelordner, bereich)
+        if not os.path.isdir(os.path.join(wurzel, "input")):
+            continue          # kein Dokumenten-Bereich
+
+        def _zaehlen(unter):
+            n = 0
+            for w, _d, ds in os.walk(os.path.join(wurzel, unter)):
+                n += sum(1 for d in ds if not d.startswith(".") and not d.endswith(".log"))
+            return n
+
+        eintrag = {"bereich": bereich, "archiv": _zaehlen("archiv"),
+                   "eingang": 0, "eingang_wartet_min": 0,
+                   "aussortiert": [], "letzte_meldungen": []}
+        aelteste = 0.0
+        for w, _d, ds in os.walk(os.path.join(wurzel, "input")):
+            for d in ds:
+                if d.startswith("."):
+                    continue
+                eintrag["eingang"] += 1
+                try:
+                    # ctime, nicht mtime: "seit wann liegt sie HIER" (siehe Claim-Garantie)
+                    aelteste = max(aelteste, jetzt - os.stat(os.path.join(w, d)).st_ctime)
+                except OSError:
+                    pass
+        eintrag["eingang_wartet_min"] = int(aelteste // 60)
+        gruende = {}
+        zeilen = []
+        try:
+            with open(os.path.join(wurzel, "aussortiert", "aussortiert.log"), encoding="utf-8") as fh:
+                zeilen = fh.readlines()[-400:]
+        except OSError:
+            pass
+        for z in zeilen:
+            m = re.match(r"\[([^\]]+)\]\s*([^|]+?)\s*\|\s*(.+)", z.strip())
+            if m:
+                gruende[m.group(2)] = {"zeit": m.group(1), "grund": m.group(3)}
+        try:
+            liegend = sorted(d for d in os.listdir(os.path.join(wurzel, "aussortiert"))
+                             if not d.startswith(".") and not d.endswith(".log"))
+        except OSError:
+            liegend = []
+        for d in liegend:
+            w = gruende.get(d) or {}
+            eintrag["aussortiert"].append({"datei": d, "zeit": w.get("zeit", ""),
+                                           "grund": w.get("grund", "kein Log-Eintrag")})
+        eintrag["letzte_meldungen"] = [z.strip() for z in zeilen[-8:]]
+        aus.append(eintrag)
+    return aus
+
+
 def _seiten_vorwaermen(hoechstens=3):
     """Seitentexte neuer PDFs im Hintergrund lesen (pdftotext, 1-2 s je
     Dokument). Gemessen 25.08.: Die Belegpruefung der ERSTEN Antwort dauerte
@@ -5121,15 +5188,38 @@ class Griff(BaseHTTPRequestHandler):
             self._sende_html(seite)
             return
         z = pruefprotokoll.kennzahlen(seit, bis)
+        aufnahme = _aufnahme_uebersicht()
         if (felder.get("format") or [""])[0] == "json":
-            self._json({"kennzahlen": z})
+            self._json({"kennzahlen": z, "aufnahme": aufnahme})
             return
+        a_zeilen = []
+        for a in aufnahme:
+            hinweise = []
+            if a["eingang"]:
+                farbe = "#a00" if a["eingang_wartet_min"] > 180 else "#666"
+                hinweise.append("<span style='color:%s'>%d im Eingang, älteste wartet %d min</span>"
+                                % (farbe, a["eingang"], a["eingang_wartet_min"]))
+            for x in a["aussortiert"]:
+                hinweise.append("<span style='color:#a00'><b>%s</b></span> — %s <span style='color:#666'>(%s)</span>"
+                                % (html.escape(x["datei"]), html.escape(x["grund"]), html.escape(x["zeit"])))
+            protokoll = ("<details><summary>letzte Meldungen</summary><pre style='font-size:12px;white-space:pre-wrap'>%s</pre></details>"
+                         % html.escape("\n".join(a["letzte_meldungen"]))) if a["letzte_meldungen"] else ""
+            a_zeilen.append("<tr><td>%s</td><td><b>%d</b></td><td>%d</td><td>%d</td><td>%s%s</td></tr>" % (
+                html.escape(a["bereich"]), a["archiv"], a["eingang"], len(a["aussortiert"]),
+                "<br>".join(hinweise) or "<span style='color:#666'>alles eingeräumt</span>", protokoll))
+        aufnahme_html = ("<h2 style='font-family:sans-serif'>Aufnahme (Dokumente)</h2>"
+                         "<p style='font-family:sans-serif;font-size:14px;max-width:900px'>n8n zeigt Durchgänge auch dann als "
+                         "„succeeded“, wenn einzelne Dateien scheitern — was hängt, steht hier. Aussortierte Dateien liegen in "
+                         "<code>dokumente/&lt;bereich&gt;/aussortiert/</code> und kommen nach dem Beheben zurück nach <code>input/</code>.</p>"
+                         "<table border=1 cellpadding=6 style='border-collapse:collapse;font-family:sans-serif;font-size:14px'>"
+                         "<tr><th>Bereich</th><th>im Archiv</th><th>im Eingang</th><th>aussortiert</th><th>Hinweise</th></tr>%s</table>"
+                         % ("".join(a_zeilen) or "<tr><td colspan=5>keine Dokumenten-Bereiche</td></tr>"))
 
         def zeile(k, v, hinweis="", roh=False):
             return "<tr><td>%s</td><td><b>%s</b></td><td style='color:#666'>%s</td></tr>" % (
                 html.escape(k), html.escape(str(v)), hinweis if roh else html.escape(hinweis))
         if not z.get("vorgaenge"):
-            self._sende_html("<h1>Kennzahlen</h1><p>Noch keine Vorgänge im Zeitraum.</p>")
+            self._sende_html("<h1>Kennzahlen</h1><p>Noch keine Vorgänge im Zeitraum.</p>" + aufnahme_html)
             return
         ms = z.get("zeit_bis_erste_quelle_median_ms")
         r = z.get("rueckmeldungen") or {}
@@ -5158,7 +5248,7 @@ class Griff(BaseHTTPRequestHandler):
                  "<a href='/rueckmeldungen'>Rückmeldungen</a> · <a href='/protokoll'>Protokoll (JSON)</a> · "
                  "<a href='/kpi?format=json'>JSON</a> · Zeitraum: <code>/kpi?seit=2026-08-01&bis=2026-08-31</code></p>"
                  "<table border=1 cellpadding=6 style='border-collapse:collapse;font-family:sans-serif;font-size:14px'>%s</table>" % zeilen)
-        self._sende_html(seite)
+        self._sende_html(seite + aufnahme_html)
 
     def _protokoll(self, pfad, felder):
         """Die Protokoll-Ansicht: Kennzahlen, Ausfuhr, eigene Auskunft.
