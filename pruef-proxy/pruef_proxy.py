@@ -5279,8 +5279,10 @@ class Griff(BaseHTTPRequestHandler):
             self._fehler(401, "Nicht angemeldet. Bitte zuerst in der "
                               "Oberflaeche anmelden.")
             return
-        konto = pruefprotokoll.pseudonym(
-            pruefprotokoll.konto_aus(self.headers))
+        # Wie /kpi (Fix 27.08.): Browser-Tab hat keine Anmeldungskopfzeile,
+        # das Konto kommt dann ueber die Marke im Cookie. Der A1-Schutz oben
+        # bleibt: eine MITGESCHICKTE Kopfzeile muss bestaetigt sein.
+        konto = pruefprotokoll.pseudonym(konto_aus_anfrage(self.headers))
 
         # Die eigene Auskunft braucht kein Einsichtsrecht - sie liefert
         # ausschliesslich die Vorgaenge des Fragenden selbst.
@@ -5410,8 +5412,7 @@ class Griff(BaseHTTPRequestHandler):
                 urteil = "eigen"
             pruefprotokoll.schreibe(
                 art="frage",
-                konto=pruefprotokoll.pseudonym(
-                    pruefprotokoll.konto_aus(self.headers)),
+                konto=pruefprotokoll.pseudonym(konto_aus_anfrage(self.headers)),
                 bereich=m.group(1) if m else None,
                 faden=(m.group(2) if m else None) or "-",
                 weg="browser" if "/v1/" not in (self.path or "") else "dienst",
