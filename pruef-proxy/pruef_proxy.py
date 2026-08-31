@@ -33,6 +33,7 @@ import sqlite3
 import subprocess
 import sys
 import time
+import unicodedata
 import threading
 import traceback
 import urllib.error
@@ -306,7 +307,13 @@ def _api(methode, pfad, daten=None, timeout=60):
 
 
 def _loesch_grund(name):
-    return re.sub(r"[^a-z0-9]", "", str(name).lower())
+    # Gleiche Rechnung wie der Dubletten-Filter in n8n und wie AnythingLLM
+    # beim Hochladen: Umlaute zu Grundbuchstaben (ü->u), ß->ss. Ohne das galt
+    # "Prüfung" als "prfung", der Bestand sagt aber "prufung" - 18 PDF-
+    # Fassungen mit Umlauten blieben am 31.08. unerkannt in input/ liegen.
+    n = unicodedata.normalize("NFKD", str(name))
+    n = "".join(c for c in n if not unicodedata.combining(c))
+    return re.sub(r"[^a-z0-9]", "", n.lower().replace("\u00df", "ss"))
 
 
 _DOKUMENT_ENDUNGEN = (".pdf", ".xlsx", ".xls", ".csv", ".docx", ".doc", ".pptx", ".ppt",
