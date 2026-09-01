@@ -202,6 +202,9 @@ def system_text(faden_dok=None, dokumente=None, kontakt="", rolle="", allgemeinw
         "16. PRUEFUNGSKATALOG ('stell mir eine Pruefungsfrage', 'frag mich ab', 'Frage 7'): NUR pruefungsfrage nutzen und "
         "dessen Text UNVERAENDERT ausgeben - nie eigene Fragen oder Optionen erfinden. Antwortet der Mensch auf eine "
         "Frage, gilt allein die Loesung aus dem Katalogeintrag (RICHTIG/FALSCH im Werkzeugtext); fehlt sie, sag das.",
+        "20. BESTAND: Fragt der Mensch, WELCHE Dokumente/Arbeiten/Unterlagen es gibt - auch knapp ('und im Bereich X', "
+        "'als Liste', 'als Katalog', 'als Tabelle') -, rufe bestand(thema=...) auf und gib die gelieferte Tabelle "
+        "unveraendert aus. Fasse dann KEINE Inhalte zusammen.",
         "GESPRAECHSZUSTAND:\nFaden-Dokument: %s" % (faden_dok or "keins (frag nach oder nutze dokument_finden/bestand)"),
     ]
     if allgemeinwissen:

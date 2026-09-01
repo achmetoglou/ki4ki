@@ -1426,6 +1426,22 @@ def _stichwort_aus(frage):
     return wort if len(wort) >= 3 else None
 
 
+_LISTENWUNSCH = re.compile(
+    r"^\s*(?:als|in|nur|bitte|ich\s+meinte|meinte\s+ich|gemeint\s+war|lieber)?\s*(?:die\s+|eine\s+|der\s+|das\s+)?"
+    r"(?:katalog(?:liste)?|liste|tabelle|tabellenform|listenform|index|bestandsliste|(?:ü|ue)bersicht)\b", re.I)
+
+
+def ist_listenwunsch(frage):
+    """"als Katalogliste meinte ich", "als Tabelle", "nur die Liste" - der
+    Mensch will die VORIGE Frage als Bestandsliste, nicht als Fliesstext
+    (gemessen 01.09.: das Modell erklaerte stattdessen, was eine
+    'Katalogliste' sein koennte)."""
+    f = (frage or "").strip()
+    if not f or len(f) > 60 or _INHALTSFRAGE.search(f):
+        return False
+    return bool(_LISTENWUNSCH.match(f)) or bool(re.search(r"\bals\s+(?:katalog(?:liste)?|liste|tabelle)\b", f, re.I))
+
+
 def ist_bestand_verfeinerung(frage):
     """Anschluss-Verfeinerung einer vorigen Bestandsfrage? ("Nur
     Dissertationen", "und ueber Kleben"). Nennt eine Art ODER ein Thema -

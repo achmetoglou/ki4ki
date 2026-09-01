@@ -7389,10 +7389,24 @@ class Griff(BaseHTTPRequestHandler):
     def _bestand_vorab(self, frage):
         if assistent.ist_beschwerde(frage):
             return False
+        k = GESPRAECHE.kennung(self.path, self.headers)
+        # Anschluss an die letzte Bestandsantwort ("und im Bereich Spritzgiessen",
+        # "nur Dissertationen"): die vorige Frage liefert den Rahmen. Vorher lief
+        # das ueber Stufe 2 und wurde zur Inhaltszusammenfassung (01.09.).
+        if GESPRAECHE.letzte_art(k) == "bestand" and assistent.ist_bestand_verfeinerung(frage):
+            if self._bestandsauskunft(frage, vorher=GESPRAECHE.letzte_frage(k)):
+                return True
+        # Formwunsch ("als Katalogliste meinte ich", "als Tabelle"): die VORIGE
+        # Frage noch einmal, diesmal ueber den Katalog.
+        if assistent.ist_listenwunsch(frage):
+            fragen = [f for f, _a, _ant in GESPRAECHE.verlauf_kurz(k, 3) if f]
+            if fragen:
+                vor = fragen[-2] if len(fragen) > 1 else None
+                if self._bestandsauskunft(fragen[-1], vorher=vor):
+                    return True
         # Zweifel an der letzten Themen-Auskunft ("nur den einen wirklich?"):
         # nicht die Liste wiederholen, sondern gegenpruefen - Katalog UND
         # Volltext, und sagen, was das Wort NICHT enthaelt (Emrach 01.09.).
-        k = GESPRAECHE.kennung(self.path, self.headers)
         thema = GESPRAECHE.notiz(k, "bestand_thema")
         if thema and assistent.ist_bestand_zweifel(frage):
             if not bereich_sichtbar(self.path, self.headers):
