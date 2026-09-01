@@ -15,7 +15,7 @@ Für die Person, die die Anlage technisch betreut. Die Bedienung steht in der
 
 | | |
 |---|---|
-| Betriebssystem | Linux mit Docker und Docker Compose v2 (`start.sh` installiert Docker bei Bedarf selbst) |
+| Betriebssystem | Linux mit Docker und Docker Compose v2 (`start.sh` installiert Docker bei Bedarf selbst); außerdem `git`, `curl`, `python3`, `openssl` |
 | Arbeitsspeicher | 32 GB, besser 64 GB |
 | Festplatte | 100 GB frei, plus etwa das Doppelte der eigenen Dokumentenmenge |
 | Grafikkarte | empfohlen: NVIDIA ab 16 GB. Einzige Voraussetzung ist der NVIDIA-Treiber (`nvidia-smi` zeigt die Karte); die Docker-GPU-Brücke richtet `start.sh` selbst ein. |
@@ -66,7 +66,7 @@ Dienste, jeder mit Status `Up`.
 |---|---|
 | Automatische Einrichtung nicht möglich | Die Oberfläche fragt beim ersten Öffnen selbst nach einem Admin-Konto. |
 | API-Schlüssel fehlt | Oberfläche → Einstellungen → Werkzeuge → API-Schlüssel → neuen erzeugen → in `.secrets.env` bei `KI4KI_API_KEY=` eintragen → `docker compose up -d`. Ohne Schlüssel nimmt die Anlage keine Dokumente auf. |
-| Arbeitsbereich fehlt | `./arbeitsbereich_anlegen.sh <Kürzel> <Name> <Fachgebiet> <Wer fragt> <Besonderes>` |
+| Arbeitsbereich fehlt | `./arbeitsbereich_anlegen.sh <API-Schlüssel> <Name> <Fachgebiet> <Wer fragt> <Besonderes>` (Schlüssel aus `.secrets.env`, Zeile `KI4KI_API_KEY`) |
 | Nicht alle Workflows aktiviert | In n8n die drei Dateien aus `n8n-workflows/` importieren und **alle drei** aktivieren — auch die zwei Unter-Abläufe. Inaktive Unter-Abläufe führen dazu, dass jedes Dokument ohne Fehlermeldung mit leerem Text aussortiert wird. |
 
 ### 2.4 Fertig-Prüfung
@@ -140,7 +140,7 @@ Dateien bleiben im Eingang und werden beim nächsten Durchgang erneut genommen.
 ## 6 · Schalter (`.env` im Projektordner, danach `docker compose up -d`)
 
 Die `.env` enthält nur, was vom Standard abweicht — nach dem ersten Start sind das
-vier Zeilen von `start.sh`. Alle Schalter mit Standardwert und Erklärung stehen in
+drei Zeilen von `start.sh` (Compose-Datei, Benutzer- und Gruppen-Nummer). Alle Schalter mit Standardwert und Erklärung stehen in
 [`../.env.beispiel`](../.env.beispiel): Zeile in die `.env` kopieren, `#` entfernen,
 Wert anpassen.
 
@@ -156,8 +156,8 @@ Wert anpassen.
 | `KI4KI_MASSENLAUF_AB` | `6` | Ab so vielen Dateien im Eingang läuft die Aufnahme ohne Bildbeschreibung. |
 | `KI4KI_MENGE_JE_LAUF` | `25` | Dateien je Durchgang. |
 | `KI4KI_DOCLING_THREADS` | `12` | Prozessorkerne für Docling. |
-| `KI4KI_GID` | `1000` | Gruppe, der die Dokumentordner gehören (für SFTP-Zugang). |
-| `KI4KI_ROLLE_GLAETTEN` | an | Das Modell formuliert aus den drei Rollen-Feldern den Rollen-Absatz; `0` = die Vorlage gilt wörtlich. |
+| `KI4KI_GID` | `1000` | Gruppe, der die Dokumentordner gehören (für SFTP-Zugang). Eigentümer ist immer Benutzer-Nummer 1000. |
+| `KI4KI_ROLLE_GLAETTEN` | `1` | Das Modell formuliert aus den drei Rollen-Feldern den Rollen-Absatz; `0` = die Vorlage gilt wörtlich. |
 
 Weitere Schalter (`AUFFANGNETZ`, `E2B_ANTWORT`, `MODELL_ANZEIGE`, `NENNUNG_TILGEN`,
 `BEREICH_HEILEN`, `LOESCHEN`, `PROTOKOLL_TAGE`) stehen mit Erklärung in `.env.beispiel`.
@@ -236,7 +236,7 @@ während eine Aufnahme läuft. Hat sich der Kern-Prompt geändert:
 `./bereiche_nachziehen.sh` bringt bestehende Bereiche auf die geprüften Einstellwerte
 (die Anlage fasst bestehende Bereiche sonst nie an).
 
-Alle fremden Programm-Abbilder sind auf ihren Fingerabdruck (`@sha256`) festgelegt —
+Alle Laufzeit-Abbilder der NVIDIA- und CPU-Fassung sind auf ihren Fingerabdruck (`@sha256`) festgelegt (die AMD-Fassung und die Basis-Abbilder der selbst gebauten Dienste noch nicht) —
 ein Update bringt exakt die geprüfte Fassung, nicht die jeweils neueste vom Anbieter.
 Ein einzelnes Abbild anheben: vorher das Volume sichern und den alten Wert notieren,
 neuen Wert eintragen, `docker compose up -d <dienst>`, prüfen. n8n und AnythingLLM

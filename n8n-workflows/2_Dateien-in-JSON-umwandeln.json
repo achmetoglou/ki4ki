@@ -592,11 +592,11 @@
           "parameters": [
             {
               "name": "X-Dateiname",
-              "value": "={{ $binary.data.fileName }}"
+              "value": "={{ encodeURIComponent($binary.data.fileName || 'dokument') }}"
             },
             {
               "name": "X-Ziel",
-              "value": "={{ String($binary.data.directory || '').replace(/\\/input\\/?$/, '/archiv') + '/' + String($binary.data.fileName || 'dokument').replace(/\\.[^.]+$/, '') + '.pdf' }}"
+              "value": "={{ encodeURIComponent(String($binary.data.directory || '').replace(/\\/input(\\/.*)?$/, '/archiv') + '/' + String($binary.data.fileName || 'dokument').replace(/\\.[^.]+$/, '') + '.pdf') }}"
             }
           ]
         },

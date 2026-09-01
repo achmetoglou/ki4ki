@@ -93,4 +93,4 @@ print("  Modus %s · topN %s · Schwelle %s · Verlauf %s · Prompt %d Zeichen"
 ENDE
 
 echo
-echo "  Jetzt Dokumente nach ./dokumente legen und den Ablaufplan in n8n starten."
+echo "  Jetzt Dokumente nach ./dokumente/<bereich>/input/ legen - die Aufnahme startet von selbst."

@@ -3,7 +3,7 @@
 #  Bestehende Arbeitsbereiche auf die gemessenen Werte bringen
 #
 #  Der Proxy setzt die geprueften Werte (topN 25, Schwelle 0,25, Modus
-#  "query", Verlauf 6, Temperatur 0,2) NUR beim Anlegen eines Bereichs -
+#  "query", Verlauf 20, Temperatur 0,2) NUR beim Anlegen eines Bereichs -
 #  bestehende Bereiche fasst er absichtlich nie an. Aendern sich die Werte
 #  (26.08.: topN 6 -> 25, weil auf dem Testserver gemessen), holt dieses
 #  Skript alle Bereiche einmal nach. Der Systemprompt bleibt unangetastet.

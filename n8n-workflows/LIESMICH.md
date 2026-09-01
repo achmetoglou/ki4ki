@@ -1,22 +1,16 @@
-# KI4KI — n8n-Workflows (Aufnahme) · Partner-Import
+# n8n-Ablaufpläne (Aufnahme)
 
-Diese 3 Workflows sind die **komplette Dokument-Aufnahme**. Fragen beantwortet
-der Prüf-Proxy, nicht n8n — dafür ist hier nichts nötig.
+Die drei Dateien hier sind die komplette Dokument-Aufnahme. `start.sh` und
+`aktualisiere.sh` spielen sie automatisch ein und aktivieren sie — von Hand ist
+normalerweise nichts zu tun.
 
-## Import
-1. In n8n **alle 3 JSON importieren** (Reihenfolge egal — die IDs bleiben erhalten,
-   damit die Verknüpfung stimmt).
-2. **`KI4KI Masse-Ingest`** ist der Haupt-Workflow; er ruft die beiden anderen als
-   Unter-Workflows auf (`Dateien in JSON umwandeln`, `Markdown-Datei erzeugen`).
-3. Nur den **Masse-Ingest aktivieren** (Schalter an). Er hat 3 Auslöser:
-   Handstart · alle 5 Minuten automatisch · Webhook `ki4ki-aufnahme` (UI-Upload).
-   Die beiden Unter-Workflows bleiben **inaktiv** (werden nur aufgerufen).
+Falls doch (Meldung „Nicht alle Ablaufpläne aktiviert"): alle drei in n8n
+importieren und **alle drei aktivieren**, auch die beiden Unter-Abläufe. Ein
+inaktiver Unter-Ablauf wird von n8n nicht ausgeführt — jedes Dokument landet
+dann ohne Fehlermeldung mit leerem Text in `aussortiert/`.
 
-## Voraussetzungen (Service-Namen im Docker-Netz)
-Der Ablauf spricht diese Dienste an — Namen müssen zur Partner-Compose passen:
-`pruef-proxy:3001` · `docling:5001` · `anythingllm:3001` · `nothink-proxy:11435`.
-Für den UI-Upload: im Proxy `KI4KI_AUFNAHME_HAKEN=http://n8n:5678/webhook/ki4ki-aufnahme` setzen.
+- `1_KI4KI-Masse-Ingest.json` — Hauptablauf: sieht **jede Minute** in `dokumente/*/input/` nach, Webhook `ki4ki-aufnahme` für den Upload aus der Oberfläche
+- `2_Dateien-in-JSON-umwandeln.json` — Unter-Ablauf: Office → PDF, Docling, Excel/CSV, Tika
+- `3_Markdown-Datei-erzeugen.json` — Unter-Ablauf: Textfassung über den mkmd-Dienst
 
-## Enthält bewusst NICHT
-Keine alten/Test-Workflows, keine Dubletten, **keine `rm -f`-Nodes**. Nur der
-aktuelle, laufende Stand.
+Ablauf, Schalter und Fehlersuche: [`../doku/BETRIEB.md`](../doku/BETRIEB.md), Abschnitte 2.3 und 5.

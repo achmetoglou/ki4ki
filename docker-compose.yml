@@ -407,6 +407,12 @@ services:
     container_name: ki4ki-mkmd
     restart: unless-stopped
     # kein veroeffentlichter Anschluss - nur im internen Netz erreichbar
+    # Die Originale (nur lesen): pdfstelle.pdf_pfad() sucht die PDF, um die
+    # ECHTEN Seitenzahlen zu setzen - ohne Mount fand es nie eine (Fund 01.09.)
+    environment:
+    - KI4KI_PDFS=/daten/pdfs
+    volumes:
+    - ./dokumente:/daten/pdfs:ro
 
 volumes:
   modelle:

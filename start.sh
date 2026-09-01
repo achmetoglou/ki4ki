@@ -232,6 +232,7 @@ if docker exec ki4ki-n8n n8n import:workflow --separate --input=/tmp/wf >/dev/nu
   [ "$_wf_ok" = 1 ] && echo "  Masse-Ingest + Unterketten aktiviert" \
     || echo "  ⚠ Nicht alle Workflows aktiviert - bitte in n8n pruefen"
   docker restart ki4ki-n8n >/dev/null 2>&1   # damit Zeitplan + aktive Unterketten registrieren
+  docker exec ki4ki-n8n rmdir /files/json/.lauf.sperre >/dev/null 2>&1 || true   # abgebrochener Durchgang hinterlaesst sonst 2 h Sperre
 else
   echo "  ⚠ Auto-Import nicht moeglich - Workflows bitte per n8n-Oberflaeche"
   echo "    (Port 5678, Import from File) aus n8n-workflows/ laden."

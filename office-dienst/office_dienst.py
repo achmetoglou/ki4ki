@@ -14,6 +14,7 @@ Nur Text- und Foliendokumente (doc, docx, odt, rtf, ppt, pptx, odp).
 Tabellen bleiben Tabellen - siehe Dockerfile.
 """
 import json
+from urllib.parse import unquote
 import os
 import re
 import shutil
@@ -111,12 +112,12 @@ class Griff(BaseHTTPRequestHandler):
         if laenge <= 0 or laenge > HOECHSTENS:
             return self._json(400, {"error": "Koerper fehlt oder ist groesser als %d MB" % (HOECHSTENS // 1048576)})
         daten = self.rfile.read(laenge)
-        dateiname = self.headers.get("X-Dateiname") or ""
+        dateiname = unquote(self.headers.get("X-Dateiname") or "")   # n8n schickt URL-kodiert (Gedankenstrich, Euro ...)
         try:
             dateiname = bytes(dateiname, "latin-1").decode("utf-8")
         except Exception:
             pass
-        ziel = self.headers.get("X-Ziel") or ""
+        ziel = unquote(self.headers.get("X-Ziel") or "")
         try:
             ziel = bytes(ziel, "latin-1").decode("utf-8")
         except Exception:
