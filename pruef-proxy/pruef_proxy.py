@@ -864,15 +864,47 @@ def _gpu_pruefen():
     return GPU_STAND
 
 
+_KATALOG_LAEUFT = threading.Lock()
+
+
+def _katalog_nachziehen():
+    """Fehlende Katalogeintraege (Titel/Verfasser/Jahr vom Deckblatt, Kategorie,
+    Themen) im Hintergrund nachtragen - alle 5 Minuten, nicht erst, wenn
+    jemand "Was haben wir im Bestand" fragt (Emrach 01.09.: "nach jedem
+    Upload muss man die Frage stellen, damit der Katalog aktuell ist").
+    Laeuft nie doppelt; ein Durchlauf arbeitet die offenen Eintraege ab."""
+    if not _KATALOG_LAEUFT.acquire(blocking=False):
+        return
+
+    def lauf():
+        try:
+            import bestand as _b
+            BESTAND.aktualisiere()
+            namen = list(BESTAND.titel())
+            n = _b.nachtragen(namen, hoechstens=len(namen) or 1)   # alles hier, in diesem Thread
+            if n:
+                print("[Katalog] %d Eintraege nachgetragen" % n, file=sys.stderr, flush=True)
+        except Exception:
+            traceback.print_exc(file=sys.stderr)
+        finally:
+            _KATALOG_LAEUFT.release()
+    threading.Thread(target=lauf, daemon=True).start()
+
+
 def _loesch_wache():
     """Jede Minute nach <bereich>/loeschen/* sehen (jede Dokumentdatei) - und liegengebliebene
-    Eingangsdateien einraeumen. Alle 10 Minuten: Grafikkarten-Pruefung."""
+    Eingangsdateien einraeumen. Alle 10 Minuten: Grafikkarten-Pruefung, alle 5 Minuten: Katalog."""
     runde = 0
     while True:
         runde += 1
         if runde % 10 == 1:
             try:
                 _gpu_pruefen()
+            except Exception:
+                traceback.print_exc(file=sys.stderr)
+        if runde % 5 == 2:
+            try:
+                _katalog_nachziehen()
             except Exception:
                 traceback.print_exc(file=sys.stderr)
         try:

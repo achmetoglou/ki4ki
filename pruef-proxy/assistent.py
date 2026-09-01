@@ -1173,6 +1173,21 @@ def _treffer_im_katalog(stichwort, namen, bereich=None, gattung=None):
     # ⭐ "X oder Y" -> Vereinigung: nach JEDEM Teilbegriff suchen.
     teile = [t.strip() for t in re.split(r"\s+oder\s+|\s+und\s+|\s*[,/]\s*", w)
              if len(t.strip()) >= 3] or [w]
+    # Wortstamm dazu: "Spritzgiessen" soll "Spritzgiessverfahren" treffen,
+    # "Kleben" die "Klebeverbindungen" (gemessen 01.09.: 11 Dokumente, 0 Treffer
+    # bei "im Bereich Spritzgiessen" - die Liste kam ungefiltert).
+    def _stamm_von(t):
+        t = t.lower().replace("ß", "ss")
+        t = re.sub(r"(verfahren|prozesse?s?|techniken?|technik|ungen|ung|ens?|es|er|en|e|s)$", "", t)
+        return t if len(t) >= 4 else ""
+    staemme = [s for s in (_stamm_von(t) for t in teile) if s]
+
+    def _trifft(text):
+        tx = (text or "").lower()
+        if any(_t in tx for _t in teile):
+            return True
+        tx2 = tx.replace("ß", "ss")
+        return any(s in tx2 for s in staemme)
 
     from urllib.parse import quote
     treffer = []
@@ -1181,15 +1196,15 @@ def _treffer_im_katalog(stichwort, namen, bereich=None, gattung=None):
         if not a.get("titel"):
             continue
         grund = None
-        if any(_t in a["titel"].lower() for _t in teile):
+        if _trifft(a["titel"]):
             grund = "Titel"
         else:
             passende = [s for s in (a.get("schlagworte") or []) + (a.get("themen") or []) + (a.get("methoden") or [])
                         + [x for x in (a.get("teilgebiet"), a.get("gebiet")) if x]
-                        if any(_t in s.lower() for _t in teile)]
+                        if _trifft(s)]
             if passende:
                 grund = "Thema: " + ", ".join(passende[:3])
-            elif any(_t in (a.get("kurzfassung") or "").lower() for _t in teile):
+            elif _trifft(a.get("kurzfassung")):
                 grund = "Kurzfassung"
         if grund:
             treffer.append((n, a, grund))
@@ -1202,13 +1217,17 @@ def _treffer_im_katalog(stichwort, namen, bereich=None, gattung=None):
     wo = "in diesem Arbeitsbereich" if bereich else "im Bestand"
     zeilen = ["| Kennung | Titel | Verfasser | Jahr | gefunden über |",
               "|---|---|---|---|---|"]
-    for n, a, grund in sorted(treffer):
+    weitere = max(0, len(treffer) - 60)
+    for n, a, grund in sorted(treffer)[:60]:
         zeilen.append("| [%s](/pdf/%s) | %s | %s | %s | %s |"
                       % (_zelle(n), quote(n, safe=""), _zelle(a["titel"]),
                          _zelle(a.get("verfasser")), _zelle(a.get("jahr")),
                          _zelle(grund)))
     kopf = ("**%d %s zu „%s“ %s**"
             % (len(treffer), gattung or "Arbeiten", stichwort, wo))
+    if weitere:
+        zeilen.append("")
+        zeilen.append("… und **%d weitere**. Grenze die Frage ein — etwa mit einer Art („Welche Normen …“) oder einem zweiten Stichwort." % weitere)
     fuss = ("\n\n*Gesucht wurde in Titeln und Schlagworten des "
             "hinterlegten Katalogs — nicht im Volltext. "
             "Für Fachbegriffe im Text frag ruhig direkt nach der Sache.*")
@@ -1256,7 +1275,7 @@ def _liste(titel, zusatz=None):
             zeilen.append("| %s | — | — | — | %s | %s | %s |" % (verweis, _zelle(kat), _zelle(them), _zelle(datei)))
     if any(a and a.get("quelle") == "modell" for _, a in angaben):
         zeilen.append("")
-        zeilen.append("*° = aus dem Deckblatt gelesen · — = noch kein Eintrag (wird nachgetragen) · Kategorie aus der Aufnahme, * = von Hand gesetzt.*")
+        zeilen.append("*Titel, Verfasser und Jahr mit ° hat die Anlage selbst vom Deckblatt gelesen. Ein — heißt: noch nicht gelesen, wird in den nächsten Minuten ergänzt. Eine Kategorie mit \\* wurde von Hand festgelegt.*")
     return "\n".join(zeilen)
 
 
@@ -1293,9 +1312,11 @@ def _stichwort_aus(frage):
     """Das Thema aus einer Bestandsfrage ziehen ("... zum Thema Kleben")."""
     frage = re.sub(r"[#\s]+$", "", frage or "")   # Tipp-Reste wie "#" am Ende dulden
     m = re.search(r"\b(?:zu(?:m|r)?|ueber|über|betreffend|bezueglich|"
-                  r"bezüglich|thema|hinsichtlich|in\s+bezug\s+auf)\s+(?:das\s+|die\s+|der\s+|"
+                  r"bezüglich|thema|hinsichtlich|in\s+bezug\s+auf|"
+                  r"(?:im|in\s+dem|aus\s+dem|zum|f(?:ü|ue)r\s+den|f(?:ü|ue)r\s+das)\s+(?:bereich|gebiet|feld|fach|themenbereich|themenfeld)|"
+                  r"die\s+sich\s+mit)\s+(?:das\s+|die\s+|der\s+|"
                   r"dem\s+|den\s+|thema\s+)?([A-Za-zÄÖÜäöüß0-9\-\s]{3,40}?)"
-                  r"\s*[\?\.,;]?\s*$", frage, re.I)
+                  r"\s*(?:besch(?:ä|ae)ftigen|befassen)?\s*[\?\.,;]?\s*$", frage, re.I)
     if not m:
         return None
     wort = m.group(1).strip()

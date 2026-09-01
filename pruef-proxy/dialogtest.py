@@ -794,6 +794,27 @@ def szenario_31_bereich_ordner_aufraeumen():
     pruefe(ns["bereich_ordner_aufraeumen"]("test") == "behalten" and os.path.exists(b), "eine PDF im Archiv -> Ordner bleibt (verwaist gemeldet)")
 
 
+def szenario_32_bestand_thema():
+    print("\n[32] Bestandsfrage mit Thema: 'im Bereich X' wird erkannt, Wortstamm trifft")
+    import bestand as _b
+    pruefe(assistent._stichwort_aus("Welche Dokumente haben wir im Bereich Spritzgießen") == "Spritzgießen", "'im Bereich Spritzgießen' -> Thema erkannt")
+    pruefe(assistent._stichwort_aus("Welche Unterlagen gibt es zum Thema Kleben?") == "Kleben", "'zum Thema Kleben' -> Thema erkannt")
+    pruefe(assistent._stichwort_aus("Was haben wir im Bestand?") is None, "ohne Thema -> kein Stichwort")
+    alt = _b.angaben
+    _b.angaben = lambda n: {"DS-24-006": {"titel": "Geometrieabhängige Einspritzprofilierung für das Spritzgießverfahren", "verfasser": "K.", "jahr": "2024", "themen": ["Spritzgießverfahren"]},
+                            "DS-24-001": {"titel": "Vorformlingsgeometrie beim Extrusionsblasformen", "verfasser": "F.", "jahr": "2024", "themen": ["Extrusionsblasformen"]},
+                            "DS-24-003": {"titel": "Klebeverbindungen im Leichtbau", "verfasser": "C.", "jahr": "2024", "themen": []}}.get(n)
+    try:
+        t = assistent._treffer_im_katalog("Spritzgießen", ["DS-24-006", "DS-24-001", "DS-24-003"], bereich=True)
+        pruefe(bool(t) and "DS-24-006" in t and "DS-24-001" not in t, "'Spritzgießen' trifft 'Spritzgießverfahren', nicht 'Extrusionsblasformen'")
+        t2 = assistent._treffer_im_katalog("Kleben", ["DS-24-006", "DS-24-001", "DS-24-003"], bereich=True)
+        pruefe(bool(t2) and "DS-24-003" in t2 and "DS-24-006" not in t2, "'Kleben' trifft 'Klebeverbindungen'")
+    finally:
+        _b.angaben = alt
+    quelle = open(os.path.join(HIER, "pruef_proxy.py"), encoding="utf-8").read()
+    pruefe("def _katalog_nachziehen" in quelle and "_katalog_nachziehen()" in quelle, "Katalog wird im Hintergrund nachgezogen (nicht erst bei der Frage)")
+
+
 def szenario_27_wegabgleich_und_bildarten():
     print("\n[27] A2 Rechtepruefung je Ausgabeweg (wegabgleich) · Bildarten · Kategorie-Vorgabe per Unterordner")
     import wegabgleich
@@ -831,7 +852,8 @@ if __name__ == "__main__":
               szenario_28_aufnahme_uebersicht,
               szenario_29_bereich_isolation,
               szenario_30_leerer_bereich,
-              szenario_31_bereich_ordner_aufraeumen):
+              szenario_31_bereich_ordner_aufraeumen,
+              szenario_32_bestand_thema):
         try:
             s()
         except Exception as e:
