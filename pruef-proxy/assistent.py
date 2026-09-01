@@ -1519,6 +1519,12 @@ def ist_bestand_verfeinerung(frage):
         return False
     if _b.gefragte_art(f)[0]:
         return True
+    try:
+        import kategorie as _kat
+        if _kat.gefragte(f)[0]:
+            return True          # "nur die Normen", "und die Pruefungskataloge?" - Kategorie statt Art
+    except Exception:
+        pass
     if _stichwort_aus(f):
         return True
     return False

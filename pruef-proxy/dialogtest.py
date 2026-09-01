@@ -829,6 +829,7 @@ def szenario_32_bestand_thema():
         pruefe(assistent.ist_bestandsfrage_unscharf("Welche Dokumente beschreiben das Spritzgießen?"), "Listenfrage mit Inhaltsverb bleibt Bestandsfrage")
         pruefe(assistent.ist_bestandsfrage_unscharf("Was haben wir im Bestand?"), "klassische Bestandsfrage bleibt")
         pruefe(assistent.ist_bestand_verfeinerung("und im Bereich Spritzgießen"), "'und im Bereich Spritzgießen' = Verfeinerung der Bestandsfrage")
+        pruefe(assistent.ist_bestand_verfeinerung("nur die Normen") and assistent.ist_bestand_verfeinerung("und die Prüfungskataloge?"), "Kategorie-Verfeinerung ('nur die Normen') erkannt")
         _q = open(os.path.join(HIER, "pruef_proxy.py"), encoding="utf-8").read()
         _a = _q.index("    def _mehrfachauftrag(frage):"); _e = _q.index("\n    def ", _a + 1)
         _ns = {"re": __import__("re")}; exec("\n".join(z[4:] for z in _q[_a:_e].splitlines()), _ns)

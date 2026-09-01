@@ -7577,7 +7577,11 @@ class Griff(BaseHTTPRequestHandler):
             return False
         GESPRAECHE.notiz_setzen(k, "rueckfrage", None)
         GESPRAECHE.merken(k, frage, "wahl", [{"title": wahl}])
-        urspruenglich = offen.get("frage") or frage
+        _titel = assistent._titel_saubern(wahl)
+        # Die Frage bekommt das gewaehlte Dokument ausdruecklich - sonst sieht das
+        # Modell wieder drei DVS-2290-Dokumente und fragt erneut (gemessen 01.09.).
+        urspruenglich = "%s (gemeint ist das Dokument %s)" % ((offen.get("frage") or frage).rstrip(" ?"), _titel)
+        print("[Rueckfrage] Wahl %r -> %s" % (frage, _titel), file=sys.stderr, flush=True)
         if gespraechsmodus.AN and self._gespraech_antwort(urspruenglich):
             return True
         return bool(self._faden_antwort(urspruenglich, wahl))
@@ -7958,7 +7962,12 @@ class Griff(BaseHTTPRequestHandler):
         titel = assistent._titel_saubern(dok)
         kopf = "**%s**" % assistent.dokument_zeile(dok)
         if was == "seiten":
-            text = "%s hat **%d Seiten** (gezählt im PDF)." % (kopf, len(seiten))
+            _n = 0
+            try:
+                _n = int(_seitenzahl_schnell(PDFS.get(schluessel) or "") or 0)
+            except Exception:
+                _n = 0
+            text = "%s hat **%d Seiten** (gezählt im PDF)." % (kopf, _n or len(seiten))
         elif was in ("abbildungen", "tabellen"):
             wort = "Abbildung" if was == "abbildungen" else "Tabelle"
             muster = (r"(?m)^\s*(?:Bild|Abbildung|Abb\.?|Figure|Fig\.?)\s*(\d{1,2}[.\-]\d{1,3})\b"
