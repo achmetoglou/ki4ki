@@ -92,8 +92,8 @@ später in den Chat-Einstellungen des Bereichs.
 
 **Benutzer** legt ein Administrator unter Einstellungen → Benutzer an. Ein
 Benutzer sieht nur die Bereiche, die ihm zugewiesen wurden; Administratoren sehen
-alle. Die Kennzahlen-Seite (`/kpi`) sehen nur die Konten, die dafür freigegeben
-sind (Standard: `admin`; weitere Konten in der `.env`, siehe Betriebshandbuch).
+alle. Die Kennzahlen-Seite (`/kpi`) sehen alle Administratoren; weitere Konten
+lassen sich in der `.env` freigeben (siehe Betriebshandbuch).
 
 ---
 

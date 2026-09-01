@@ -137,9 +137,24 @@ def _ist_admin(kopfzeilen):
     return konto_aus_anfrage(kopfzeilen) in _ADMINS["namen"]
 
 
-def _darf_rolle_setzen(kopfzeilen):
+def _darf_einsehen(kopfzeilen):
+    """Einsicht in Kennzahlen, Rueckmeldungen, Protokoll, Selbst-Check.
+
+    Die Liste KI4KI_PROTOKOLL_EINSICHT gilt immer. Zusaetzlich JEDER
+    AnythingLLM-Administrator (Entscheidung 31.08.: der Partner soll keine
+    zweite Liste pflegen muessen). Wer die strikte Trennung will - Betreiber
+    sieht nicht, wer was gefragt hat -, setzt KI4KI_EINSICHT_ADMINS=0; dann
+    zaehlt nur die Liste."""
     konto = pruefprotokoll.pseudonym(konto_aus_anfrage(kopfzeilen))
-    return pruefprotokoll.darf_einsehen(konto) or _ist_admin(kopfzeilen)
+    if pruefprotokoll.darf_einsehen(konto):
+        return True
+    if (os.environ.get("KI4KI_EINSICHT_ADMINS") or "1").strip() in ("0", "nein", "aus", "false"):
+        return False
+    return _ist_admin(kopfzeilen)
+
+
+def _darf_rolle_setzen(kopfzeilen):
+    return _darf_einsehen(kopfzeilen)
 
 
 def _rolle_lesen(slug):
@@ -5133,8 +5148,8 @@ class Griff(BaseHTTPRequestHandler):
             self._fehler(401, "Nicht angemeldet. Bitte zuerst in der Oberflaeche anmelden.")
             return
         konto = pruefprotokoll.pseudonym(konto_aus_anfrage(self.headers))
-        if not pruefprotokoll.darf_einsehen(konto):
-            print("[Einsicht] %s abgewiesen: Konto %s nicht in KI4KI_PROTOKOLL_EINSICHT" % (pfad, konto),
+        if not _darf_einsehen(self.headers):
+            print("[Einsicht] %s abgewiesen: Konto %s weder in KI4KI_PROTOKOLL_EINSICHT noch Admin" % (pfad, konto),
                   file=sys.stderr, flush=True)
             self._fehler(404, "Nicht gefunden.")
             return
@@ -5291,7 +5306,7 @@ class Griff(BaseHTTPRequestHandler):
                         "vorgaenge": pruefprotokoll.eigene_eintraege(konto)})
             return
 
-        if not pruefprotokoll.darf_einsehen(konto):
+        if not _darf_einsehen(self.headers):
             # Wortgleich mit "nicht vorhanden": Wer kein Einsichtsrecht
             # hat, soll nicht einmal erfahren, dass es die Ansicht gibt.
             self._fehler(404, "Nicht gefunden.")

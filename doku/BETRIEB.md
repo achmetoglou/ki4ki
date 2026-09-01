@@ -141,7 +141,8 @@ Dateien bleiben im Eingang und werden beim nächsten Durchgang erneut genommen.
 
 | Schalter | Standard | Wirkung |
 |---|---|---|
-| `KI4KI_PROTOKOLL_EINSICHT` | `admin` | Konten (Komma-getrennt), die `/kpi`, `/rueckmeldungen`, `/protokoll`, `/selbstcheck` sehen dürfen. Bewusst getrennt von der Admin-Rolle. |
+| `KI4KI_PROTOKOLL_EINSICHT` | `admin` | Konten (Komma-getrennt), die `/kpi`, `/rueckmeldungen`, `/protokoll`, `/selbstcheck` sehen dürfen — auch ohne Admin-Rolle. |
+| `KI4KI_EINSICHT_ADMINS` | `1` | Jeder AnythingLLM-Administrator sieht diese Seiten automatisch. `0` = nur die Liste oben (strikte Trennung: der Betreiber sieht nicht, wer was gefragt hat). |
 | `KI4KI_KONTAKT` | leer | Name/Mail des Ansprechpartners, den die Anlage bei Störfällen ohne Beleg nennt. |
 | `KI4KI_GESPRAECH` | `1` | Gesprächsmodus (das Modell führt das Gespräch mit Werkzeugen des Proxys). `0` = alter Regel-Router. |
 | `KI4KI_ABSICHT_MODELL` | `1` | Das Modell erkennt die Absicht einer Frage (Stufe 1). |
@@ -170,8 +171,10 @@ wirkt binnen 5 Minuten), `kategorien.txt`, `metadaten.json`.
 - **Durchsetzung:** Der Proxy bindet die Berechtigung an jede Anfrage und prüft sie
   an jedem Ausgabeweg (Antwort, Beleg-Link, Seitenbild, Abbildung, Bestandsliste,
   Export). `python3 pruef-proxy/wegabgleich.py` prüft das maschinell im Quelltext.
-- **Einsicht in Protokoll und Kennzahlen** hängt an `KI4KI_PROTOKOLL_EINSICHT`, nicht
-  an der Admin-Rolle. Wer die Anlage betreibt, muss nicht sehen können, wer was gefragt hat.
+- **Einsicht in Protokoll und Kennzahlen** haben alle Administratoren sowie die Konten
+  in `KI4KI_PROTOKOLL_EINSICHT`. Soll der Betreiber nicht sehen können, wer was gefragt
+  hat (Zusage an eine Personalvertretung), `KI4KI_EINSICHT_ADMINS=0` setzen — dann gilt
+  nur die Liste.
 - **Rolle eines Bereichs ändern** dürfen Konten mit Einsichtsrecht.
 - **Metadaten je Dokument** (`metadaten.json`): `freigabe` (entwurf/geprüft/freigegeben/archiviert),
   `owner`, `version`, `gueltig_bis`, `ki: nein` (für die KI ausschließen). In `bereich.json`:
