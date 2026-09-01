@@ -1372,7 +1372,10 @@ def bereich_sichtbar(pfad, kopfzeilen):
     schluessel = (slug, hashlib.sha256(ausweis.encode()).hexdigest()[:16])
     jetzt = time.time()
     gemerkt = _BEREICHSZUGANG.get(schluessel)
-    if gemerkt and jetzt - gemerkt[1] < ANZAHL_HALTBAR:
+    # Ein "nein" nur kurz merken: Bereich geloescht und gleich unter demselben
+    # Namen neu angelegt -> sonst 5 Minuten "Bereich unbekannt" beim Speichern
+    # der Rolle (Fund 01.09.). Ein "ja" darf die volle Zeit gelten.
+    if gemerkt and jetzt - gemerkt[1] < (ANZAHL_HALTBAR if gemerkt[0] else 30):
         return gemerkt[0]
 
     erlaubt = False
@@ -2758,6 +2761,9 @@ EINHAENGER = """
       if (/thread|faden|umbenennen|rename/i.test(text) && !/new|neu/i.test(text)) continue;
       var block = document.createElement("div");
       block.id = ID;
+      // Reste loeschen: dasselbe Objekt fuellt auch die Einstellungsseite - sonst
+      // erbt ein neuer Bereich still die Rolle des zuletzt geoeffneten (Fund 01.09.).
+      werte = {fach: "", nutzer: "", besonderes: "", modus: "query"};
       block.style.cssText = "margin-top:8px;padding:12px;border:1px dashed #3a4454;border-radius:10px;color:#e8edf5";
       var kopf = document.createElement("div");
       kopf.innerHTML = "<b>Rolle dieses Bereichs</b> <span style='opacity:.7'>— wird zum Prompt; später änderbar in <code>dokumente/&lt;bereich&gt;/prompt.md</code></span>";
@@ -4463,6 +4469,20 @@ class Griff(BaseHTTPRequestHandler):
                     return
             except Exception:
                 traceback.print_exc(file=sys.stderr)
+                if getattr(self, "_strom_offen", False):
+                    # Der Antwortkopf ist schon raus - ein zweiter Weg wuerde einen
+                    # zweiten HTTP-Kopf in den laufenden Strom schreiben (Antwort
+                    # halb, Knopf haengt). Sauber abschliessen und Schluss.
+                    try:
+                        _m = _neue_marke("gespraech")
+                        self._strom_stueck({"uuid": _m, "type": "textResponseChunk",
+                                            "textResponse": "Die Antwort ist unterwegs abgebrochen. Bitte die Frage noch einmal stellen.",
+                                            "sources": [], "close": True, "error": False})
+                        self._strom_stueck(self._abschluss_stueck(_m))
+                        self._strom_schliessen()
+                    except Exception:
+                        pass
+                    return
         # KI4KI-META: Begruessung / "Was kannst du?" freundlich beantworten
         try:
             if self._meta_antwort(frage):
@@ -6641,9 +6661,11 @@ class Griff(BaseHTTPRequestHandler):
         text = e.get("text") or ""
         if e.get("fehler") and not text:
             print("[Gespraech] ausgefallen: %s" % e["fehler"], file=sys.stderr, flush=True)
-            self._strom_stueck({"uuid": _neue_marke("gespraech"), "type": "textResponseChunk",
+            _m = _neue_marke("gespraech")
+            self._strom_stueck({"uuid": _m, "type": "textResponseChunk",
                                 "textResponse": "Die Antwort ist nicht zustande gekommen (%s). Bitte noch einmal."
                                 % e["fehler"], "sources": [], "close": True, "error": False})
+            self._strom_stueck(self._abschluss_stueck(_m))   # sonst bleibt die Oberflaeche auf "Stop"
             self._strom_schliessen()
             return True
         # ⭐ Bestandsliste: Liefert das Werkzeug eine Tabelle (mit Links) und das
@@ -6788,7 +6810,7 @@ class Griff(BaseHTTPRequestHandler):
             # "Quelle" nur, wenn wirklich etwas belegt wurde; sonst war es eine
             # Suche ohne Fund - "Nicht belegt · Quelle: DS-24-005" las sich
             # wie eine Zuschreibung (Emrach 01.09.).
-            fuss.append(("Quelle: %s" if (ok or beruehrt) else "durchsucht: %s") % _doks)
+            fuss.append(("Quelle: %s" if (ok or belegt_z) else "durchsucht: %s") % _doks)
         if _was:
             fuss.append(", ".join(_was))
         for _d, (_g, _z) in (zustand.get("gelesen") or {}).items():
@@ -6820,7 +6842,7 @@ class Griff(BaseHTTPRequestHandler):
                          pruefungen=_pruef or None, seit=begonnen)
         GESPRAECHE.merken(gespraech_k, frage, "gespraech",
                           [{"title": d} for d in zustand["dokumente"][:3]],
-                          antwort=re.sub(r"\n\n\*(?:Quelle:|Bestand|Katalog|gelesen|Bilder|Störfall)[^\n]*\*\s*$", "", text.split("\n\n---\n")[0]).strip())
+                          antwort=re.sub(r"\n\n\*(?:Quelle:|durchsucht:|Bestand|Katalog|gelesen|gezählt|Bilder|Bild|Seite|Abkürzung|Export|Störfall|⚠)[^\n]*\*\s*$", "", text.split("\n\n---\n")[0]).strip())
         _marke = _neue_marke("gespraech")
         self._strom_stueck({"uuid": _marke, "type": "textResponseChunk",
                             "textResponse": text, "sources": [], "close": False, "error": False})
@@ -7382,7 +7404,7 @@ class Griff(BaseHTTPRequestHandler):
         self._sammeln = []
         try:
             getroffen = False
-            for hook in (self._rolle_antwort, self._kategorie_antwort, self._pruefung_antwort, self._vergleich_vorab, self._bild_vorab,
+            for hook in (self._rolle_antwort, self._kategorie_antwort, self._leerer_bereich, self._pruefung_antwort, self._vergleich_vorab, self._bild_vorab,
                          self._fakten_vorab, self._bestand_vorab,
                          (self._gespraech_antwort if gespraechsmodus.AN else None)):
                 if hook is None:
@@ -7518,8 +7540,10 @@ class Griff(BaseHTTPRequestHandler):
         gespraech = GESPRAECHE.kennung(self.path, self.headers)
         self._festhalten("vergleich", frage, text)
         GESPRAECHE.merken(gespraech, frage, "vergleich", [{"title": dok_a}, {"title": dok_b}])
-        self._strom_stueck({"uuid": _neue_marke("vergleich"), "type": "textResponseChunk",
+        _m = _neue_marke("vergleich")
+        self._strom_stueck({"uuid": _m, "type": "textResponseChunk",
                             "textResponse": text, "sources": [], "close": True, "error": False})
+        self._strom_stueck(self._abschluss_stueck(_m))
         self._strom_schliessen()
         print("[Vergleich] %s vs %s (%s), %d ok / %d nicht" % (dok_a, dok_b, modus, ok, nein),
               file=sys.stderr, flush=True)
@@ -7977,6 +8001,7 @@ class Griff(BaseHTTPRequestHandler):
         self.send_header("X-Accel-Buffering", "no")
         self.send_header("Transfer-Encoding", "chunked")
         self.end_headers()
+        self._strom_offen = True
 
     def _strom_stueck(self, nachricht):
         if self._sammeln is not None:
@@ -7991,6 +8016,7 @@ class Griff(BaseHTTPRequestHandler):
             return
         self.wfile.write(b"0\r\n\r\n")
         self.wfile.flush()
+        self._strom_offen = False
 
     def _stand(self, uuid, text):
         """Zwischenstand anzeigen.
