@@ -5372,7 +5372,10 @@ class Griff(BaseHTTPRequestHandler):
             zeile("Vorgänge (Fragen)", z["vorgaenge"], "Zeitraum: %s – %s" % (seit or "Anfang", bis or "heute")),
             zeile("Gesprächsfäden", z.get("faeden", "-")),
             zeile("Fragende (Kennungen, pseudonym)", z.get("fragende", "-")),
-            zeile("Anteil belegter Antworten", "%s %%" % z["belegt_anteil"], "Antworten mit mindestens einem im Original nachgeschlagenen Zitat oder Beleg (Leitfaden-KPI)"),
+            zeile("Anteil belegter Antworten", "%s %%" % z["belegt_anteil"],
+                  "%d von %d inhaltlichen Antworten mit im Original nachgeschlagenem Zitat/Beleg (Leitfaden-KPI). Nicht mitgezählt: %d Listen, Bilder, Katalogfragen und Klärfragen · %d ehrliche „nicht gefunden“ · %d Allgemeinwissen (Chat-Modus). Bezogen auf alle Vorgänge: %s %%."
+                  % (min(z.get("belegt", 0), z.get("belegbar", 0)), z.get("belegbar", 0), z["vorgaenge"] - z.get("inhaltlich", 0),
+                     z.get("eskaliert", 0), z.get("allgemeinwissen", 0), z.get("belegt_anteil_alle", 0))),
             zeile("Trefferquote", "%s %%" % z.get("trefferquote", "-"), "Anteil der Fragen mit einer Antwort aus dem Bestand"),
             zeile("Eskalationsquote", "%s %% (%d)" % (z.get("eskalationsquote", "-"), z.get("eskaliert", 0)), "ehrlich „nicht gefunden“ statt Schein-Sicherheit"),
             zeile("Zeit bis zur ersten verwertbaren Quelle (Median)", ("%.0f s" % (ms / 1000.0)) if ms else "-", "je Faden die erste belegte Antwort"),

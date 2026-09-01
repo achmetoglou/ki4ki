@@ -503,7 +503,8 @@ def szenario_23_kennzahlen():
     pruefe(z["vorgaenge"] == 3 and z["eskaliert"] == 1 and z["stoerfaelle"] == 1, "gezaehlt: %s" % {k: z[k] for k in ("vorgaenge", "eskaliert", "stoerfaelle")})
     pruefe(z["zeit_bis_erste_quelle_median_ms"] == 9000 and z["faeden"] == 2, "erste Quelle je Faden: %s ms, %d Faeden" % (z["zeit_bis_erste_quelle_median_ms"], z["faeden"]))
     pruefe(z["rueckmeldungen"] == {"hilfreich": 1, "nicht_hilfreich": 1, "gesamt": 2}, "Rueckmeldungen: %s" % z["rueckmeldungen"])
-    pruefe(z["nutzung_je_tag"] == {"2026-08-26": 1, "2026-08-27": 1} and z["belegt_anteil"] == round(100.0 / 3, 1), "Nutzung je Tag + belegt-Anteil")
+    pruefe(z["nutzung_je_tag"] == {"2026-08-26": 1, "2026-08-27": 1} and z["belegt_anteil"] == 50.0 and z["belegt_anteil_alle"] == round(100.0 / 3, 1) and z["belegbar"] == 2,
+           "Nutzung je Tag + belegt-Anteil (1 von 2 belegbaren; das ehrliche 'keine Seite' zaehlt nicht als unbelegt)")
 
 
 def szenario_24_pruefungskatalog():

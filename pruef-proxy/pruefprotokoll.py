@@ -475,11 +475,26 @@ def kennzahlen(seit=None, bis=None):
     belegt = sum(verdikte.get(k, 0) for k in ("belegt", "woertlich", "geglaettet", "teilweise"))
     eskaliert, stoerfaelle, erste = 0, 0, {}
     tage = {}
+    # ⭐ Nenner ehrlich (Emrach 01.09.: "9,3 % sieht nicht nach Qualitaet aus"):
+    #   Belegen KANN nur eine inhaltliche Antwort. Bestandslisten, Bilder,
+    #   Begruessungen, Klaerfragen, Exporte, Allgemeinwissen und ehrliche
+    #   "nicht gefunden" sind keine unbelegten Fachantworten - sie zaehlen
+    #   getrennt. Der alte Wert (belegt / alle Vorgaenge) bleibt als
+    #   belegt_anteil_alle nachvollziehbar.
+    INHALTLICH = {"gespraech", "normal", "faden", "vergleich", "fakten", "stoerfall", "pruefung", "zusammenfassung"}
+    inhaltlich = allgemein = belegbar = 0
     for e in fragen:
         a = (e.get("antwort") or "")
-        if re.search(r"nicht gefunden|steht .{0,40}nichts|keine (?:passende )?seite|nicht belegt|Ansprechpartner|"
-                     r"keine belastbare Information|nicht auf den gepr", a, re.I):
+        ist_esk = bool(re.search(r"nicht gefunden|steht .{0,40}nichts|keine (?:passende )?seite|nicht belegt|Ansprechpartner|"
+                                 r"keine belastbare Information|nicht auf den gepr", a, re.I))
+        if ist_esk:
             eskaliert += 1
+        if (e.get("regel") or "") in INHALTLICH:
+            inhaltlich += 1
+            if "Allgemeinwissen" in a:
+                allgemein += 1
+            elif not ist_esk and not re.search(r"^\s*(?:Die Frage ist zu ungenau|Meinst du|Welche[sr]? (?:Dokument|Arbeit) meinst)", a):
+                belegbar += 1
         if e.get("kontext"):
             stoerfaelle += 1
         tag = (e.get("ts") or "")[:10]
@@ -494,7 +509,12 @@ def kennzahlen(seit=None, bis=None):
     return {
         "vorgaenge": len(fragen),
         "fragende": len(koepfe),
-        "belegt_anteil": round(100.0 * belegt / len(fragen), 1),
+        "belegt": belegt,
+        "inhaltlich": inhaltlich,
+        "belegbar": belegbar,
+        "allgemeinwissen": allgemein,
+        "belegt_anteil": round(100.0 * min(belegt, belegbar) / belegbar, 1) if belegbar else 0.0,
+        "belegt_anteil_alle": round(100.0 * belegt / len(fragen), 1),
         "eskaliert": eskaliert,
         "eskalationsquote": round(100.0 * eskaliert / len(fragen), 1),
         "stoerfaelle": stoerfaelle,
