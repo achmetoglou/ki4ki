@@ -783,12 +783,22 @@ _FADEN_RAUS = re.compile(r"\bvergiss\w*\s+(?:das|die|den|dieses|dieser|jenes)?\s
 
 _LISTENFRAGE = re.compile(
     r"^\s*(?:welche[rsn]?|zeig\w*|liste\w*|alle|gibt\s+es|was\s+(?:haben|habt|gibt)|wie\s*viele?|nenn\w*)\b"
-    r"[^?]{0,30}?\b(?:dokumente?|unterlagen|arbeiten|dissertationen|doktorarbeiten|normen|richtlinien|quellen|"
-    r"papers?|berichte|handb(?:ü|ue)cher|kataloge|pr(?:ü|ue)fungskataloge|titel|schriften|literatur|b(?:ü|ue)cher|dateien|pdfs?)\b", re.I)
+    r"[^?]{0,30}?\b(?:dokumente?|unterlagen|arbeit(?:en)?|dissertation(?:en)?|doktorarbeit(?:en)?|norm(?:en)?|richtlinien?|quellen?|"
+    r"papers?|berichte?|handb(?:ü|ue)ch(?:er)?|katalog(?:e)?|pr(?:ü|ue)fungskatalog(?:e)?|titel|schriften?|literatur|b(?:ü|ue)ch(?:er)?|datei(?:en)?|pdfs?)\b", re.I)
 _INHALTSFRAGE = re.compile(
-    r"\b(?:nutzt|verwendet|benutzt|beschreibt|untersucht|erkl(?:ä|ae)rt|behandelt|entwickelt|misst|berechnet|"
+    r"\b(?:nutzt|verwendet|benutzt|beschreibt|untersucht|erkl(?:ä|ae)rt|entwickelt|misst|berechnet|"
     r"simuliert|vergleicht|warum|wieso|weshalb|wozu|funktioniert|vorteil\w*|nachteil\w*|alternativ\w*|unterschied\w*|"
-    r"was\s+ist|was\s+sind|wie\s+wird|wie\s+werden|wie\s+hat|wie\s+kann)\b", re.I)
+    r"sagt|steht|schreibt|fordert|verlangt|empfiehlt|regelt|definiert|nennt|herausgefunden|ergebnis\w*|erkenntnis\w*|"
+    r"was\s+ist|was\s+sind|wie\s+wird|wie\s+werden|wie\s+hat|wie\s+kann|wie\s+viele?\s+(?:seiten|abbildungen|bilder|tabellen|kapitel|formeln))\b", re.I)
+
+
+def ist_inhaltsfrage(frage):
+    """Inhaltsfrage trotz Bestandswort ("Was sagt die DVS 2213 zu ...",
+    "Wie viele Seiten hat die Arbeit") - gehoert ans Dokument, nie in den Index."""
+    t = (frage or "").strip()
+    if re.search(r"\bwie\s*viele?\s+(?:seiten|abbildungen|bilder|tabellen|kapitel|formeln)\b", t, re.I):
+        return True                      # Zaehlfrage ans Dokument, auch wenn "die Arbeit" dahinter steht
+    return bool(_INHALTSFRAGE.search(t)) and not _LISTENFRAGE.match(t)
 
 
 def ist_bestandsfrage_unscharf(text):
@@ -800,8 +810,11 @@ def ist_bestandsfrage_unscharf(text):
       statt Antwort, danach kein Faden-Dokument, dritte Frage aus der
       falschen Arbeit)."""
     t = (text or "").strip()
-    if _INHALTSFRAGE.search(t) and not _LISTENFRAGE.match(t):
+    if ist_inhaltsfrage(t):
         return False
+    if re.match(r"^\s*(?:ok(?:ay)?\.?\s*|gut\.?\s*|und\s+)?(?:was|welche\w*)\s+(?:gibt\s+es|habt\s+ihr|haben\s+wir|hast\s+du|liegt|liegen|existier\w+)\b",
+                t, re.I) and _stichwort_aus(t):
+        return True           # "Was gibt es zum Thema X" = Liste zum Thema (README-Zusage)
     if _ist_bestandsfrage(text):
         return True
     if not re.match(r"^\s*(?:was|welche[rsn]?|wie\s*viele?|zeig|liste|gibt|alle|nenn)\w*\b", t, re.I):
@@ -1415,7 +1428,7 @@ def _stichwort_aus(frage):
     m = re.search(r"\b(?:zu(?:m|r)?|ueber|über|betreffend|bezueglich|"
                   r"bezüglich|thema|hinsichtlich|in\s+bezug\s+auf|"
                   r"(?:im|in\s+dem|aus\s+dem|zum|f(?:ü|ue)r\s+den|f(?:ü|ue)r\s+das)\s+(?:bereich|gebiet|feld|fach|themenbereich|themenfeld)|"
-                  r"die\s+sich\s+mit)\s+(?:das\s+|die\s+|der\s+|"
+                  r"die\s+sich\s+mit|(?:befasst|besch(?:ä|ae)ftigt|besch(?:ä|ae)ftigen|befassen)\s+sich\s+mit|handel[nt]\s+von|geht\s+es\s+um|behandel[nt])\s+(?:das\s+|die\s+|der\s+|"
                   r"dem\s+|den\s+|thema\s+)?([A-Za-zÄÖÜäöüß0-9\-\s]{3,40}?)"
                   r"\s*(?:besch(?:ä|ae)ftigen|befassen)?\s*[\?\.,;]?\s*$", frage, re.I)
     if not m:
@@ -2134,6 +2147,18 @@ def dokument_gemeint(frage, titel):
         return k_hit, [k_hit]
     if len(k_kand) > 1:
         return None, k_kand
+    # Normkennung im Satz ("die DVS 2213", "DIN EN 13100-1"): Titel, die damit
+    # BEGINNEN - genau einer = gemeint, mehrere = Rueckfrage (01.09.: "Was sagt
+    # die DVS 2213 zu Pruefverfahren" fand DVS 2213-1_neu nicht).
+    for m in re.finditer(r"\b([A-Z]{2,5}(?:\s+[A-Z]{2,3})?)[\s\-]?(\d{3,5}(?:[\-\.]\d+)*)", frage or ""):
+        kz = _flach(m.group(1) + m.group(2))
+        if len(kz) < 5:
+            continue
+        anf = [t for t in titel if _flach(t).startswith(kz)]
+        if len(anf) == 1:
+            return anf[0], anf
+        if len(anf) > 1:
+            return None, anf
     kern = re.sub(r"^.*?(?:in|von|zu|ueber|über|des|der)\s+", "",
                   frage.strip(), flags=re.I)
     kern = kern.strip(" ?.,;:\"'„“")

@@ -205,6 +205,9 @@ def system_text(faden_dok=None, dokumente=None, kontakt="", rolle="", allgemeinw
         "20. BESTAND: Fragt der Mensch, WELCHE Dokumente/Arbeiten/Unterlagen es gibt - auch knapp ('und im Bereich X', "
         "'als Liste', 'als Katalog', 'als Tabelle') -, rufe bestand(thema=...) auf und gib die gelieferte Tabelle "
         "unveraendert aus. Fasse dann KEINE Inhalte zusammen.",
+        "21. HALBSAETZE ('genauer bitte', 'mehr dazu', 'und weiter'): beziehen sich auf das Faden-Dokument und die "
+        "letzte Antwort - dort weiterlesen (seiten_lesen), keine Bestandssuche. ZAHLEN wie Seitenzahl, Anzahl "
+        "Abbildungen/Tabellen kommen aus dem Werkzeug zaehlen, nie aus dem Text abgelesen.",
         "GESPRAECHSZUSTAND:\nFaden-Dokument: %s" % (faden_dok or "keins (frag nach oder nutze dokument_finden/bestand)"),
     ]
     if allgemeinwissen:

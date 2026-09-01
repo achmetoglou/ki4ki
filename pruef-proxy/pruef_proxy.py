@@ -4724,7 +4724,7 @@ class Griff(BaseHTTPRequestHandler):
             except Exception:
                 traceback.print_exc(file=sys.stderr)
 
-        if art == "bestand":
+        if art == "bestand" and not assistent.ist_inhaltsfrage(frage):
             try:
                 if self._bestandsauskunft(frage, _vorher_best):
                     GESPRAECHE.merken(gespraech, frage, "bestand", [])
@@ -5654,7 +5654,7 @@ class Griff(BaseHTTPRequestHandler):
             self._json({"error": "Workspace does not exist."}, code=404)
             return
 
-        if art == "bestand":
+        if art == "bestand" and not assistent.ist_inhaltsfrage(frage_roh):
             try:
                 titel = titel_im_bereich(self.path, self.headers)
                 bereich = titel is not None      # [] = bekannter, leerer Bereich
@@ -7393,7 +7393,9 @@ class Griff(BaseHTTPRequestHandler):
         # Anschluss an die letzte Bestandsantwort ("und im Bereich Spritzgiessen",
         # "nur Dissertationen"): die vorige Frage liefert den Rahmen. Vorher lief
         # das ueber Stufe 2 und wurde zur Inhaltszusammenfassung (01.09.).
-        if GESPRAECHE.letzte_art(k) == "bestand" and assistent.ist_bestand_verfeinerung(frage):
+        if GESPRAECHE.letzte_art(k) == "bestand" and assistent.ist_bestand_verfeinerung(frage) \
+                and not assistent.ist_inhaltsfrage(frage) \
+                and not assistent.dokument_gemeint(frage, namen_der_anfrage(self.path, self.headers))[0]:
             if self._bestandsauskunft(frage, vorher=GESPRAECHE.letzte_frage(k)):
                 return True
         # Formwunsch ("als Katalogliste meinte ich", "als Tabelle"): die VORIGE
@@ -7473,7 +7475,19 @@ class Griff(BaseHTTPRequestHandler):
     def _fakten_vorab(self, frage):
         """'Wie viele Abbildungen/Seiten/Tabellen hat ...' -> gezaehlt, nicht geraten
         (gemessen 27.08.: das Modell nannte 38 und 91 in einer Antwort)."""
-        if not assistent.dokument_fakten_frage(frage) or self._mehrfachauftrag(frage):
+        k = GESPRAECHE.kennung(self.path, self.headers)
+        if not assistent.dokument_fakten_frage(frage):
+            # "und die von Becker?" nach "Wie viele Seiten hat die Arbeit?": dieselbe
+            # Faktenfrage, anderes Dokument (01.09.: das Modell las "118 Seiten" ab, richtig sind 180)
+            if GESPRAECHE.letzte_art(k) == "fakten" and re.match(r"^\s*(?:und|aber|auch)\b", frage or "", re.I) \
+                    and len((frage or "").split()) <= 8:
+                namen = namen_der_anfrage(self.path, self.headers)
+                dok = assistent.dokument_gemeint(frage, namen)[0]
+                vor = GESPRAECHE.letzte_frage(k)
+                if dok and vor and assistent.dokument_fakten_frage(vor) and self._dok_im_bereich(dok):
+                    return bool(self._fakten_antwort(vor, dok))
+            return False
+        if self._mehrfachauftrag(frage):
             return False
         namen = namen_der_anfrage(self.path, self.headers)
         dok = assistent.dokument_gemeint(frage, namen)[0] or GESPRAECHE.letztes_dokument(GESPRAECHE.kennung(self.path, self.headers))
@@ -7782,6 +7796,8 @@ class Griff(BaseHTTPRequestHandler):
         was = assistent.dokument_fakten_frage(frage)
         if not was:
             return False
+        if dok:
+            dok = assistent._titel_saubern(dok)      # Faden merkt "DS-25-001.md" - der Schluessel ist ohne Endung
         if dok is None:
             namen = namen_der_anfrage(self.path, self.headers)
             if not namen:
