@@ -1279,9 +1279,9 @@ def themen_gegenpruefung(thema, namen, bereich=True):
     from urllib.parse import quote
     def _link(n):
         return "[%s](/pdf/%s)" % (n, quote(n, safe=""))
-    kat = _katalog_treffer(thema, namen)
+    kat = [(_titel_saubern(n), a, g) for n, a, g in _katalog_treffer(thema, namen)]
     kat_namen = [n for n, _, _ in sorted(kat)]
-    vt = [n for n in _volltext_namen(thema, namen) if n not in {_titel_saubern(k).lower() and k for k in kat_namen} and n not in kat_namen]
+    vt = [n for n in _volltext_namen(thema, namen) if n not in kat_namen]
     alle = {_titel_saubern(n) for n in namen}
     rest = sorted(alle - set(kat_namen) - set(vt))
     zeilen = ["Gegengeprüft für **%s** (%d Dokumente %s):" % (thema, len(alle), "in diesem Arbeitsbereich" if bereich else "im Bestand"), ""]

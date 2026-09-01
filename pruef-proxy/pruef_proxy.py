@@ -8065,8 +8065,12 @@ class Griff(BaseHTTPRequestHandler):
         if not text:
             return False
         try:                                   # Thema merken - fuer "nur den einen wirklich?"
+            _k = GESPRAECHE.kennung(self.path, self.headers)
             _st = assistent._stichwort_aus(frage) or (assistent._stichwort_aus(vorher) if isinstance(vorher, str) else None)
-            GESPRAECHE.notiz_setzen(GESPRAECHE.kennung(self.path, self.headers), "bestand_thema", _st or "")
+            GESPRAECHE.notiz_setzen(_k, "bestand_thema", _st or "")
+            # Als Schritt "bestand" merken - sonst weiss "und im Bereich X" nicht,
+            # dass davor eine Bestandsliste kam (gemessen 01.09.: lief zu Stufe 2).
+            GESPRAECHE.merken(_k, frage, "bestand", [], antwort=text[:1800])
         except Exception:
             pass
         self._festhalten("bestand", frage, text)
