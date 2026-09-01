@@ -16,7 +16,10 @@ services:
 
   # --- Sprachmodell ---------------------------------------------------------
   ollama:
-    image: ollama/ollama@sha256:6345fbc18bd73a1e16404be681dbc6fd291a027cab43ed541abe78c4c81051b0
+    # Ollama 0.33.1 (Stand 01.09.2026) - Fingerabdruck statt :latest, damit jede
+    # Installation dieselbe Fassung bekommt. Anheben: neuen Wert eintragen,
+    # docker compose up -d ollama, pruefen. Vorher: 6345fbc1... (Juli 2026).
+    image: ollama/ollama@sha256:075246f72d4109385b4a01c3ac8e9cbd26a0bcb21cd7aa30edbccd24e1b3180c
     container_name: ki4ki-ollama
     restart: unless-stopped
     # ⭐ GESCHWINDIGKEIT (gemessen 25.08. an den Ollama-Zugriffszeiten):
