@@ -99,7 +99,12 @@ automatisch (`KI4KI_BEREICH_HEILEN`).
 ## 4 · Rechte
 
 Vier Prüfungen: `bereich_sichtbar` (liefert AnythingLLM diesen Bereich für diese
-Anmeldung?), `erlaubte_dokumente`, `dokument_erlaubt`, `darf_sehen`. Jeder Weg, der
+Anmeldung?), `erlaubte_dokumente`, `dokument_erlaubt`, `darf_sehen`. Die Dokumentmenge
+einer Chat-Anfrage liefert `namen_der_anfrage`: die Dokumente des Bereichs der Anfrage
+(`titel_im_bereich`, `[]` = bekannt und leer); nur bei unbekanntem Bereich (`None`) die
+kontoweite Menge. Zwei Mengen, zwei Zwecke: `erlaubte_dokumente` ist ein Recht (darf
+diesen Beleg-Link öffnen), `namen_der_anfrage` ist der Gegenstand (woraus antwortet
+dieser Bereich). Jeder Weg, der
 Daten ausgibt, muss an einer davon vorbei. `wegabgleich.py` prüft das im
 Syntaxbaum, mit Gegenprobe (eine Prüfung entfernt → rot); Verteiler zählen nie als
 Prüfung. Das Konto einer Anfrage kommt aus der Anmeldungs-Kopfzeile oder — im

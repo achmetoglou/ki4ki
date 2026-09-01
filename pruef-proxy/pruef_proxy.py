@@ -1881,7 +1881,33 @@ def dokumente_im_bereich(pfad, kopfzeilen):
 
 
 def titel_im_bereich(pfad, kopfzeilen):
-    return _ohne_ki_sperre(_titel_im_bereich_roh(pfad, kopfzeilen))
+    """Titel dieses Bereichs ohne KI-gesperrte - oder None, wenn der Bereich
+    unbekannt ist. [] heisst: der Bereich ist bekannt und LEER."""
+    roh = _titel_im_bereich_roh(pfad, kopfzeilen)
+    if roh is None:
+        return None
+    return _ohne_ki_sperre(roh)
+
+
+def namen_der_anfrage(pfad, kopfzeilen):
+    """Die Dokumente, aus denen DIESE Anfrage antworten darf.
+
+    Massgeblich ist der Arbeitsbereich der Anfrage: Ein Bereich antwortet
+    nur aus seinen eigenen Dokumenten. Ein leerer Bereich bleibt leer -
+    dann antwortet der Chat-Modus aus Allgemeinwissen, der Abfrage-Modus
+    sagt "nicht gefunden".
+
+    Nur wenn sich der Bereich gar nicht ermitteln laesst (None), gilt die
+    kontoweite Menge der erlaubten Dokumente als Rueckfall.
+
+    Vorher stand an 18 Stellen "titel_im_bereich(...) or nur_erlaubte(...)":
+    Weil [] falsch ist, bekam ein NEUER, leerer Bereich die Dokumente ALLER
+    Bereiche des Kontos - fuer einen Administrator also alles (gemeldet von
+    M. Schmitz, 01.09.: "fragt sogar alle Daten ab, Literatur und AuW")."""
+    namen = titel_im_bereich(pfad, kopfzeilen)
+    if namen is None:
+        return nur_erlaubte(BESTAND.titel(), kopfzeilen) or []
+    return namen
 
 
 def _titel_im_bereich_roh(pfad, kopfzeilen):
@@ -4489,8 +4515,7 @@ class Griff(BaseHTTPRequestHandler):
                 art = None
                 if absicht.AN:
                     try:
-                        _namen_abs = (titel_im_bereich(self.path, self.headers)
-                                      or nur_erlaubte(BESTAND.titel(), self.headers) or [])
+                        _namen_abs = namen_der_anfrage(self.path, self.headers)
                         _zeilen = [assistent.dokument_zeile(n) for n in sorted(_namen_abs)[:40]]
                         _a, _grund, _ms = absicht.erkennen(
                             frage, GESPRAECHE.verlauf_kurz(gespraech), _faden_dok_jetzt,
@@ -4564,8 +4589,7 @@ class Griff(BaseHTTPRequestHandler):
                 and GESPRAECHE.letztes_dokument(gespraech):
             try:
                 _dok = GESPRAECHE.letztes_dokument(gespraech)
-                _namen = (titel_im_bereich(self.path, self.headers)
-                          or nur_erlaubte(BESTAND.titel(), self.headers) or [])
+                _namen = namen_der_anfrage(self.path, self.headers)
                 _aehnl = assistent.aehnliche_titel(_dok, _namen)
                 if _aehnl:
                     _zeilen = "\n".join("- %s *(gemeinsam: %s)*"
@@ -4610,8 +4634,7 @@ class Griff(BaseHTTPRequestHandler):
             # ⭐ VERGLEICH ZWEIER DOKUMENTE als Tabelle mit Seitenbeleg je Zelle
             #   (GESPRAECH-ANFORDERUNGEN §2.17/§2.22) - Denken eingeschaltet.
             try:
-                _namen = (titel_im_bereich(self.path, self.headers)
-                          or nur_erlaubte(BESTAND.titel(), self.headers) or [])
+                _namen = namen_der_anfrage(self.path, self.headers)
                 _vgl = assistent.vergleichs_dokumente(frage, _namen)
                 if _vgl and self._vergleich_antwort(frage, _vgl[0], _vgl[1], _vgl[2]):
                     return
@@ -4731,8 +4754,7 @@ class Griff(BaseHTTPRequestHandler):
                 _dok = GESPRAECHE.letztes_dokument(gespraech)
                 _hit = None
                 if not _gesamt and not assistent.bezieht_sich_auf_vorheriges(frage):
-                    _namen = (titel_im_bereich(self.path, self.headers)
-                              or nur_erlaubte(BESTAND.titel(), self.headers))
+                    _namen = namen_der_anfrage(self.path, self.headers)
                     _hit, _ = assistent.dokument_gemeint(frage, _namen or [])
                     if _hit and _hit != _dok:
                         GESPRAECHE.dokument_merken(gespraech, _hit)
@@ -4779,8 +4801,7 @@ class Griff(BaseHTTPRequestHandler):
             try:
                 _dok = None
                 if not assistent.bezieht_sich_auf_vorheriges(frage):
-                    _namen = (titel_im_bereich(self.path, self.headers)
-                              or nur_erlaubte(BESTAND.titel(), self.headers) or [])
+                    _namen = namen_der_anfrage(self.path, self.headers)
                     _dok, _ = assistent.dokument_gemeint(frage, _namen)
                     if _dok:
                         GESPRAECHE.dokument_merken(gespraech, _dok)
@@ -5524,8 +5545,8 @@ class Griff(BaseHTTPRequestHandler):
         if art == "bestand":
             try:
                 titel = titel_im_bereich(self.path, self.headers)
-                bereich = bool(titel)
-                if not titel:
+                bereich = titel is not None      # [] = bekannter, leerer Bereich
+                if titel is None:
                     BESTAND.aktualisiere()
                     # A2: nicht der ganze Bestand, nur was erlaubt ist
                     titel = nur_erlaubte(BESTAND.titel(), self.headers)
@@ -5543,8 +5564,7 @@ class Griff(BaseHTTPRequestHandler):
                 BESTAND.aktualisiere()
                 # A2: der Rueckfall siebt nach Recht, sonst fasst die
                 # Anlage ein fremdes Dokument zusammen.
-                auswahl = (titel_im_bereich(self.path, self.headers)
-                           or nur_erlaubte(BESTAND.titel(), self.headers))
+                auswahl = namen_der_anfrage(self.path, self.headers)
                 # Steht eine Rueckfrage offen, wird nur noch unter den
                 # aufgezaehlten Titeln gewaehlt - sonst streut dieselbe
                 # Frage erneut ueber den ganzen Bestand und die Anlage
@@ -5895,7 +5915,7 @@ class Griff(BaseHTTPRequestHandler):
         # Bereich gar nicht sehen darf.
         # KI4KI-KEIN-AUSWEICHEN: Der Gesamtbestand ist nur
         # erlaubt, wenn der Zugang zum Bereich bestaetigt ist.
-        auswahl = im_bereich or (
+        auswahl = im_bereich if im_bereich is not None else (
             nur_erlaubte(BESTAND.titel(), self.headers)
             if bereich_sichtbar(self.path, self.headers) else [])
         # Wie im Browser-Weg: Steht eine Rueckfrage offen, wird nur noch
@@ -6094,8 +6114,8 @@ class Griff(BaseHTTPRequestHandler):
             self._json({"error": "Workspace does not exist."}, code=404)
             return True
         # Nur Dokumente, die dieser Nutzer sehen darf (A2/A3).
-        namen = titel_im_bereich(self.path, self.headers) or []
-        if not namen:
+        namen = titel_im_bereich(self.path, self.headers)
+        if namen is None:
             BESTAND.aktualisiere()
             namen = nur_erlaubte(BESTAND.titel(), self.headers)
         if not namen:
@@ -6504,8 +6524,7 @@ class Griff(BaseHTTPRequestHandler):
             return True
         gespraech_k = GESPRAECHE.kennung(self.path, self.headers)
         BESTAND.aktualisiere()
-        namen = (titel_im_bereich(self.path, self.headers)
-                 or nur_erlaubte(BESTAND.titel(), self.headers) or [])
+        namen = namen_der_anfrage(self.path, self.headers)
         if not namen:
             return False
         faden_dok = GESPRAECHE.letztes_dokument(gespraech_k)
@@ -6934,8 +6953,7 @@ class Griff(BaseHTTPRequestHandler):
         if not bereich_sichtbar(self.path, self.headers):
             return False
         BESTAND.aktualisiere()
-        namen = (titel_im_bereich(self.path, self.headers)
-                 or nur_erlaubte(BESTAND.titel(), self.headers) or [])
+        namen = namen_der_anfrage(self.path, self.headers)
         if not namen:
             return False
         kat = self._kataloge_im_bereich(namen)
@@ -7043,8 +7061,7 @@ class Griff(BaseHTTPRequestHandler):
             GESPRAECHE.dokument_merken(gespraech, dok)
             print("[Absicht] Dokumentwechsel: %r" % dok, file=sys.stderr, flush=True)
         if aktion == "klaerfrage":
-            namen = (titel_im_bereich(self.path, self.headers)
-                     or nur_erlaubte(BESTAND.titel(), self.headers) or [])
+            namen = namen_der_anfrage(self.path, self.headers)
             kand = sorted(namen)[:10]
             if not kand:
                 return False
@@ -7223,7 +7240,7 @@ class Griff(BaseHTTPRequestHandler):
         if not _darf_rolle_setzen(self.headers):
             self._direkt_senden("meta", frage, "Kategorien setzt nur ein Konto mit Einsichtsrecht (Betreiber/Admin).")
             return True
-        namen = (titel_im_bereich(self.path, self.headers) or nur_erlaubte(BESTAND.titel(), self.headers) or [])
+        namen = namen_der_anfrage(self.path, self.headers)
         dok, kand = assistent.dokument_gemeint(m.group(1), namen)
         slug = (re.match(r"^/api/(?:v1/)?workspace/([^/]+)", self.path or "") or [None, None])[1] \
             if re.match(r"^/api/(?:v1/)?workspace/([^/]+)", self.path or "") else None
@@ -7266,7 +7283,7 @@ class Griff(BaseHTTPRequestHandler):
         (gemessen 27.08.: Stufe 2 las stur im alten Faden-Dokument und verglich Titel)."""
         if not assistent._VERGLEICH.search(frage or ""):
             return False
-        namen = (titel_im_bereich(self.path, self.headers) or nur_erlaubte(BESTAND.titel(), self.headers) or [])
+        namen = namen_der_anfrage(self.path, self.headers)
         v = assistent.vergleichs_dokumente(frage, namen)
         if not v:
             return False
@@ -7294,7 +7311,7 @@ class Griff(BaseHTTPRequestHandler):
         (gemessen 27.08.: das Modell nannte 38 und 91 in einer Antwort)."""
         if not assistent.dokument_fakten_frage(frage) or self._mehrfachauftrag(frage):
             return False
-        namen = (titel_im_bereich(self.path, self.headers) or nur_erlaubte(BESTAND.titel(), self.headers) or [])
+        namen = namen_der_anfrage(self.path, self.headers)
         dok = assistent.dokument_gemeint(frage, namen)[0] or GESPRAECHE.letztes_dokument(GESPRAECHE.kennung(self.path, self.headers))
         if not dok:
             return False
@@ -7486,8 +7503,7 @@ class Griff(BaseHTTPRequestHandler):
     def _export_antwort(self, frage, dok):
         was = assistent.export_frage(frage)
         gespraech = GESPRAECHE.kennung(self.path, self.headers)
-        namen = (titel_im_bereich(self.path, self.headers)
-                 or nur_erlaubte(BESTAND.titel(), self.headers) or [])
+        namen = namen_der_anfrage(self.path, self.headers)
         if was == "bibtex":
             ziel = [dok] if (dok and re.search(r"\b(?:diese|dieses|das|die|der)\s+(?:arbeit|dokument|dissertation)\b", frage, re.I)) else namen
             inhalt = assistent.bibtex_eintraege(ziel)
@@ -7552,8 +7568,7 @@ class Griff(BaseHTTPRequestHandler):
         if not was:
             return False
         if dok is None:
-            namen = (titel_im_bereich(self.path, self.headers)
-                     or nur_erlaubte(BESTAND.titel(), self.headers) or [])
+            namen = namen_der_anfrage(self.path, self.headers)
             if not namen:
                 return False
             spalte = {"seiten": "Seiten", "abbildungen": "Abbildungen (mit Unterschrift)",
@@ -7820,7 +7835,7 @@ class Griff(BaseHTTPRequestHandler):
 
         titel = titel_im_bereich(self.path, self.headers)
         bereich = True
-        if not titel:
+        if titel is None:
             # Ohne Auskunft von AnythingLLM auf den Gesamtbestand
             # zurueckfallen - aber A2: nur auf den ERLAUBTEN Teil, sonst
             # zaehlt die Anlage fremde Titel auf.

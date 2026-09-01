@@ -174,6 +174,9 @@ wirkt binnen 5 Minuten), `kategorien.txt`, `metadaten.json`.
   Standard-Benutzer sieht nur die Bereiche, die ihm ein Administrator zuweist
   („erst freigeben, dann sichtbar"); Administratoren sehen alle Bereiche, ohne dass
   sie in der Mitgliederliste eines Bereichs stehen.
+- **Bereichsgrenze:** Jede Anfrage antwortet nur aus den Dokumenten des Bereichs, in dem
+  sie gestellt wird — nie aus anderen Bereichen, auch wenn das Konto sie sehen dürfte.
+  Ein leerer Bereich bleibt leer (Chat-Modus: Allgemeinwissen; Abfrage-Modus: „nicht gefunden").
 - **Durchsetzung:** Der Proxy bindet die Berechtigung an jede Anfrage und prüft sie
   an jedem Ausgabeweg (Antwort, Beleg-Link, Seitenbild, Abbildung, Bestandsliste,
   Export). `python3 pruef-proxy/wegabgleich.py` prüft das maschinell im Quelltext.

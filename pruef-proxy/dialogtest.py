@@ -710,6 +710,24 @@ def szenario_28_aufnahme_uebersicht():
     pruefe(len(a["letzte_meldungen"]) == 2, "letzte Log-Meldungen kommen mit")
 
 
+def szenario_29_bereich_isolation():
+    print("\n[29] Ein Bereich antwortet nur aus seinen eigenen Dokumenten (leer bleibt leer)")
+    quelle = open(os.path.join(HIER, "pruef_proxy.py"), encoding="utf-8").read()
+    ns = {"_ohne_ki_sperre": lambda n: list(n or []), "BESTAND": type("B", (), {"titel": staticmethod(lambda: ["A", "B", "C"])})()}
+    for fn in ("def titel_im_bereich", "def namen_der_anfrage"):
+        start = quelle.index(fn); ende = quelle.index("\ndef ", start + 1)
+        exec(quelle[start:ende], ns)
+    ns["nur_erlaubte"] = lambda titel, kopf: ["A", "B"]
+    ns["_titel_im_bereich_roh"] = lambda pfad, kopf: {"/api/workspace/leer/chat": [], "/api/workspace/auw/chat": ["A"]}.get(pfad)
+    f = ns["namen_der_anfrage"]
+    pruefe(f("/api/workspace/leer/chat", {}) == [], "leerer Bereich -> KEINE Dokumente (kein Rueckfall auf das ganze Konto)")
+    pruefe(f("/api/workspace/auw/chat", {}) == ["A"], "Bereich mit Dokumenten -> nur seine")
+    pruefe(f("/irgendwas", {}) == ["A", "B"], "Bereich unbekannt -> Rueckfall auf die erlaubte Menge")
+    import re
+    reste = re.findall(r"titel_im_bereich\(self\.path, self\.headers\)\s*or nur_erlaubte", quelle)
+    pruefe(not reste, "kein 'titel_im_bereich(...) or nur_erlaubte(...)' mehr im Quelltext (%d)" % len(reste))
+
+
 def szenario_27_wegabgleich_und_bildarten():
     print("\n[27] A2 Rechtepruefung je Ausgabeweg (wegabgleich) · Bildarten · Kategorie-Vorgabe per Unterordner")
     import wegabgleich
@@ -744,7 +762,8 @@ if __name__ == "__main__":
               szenario_21_metadaten, szenario_22_stoerfall, szenario_23_kennzahlen,
               szenario_24_pruefungskatalog, szenario_25_rolle, szenario_26_kategorien,
               szenario_27_wegabgleich_und_bildarten,
-              szenario_28_aufnahme_uebersicht):
+              szenario_28_aufnahme_uebersicht,
+              szenario_29_bereich_isolation):
         try:
             s()
         except Exception as e:

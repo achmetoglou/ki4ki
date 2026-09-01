@@ -90,6 +90,10 @@ Bereichs. Dazu die Wahl des Modus:
 Der Ordner `dokumente/<bereich>/` entsteht automatisch. Ändern lässt sich die Rolle
 später in den Chat-Einstellungen des Bereichs.
 
+Ein Bereich antwortet **nur aus seinen eigenen Dokumenten** — auch für Administratoren,
+die alle Bereiche sehen. Ein Bereich im Modus „Chat" ohne Dokumente ist damit ein
+reiner Modell-Chat ohne Bezug auf Unterlagen.
+
 **Benutzer** legt ein Administrator unter Einstellungen → Benutzer an. Ein
 Benutzer sieht nur die Bereiche, die ihm zugewiesen wurden; Administratoren sehen
 alle. Die Kennzahlen-Seite (`/kpi`) sehen alle Administratoren; weitere Konten
