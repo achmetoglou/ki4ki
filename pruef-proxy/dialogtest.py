@@ -822,6 +822,11 @@ def szenario_32_bestand_thema():
         t3 = assistent._treffer_im_katalog("Spritzgießen", ["DS-24-006", "DS-24-007"], bereich=True)
         pruefe(bool(t3) and "Im Volltext" in t3 and "DS-24-007" in t3.split("Im Volltext")[1] and "DS-24-006" not in t3.split("Im Volltext")[1],
                "Volltext-Zusatz nennt nur Dokumente, die NICHT schon in der Katalog-Tabelle stehen")
+        pruefe(not assistent.ist_bestandsfrage_unscharf("Welches Verfahren nutzt Köbel in seiner Dissertation zur Einspritzprofilierung?"), "Inhaltsfrage mit 'Dissertation' ist KEINE Bestandsfrage")
+        pruefe(not assistent.ist_bestandsfrage_unscharf("Warum hat er das so gemacht?"), "'Warum ...' ist keine Bestandsfrage")
+        pruefe(assistent.ist_bestandsfrage_unscharf("Welche Dissertationen haben wir?"), "'Welche Dissertationen haben wir?' bleibt Bestandsfrage")
+        pruefe(assistent.ist_bestandsfrage_unscharf("Welche Dokumente beschreiben das Spritzgießen?"), "Listenfrage mit Inhaltsverb bleibt Bestandsfrage")
+        pruefe(assistent.ist_bestandsfrage_unscharf("Was haben wir im Bestand?"), "klassische Bestandsfrage bleibt")
         pruefe(assistent.ist_bestand_zweifel("nur den einen wirklich? Welche Dokumente haben wir im Bestand?"), "'nur den einen wirklich?' = Zweifel")
         pruefe(assistent.ist_bestand_zweifel("Sicher?") and not assistent.ist_bestand_zweifel("Welche Dokumente haben wir im Bestand?"), "'Sicher?' = Zweifel, Bestandsfrage nicht")
         pruefe(assistent.ohne_zweifel("nur den einen wirklich? Welche Dokumente haben wir im Bestand?") .rstrip("?") == "Welche Dokumente haben wir im Bestand", "Rest hinter dem Zweifel")

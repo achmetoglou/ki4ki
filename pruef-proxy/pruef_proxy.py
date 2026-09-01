@@ -7404,7 +7404,17 @@ class Griff(BaseHTTPRequestHandler):
                     text += "\n\n---\n\n" + liste
             self._direkt_senden("bestand", frage, text + _katalog_zeile())
             return True
-        return bool(assistent.ist_bestandsfrage_unscharf(frage) and self._bestandsauskunft(frage))
+        if not assistent.ist_bestandsfrage_unscharf(frage):
+            return False
+        # Nennt die Frage ein bestimmtes Dokument oder einen Verfasser und
+        # verlangt keine Liste, ist es eine Frage AN das Dokument - Stufe 2.
+        try:
+            if assistent.dokument_gemeint(frage, namen_der_anfrage(self.path, self.headers))[0] \
+                    and not assistent._LISTENFRAGE.match(frage or ""):
+                return False
+        except Exception:
+            pass
+        return bool(self._bestandsauskunft(frage))
 
     def _faden_raus(self, frage):
         """'Tu das Dokument raus' - Faden-Dokument vergessen; der Rest der Frage laeuft weiter."""

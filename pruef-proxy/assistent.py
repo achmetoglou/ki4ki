@@ -781,12 +781,29 @@ _FADEN_RAUS = re.compile(r"\bvergiss\w*\s+(?:das|die|den|dieses|dieser|jenes)?\s
                          r"\bneues\s+thema\b|\bnicht\s+mehr\s+(?:in|aus)\s+(?:dem|der)\s+dokument", re.I)
 
 
+_LISTENFRAGE = re.compile(
+    r"^\s*(?:welche[rsn]?|zeig\w*|liste\w*|alle|gibt\s+es|was\s+(?:haben|habt|gibt)|wie\s*viele?|nenn\w*)\b"
+    r"[^?]{0,30}?\b(?:dokumente?|unterlagen|arbeiten|dissertationen|doktorarbeiten|normen|richtlinien|quellen|"
+    r"papers?|berichte|handb(?:ü|ue)cher|kataloge|pr(?:ü|ue)fungskataloge|titel|schriften|literatur|b(?:ü|ue)cher|dateien|pdfs?)\b", re.I)
+_INHALTSFRAGE = re.compile(
+    r"\b(?:nutzt|verwendet|benutzt|beschreibt|untersucht|erkl(?:ä|ae)rt|behandelt|entwickelt|misst|berechnet|"
+    r"simuliert|vergleicht|warum|wieso|weshalb|wozu|funktioniert|vorteil\w*|nachteil\w*|alternativ\w*|unterschied\w*|"
+    r"was\s+ist|was\s+sind|wie\s+wird|wie\s+werden|wie\s+hat|wie\s+kann)\b", re.I)
+
+
 def ist_bestandsfrage_unscharf(text):
     """Bestandsfrage trotz Tippfehlern ('Was haben wi rim Besdant?'): ein
-    Fragewort am Anfang und ein Wort, das einem Bestandswort aehnelt."""
+    Fragewort am Anfang und ein Wort, das einem Bestandswort aehnelt.
+    ⚠ NICHT bei Inhaltsfragen, die nur ein Bestandswort enthalten:
+      "Welches Verfahren nutzt Koebel in seiner Dissertation zur ..." ist
+      eine Frage ans Dokument, kein Index (gemessen 01.09.: Katalogtabelle
+      statt Antwort, danach kein Faden-Dokument, dritte Frage aus der
+      falschen Arbeit)."""
+    t = (text or "").strip()
+    if _INHALTSFRAGE.search(t) and not _LISTENFRAGE.match(t):
+        return False
     if _ist_bestandsfrage(text):
         return True
-    t = (text or "").strip()
     if not re.match(r"^\s*(?:was|welche[rsn]?|wie\s*viele?|zeig|liste|gibt|alle|nenn)\w*\b", t, re.I):
         return False
     # "Zeig mir alle Pruefungskataloge" / "alle Normen" - Kategorie gefragt = Index
