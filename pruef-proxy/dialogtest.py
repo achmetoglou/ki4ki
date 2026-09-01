@@ -804,7 +804,7 @@ def szenario_27_wegabgleich_und_bildarten():
     # Gegenprobe: eine Pruefung entfernen -> rot
     import tempfile
     quelle = open(os.path.join(HIER, "pruef_proxy.py"), encoding="utf-8").read()
-    kaputt = quelle.replace('if not dokument_erlaubt(name, self.headers):\n            self._fehler(404, "Dieses PDF liegt nicht vor.")', 'if False:\n            self._fehler(404, "x")', 1)
+    kaputt = quelle.replace('if not dokument_erlaubt(name, self.headers):\n            self._fehler(404, "Dieses Dokument liegt nicht vor.")   # wortgleich mit "unbekannt"', 'if False:\n            self._fehler(404, "x")', 1)
     pruefe(kaputt != quelle, "Gegenprobe vorbereitet (Pruefung in _pdf entfernt)")
     tmp = os.path.join(tempfile.mkdtemp(), "pruef_proxy.py"); open(tmp, "w", encoding="utf-8").write(kaputt)
     e2 = wegabgleich.pruefen(tmp)

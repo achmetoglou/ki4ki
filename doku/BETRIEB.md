@@ -58,7 +58,7 @@ Dienste, jeder mit Status `Up`.
 
 - Oberfläche: `http://<server-ip>:3001` (`admin` + Passwort)
 - Ablaufpläne (n8n): `http://<server-ip>:5678` (`admin@ki4ki.local` + dasselbe Passwort). Für den Alltag nicht nötig.
-- **`.secrets.env` sofort sichern.** Sie hat `chmod 600` — nie in Git, nie in ein unverschlüsseltes Backup.
+- **`.secrets.env` sofort sichern.** Sie hat `chmod 600` — nie in Git, nie in ein unverschlüsseltes Backup. Daneben liegt `.secrets.n8n.env` mit nur dem API-Schlüssel — die einzige Geheimnisdatei, die n8n und der Prüf-Proxy sehen.
 
 ### 2.3 Rückfall, falls `start.sh` eine ⚠-Meldung zeigt
 
@@ -151,6 +151,7 @@ Wert anpassen.
 | `KI4KI_KONTAKT` | leer | Name/Mail des Ansprechpartners, den die Anlage bei Störfällen ohne Beleg nennt. |
 | `KI4KI_GESPRAECH` | `1` | Gesprächsmodus (das Modell führt das Gespräch mit Werkzeugen des Proxys). `0` = alter Regel-Router. |
 | `KI4KI_ABSICHT_MODELL` | `1` | Das Modell erkennt die Absicht einer Frage (Stufe 1). |
+| `KI4KI_GESPRAECH_BUDGET` | `300` | Gesamtzeit je Frage in Sekunden; danach bricht die Anlage ehrlich ab (`KI4KI_GESPRAECH_TIMEOUT` = je Modellaufruf, `KI4KI_GESPRAECH_RUNDEN` = Werkzeug-Runden). |
 | `KI4KI_BILDBESCHREIBUNG` | `aus` | Abbildungen bei der Aufnahme beschreiben lassen (~6 s je Bild). |
 | `KI4KI_FORMELN` | `aus` | Formeln als LaTeX erkennen (~6 min je Dissertation). |
 | `KI4KI_MASSENLAUF_AB` | `6` | Ab so vielen Dateien im Eingang läuft die Aufnahme ohne Bildbeschreibung. |
@@ -195,7 +196,7 @@ wirkt binnen 5 Minuten), `kategorien.txt`, `metadaten.json`.
 
 **Was gesichert werden muss** — ein unvollständiges Backup lässt sich nicht wiederherstellen:
 
-1. `.secrets.env` (ohne sie ist jeder ausgesperrt)
+1. `.secrets.env` (ohne sie ist jeder ausgesperrt) — `.secrets.n8n.env` enthält nur den API-Schlüssel und wird aus ihr neu erzeugt
 2. der Projektordner `~/ki4ki` (ohne `dokumente/`, das ist Punkt 4)
 3. die Volumes `ki4ki_anythingllm-daten` (Wissensspeicher), `ki4ki_n8n-daten`
    (Ablaufpläne), `ki4ki_pruefdaten` (Protokoll, Katalog, Belege)
@@ -236,7 +237,7 @@ während eine Aufnahme läuft. Hat sich der Kern-Prompt geändert:
 `./bereiche_nachziehen.sh` bringt bestehende Bereiche auf die geprüften Einstellwerte
 (die Anlage fasst bestehende Bereiche sonst nie an).
 
-Alle Laufzeit-Abbilder der NVIDIA- und CPU-Fassung sind auf ihren Fingerabdruck (`@sha256`) festgelegt (die AMD-Fassung und die Basis-Abbilder der selbst gebauten Dienste noch nicht) —
+Alle fremden Abbilder — Laufzeit-Dienste, AMD-Fassung und die Basis-Abbilder der selbst gebauten Dienste — sind auf ihren Fingerabdruck (`@sha256`) festgelegt —
 ein Update bringt exakt die geprüfte Fassung, nicht die jeweils neueste vom Anbieter.
 Ein einzelnes Abbild anheben: vorher das Volume sichern und den alten Wert notieren,
 neuen Wert eintragen, `docker compose up -d <dienst>`, prüfen. n8n und AnythingLLM

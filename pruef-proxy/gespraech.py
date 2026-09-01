@@ -33,6 +33,9 @@ URL = (os.environ.get("KI4KI_GESPRAECH_URL") or os.environ.get("KI4KI_NETZ_URL")
        or "http://nothink-proxy:11435/api/chat")
 TIMEOUT = float(os.environ.get("KI4KI_GESPRAECH_TIMEOUT") or "240")
 MAX_RUNDEN = int(os.environ.get("KI4KI_GESPRAECH_RUNDEN") or "5")
+# Gesamtbudget je Zug: sonst sieht der Mensch bei haengendem Modell bis zu
+# 6 x 240 s "Denke nach ..." (Fund 01.09.).
+BUDGET = float(os.environ.get("KI4KI_GESPRAECH_BUDGET") or "300")
 DENKEN = (os.environ.get("KI4KI_GESPRAECH_DENKEN") or "0") == "1"
 
 WERKZEUGE = [
@@ -380,7 +383,11 @@ def fuehren(frage, verlauf, faden_dok, dokumente, werkzeug, rufen=None, kontakt=
     fehler = None
     m = {}
     geprueft = False
+    _beginn = time.time()
     for runde in range(max_runden or MAX_RUNDEN):
+        if time.time() - _beginn > BUDGET:
+            fehler = "Zeitbudget von %d s erschoepft" % BUDGET
+            break
         try:
             m = rufen(msgs)
         except Exception as e:

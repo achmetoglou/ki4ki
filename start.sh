@@ -45,6 +45,15 @@ fi
 # --- Zugangsschluessel -----------------------------------------------------
 # Diese drei Werte unterschreiben die Anmeldung. Gehen sie verloren, sind alle
 # Benutzer ausgesperrt - deshalb werden sie EINMAL erzeugt und nie ersetzt.
+n8n_schluessel_schreiben() {
+  # n8n und der Pruef-Proxy bekommen NUR den API-Schluessel - nicht die
+  # Signaturschluessel von AnythingLLM (JWT/SIG), mit denen sich Sitzungen
+  # faelschen liessen. n8n-Code-Knoten koennen ihre Umgebung lesen.
+  _k=$(grep '^KI4KI_API_KEY=' .secrets.env 2>/dev/null | head -1 | cut -d= -f2-)
+  printf 'KI4KI_API_KEY=%s\n' "$_k" > .secrets.n8n.env
+  chmod 600 .secrets.n8n.env
+}
+
 if [ ! -f .secrets.env ]; then
   sagen "Zugangsschluessel erzeugen (einmalig)"
   {
@@ -71,6 +80,7 @@ else
     echo "  anlegen und dort eintragen, sonst nimmt die Anlage nichts auf."
   fi
 fi
+n8n_schluessel_schreiben
 
 # --- Ablageordner ----------------------------------------------------------
 mkdir -p dokumente
@@ -81,7 +91,7 @@ chmod 0777 dokumente
 # --- Grafikkarte -----------------------------------------------------------
 sagen "Grafikkarte pruefen"
 DATEIEN="-f docker-compose.yml"
-if docker run --rm --gpus all ubuntu:24.04 nvidia-smi >/dev/null 2>&1; then
+if docker run --rm --gpus all ubuntu@sha256:33ceb71981b602c1a7443a53469e4dba065f7503eab3078a2d7a57a2ab987517 nvidia-smi >/dev/null 2>&1; then
   DATEIEN="$DATEIEN -f docker-compose.gpu.yml"
   echo "  NVIDIA-Karte gefunden - wird genutzt"
 elif command -v nvidia-smi >/dev/null 2>&1 && nvidia-smi >/dev/null 2>&1; then
@@ -106,7 +116,7 @@ elif command -v nvidia-smi >/dev/null 2>&1 && nvidia-smi >/dev/null 2>&1; then
     sudo nvidia-ctk runtime configure --runtime=docker
     sudo systemctl restart docker
     set -e
-    if docker run --rm --gpus all ubuntu:24.04 nvidia-smi >/dev/null 2>&1; then
+    if docker run --rm --gpus all ubuntu@sha256:33ceb71981b602c1a7443a53469e4dba065f7503eab3078a2d7a57a2ab987517 nvidia-smi >/dev/null 2>&1; then
       DATEIEN="$DATEIEN -f docker-compose.gpu.yml"
       echo "  ✓ GPU-Bruecke eingerichtet - Karte wird jetzt genutzt"
     else
@@ -290,6 +300,7 @@ else
   fi
   if [ -n "$KI4KI_KEY" ]; then
     sed -i "s|^KI4KI_API_KEY=.*|KI4KI_API_KEY=$KI4KI_KEY|" .secrets.env
+    n8n_schluessel_schreiben
     docker compose $DATEIEN up -d n8n pruef-proxy >/dev/null 2>&1
     for i in $(seq 1 20); do           # auf den Proxy warten, dann Bereich anlegen
       [ "$(curl -s -m3 -o /dev/null -w '%{http_code}' "$TOR/" 2>/dev/null)" = "200" ] && break

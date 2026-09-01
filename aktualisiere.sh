@@ -36,6 +36,11 @@ for kv in "KI4KI_UID=$(id -u)" "KI4KI_GID=$(id -g)"; do
 done
 
 echo "→ Aktualisierte Dienste starten ..."
+# Aeltere Installationen: n8n/Proxy bekommen ab jetzt nur den API-Schluessel
+if [ -f .secrets.env ]; then
+  printf 'KI4KI_API_KEY=%s\n' "$(grep '^KI4KI_API_KEY=' .secrets.env | head -1 | cut -d= -f2-)" > .secrets.n8n.env
+  chmod 600 .secrets.n8n.env
+fi
 docker compose up -d
 
 # Ablaufplaene (n8n-Workflows) mit einspielen - sie sind Teil des Pakets.

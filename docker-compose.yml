@@ -151,7 +151,7 @@ services:
     # bringt KI4KI_API_KEY herein - die Ingest-Workflows brauchen ihn fuer den
     # Upload zu AnythingLLM ("=Bearer {{$env.KI4KI_API_KEY}}")
     env_file:
-    - ./.secrets.env
+    - ./.secrets.n8n.env
     ports:
     - "5678:5678"
     environment:
@@ -266,7 +266,7 @@ services:
     # bringt KI4KI_API_KEY herein - fuer die Selbstheilung neu angelegter
     # Bereiche (siehe KI4KI_BEREICH_HEILEN weiter unten)
     env_file:
-    - ./.secrets.env
+    - ./.secrets.n8n.env
     environment:
     - KI4KI_ZIEL=http://anythingllm:3001
     - KI4KI_POSITIVLISTE=sperren
@@ -343,6 +343,10 @@ services:
     # Standard; KI4KI_GESPRAECH=0 in der .env schaltet auf Stufe 1 zurueck.
     - KI4KI_GESPRAECH=${KI4KI_GESPRAECH:-1}
     - KI4KI_GESPRAECH_MODELL=${KI4KI_GESPRAECH_MODELL:-gemma4:12b}
+    # Zeit je Modellaufruf, Runden je Zug, Gesamtbudget je Zug (Sekunden)
+    - KI4KI_GESPRAECH_TIMEOUT=${KI4KI_GESPRAECH_TIMEOUT:-240}
+    - KI4KI_GESPRAECH_RUNDEN=${KI4KI_GESPRAECH_RUNDEN:-5}
+    - KI4KI_GESPRAECH_BUDGET=${KI4KI_GESPRAECH_BUDGET:-300}
     - KI4KI_ZWISCHENSPEICHER=/daten/pruefung/vorauswahl.pickle
     # Der Katalog (Titel/Verfasser/Jahr je Dokument) - dauerhaft im
     # Daten-Volume, nicht im Abbild: Was das Modell vom Deckblatt liest,

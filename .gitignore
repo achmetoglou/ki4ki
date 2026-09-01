@@ -1,5 +1,6 @@
 # ⛔ Geheimnisse gehören NIE ins Repo (nur die .beispiel-Vorlage)
 .secrets.env
+.secrets.n8n.env
 .secrets.env.sicherung-*
 .env
 

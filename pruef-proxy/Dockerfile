@@ -11,7 +11,7 @@
 #  Testserver, wo er eingehaengt wird): der Partner soll nichts nachziehen
 #  muessen, was er nicht angefasst hat.
 # ============================================================================
-FROM python:3.12-slim
+FROM python:3.12-slim@sha256:e5c9fa26ffb76e11e0f054f30dc2523a2f9693f0c36c0cf1e39b27e152d899fc
 
 RUN apt-get update \
  && apt-get install -y --no-install-recommends poppler-utils tzdata \

@@ -1599,7 +1599,7 @@ def erlaubte_dokumente(kopfzeilen):
 
 def _wurzel_von(schluessel):
     """Der Bereichsordner (dokumente/<bereich>) zu einem PDF-Schluessel - oder None."""
-    pfad = PDFS.get(schluessel or "")
+    pfad = PDFS.get(schluessel or "") or _archivdatei(schluessel or "")   # auch Excel/Word (K3-Sperre)
     if not pfad:
         return None
     b = metadaten.bereich_von_pfad(pfad, PDF_ORDNER)
@@ -4387,7 +4387,7 @@ class Griff(BaseHTTPRequestHandler):
         # Konto ohne jede Zuweisung an das vollstaendige PDF, sobald es den
         # Namen kannte. Antwort wie bei einem unbekannten Namen.
         if not dokument_erlaubt(name, self.headers):
-            self._fehler(404, "Dieses PDF liegt nicht vor.")
+            self._fehler(404, "Dieses Dokument liegt nicht vor.")   # wortgleich mit "unbekannt"
             return
         try:
             with open(pfad, "rb") as fh:
@@ -5000,7 +5000,7 @@ class Griff(BaseHTTPRequestHandler):
                 gestartet = True
                 anzahl = dokumente_im_bereich(self.path, self.headers)
                 if anzahl is None:
-                    anzahl = len(BESTAND.titel())
+                    anzahl = len(namen_der_anfrage(self.path, self.headers))   # nie der Gesamtbestand
                 self._stand(stand, "Durchsuche %d %s …"
                             % (anzahl, "Dokument" if anzahl == 1
                                else "Dokumente"))
@@ -8401,9 +8401,10 @@ class Griff(BaseHTTPRequestHandler):
                     _kennung = hashlib.sha256(
                         _ausweis.encode()).hexdigest()[:16]
                     # fuellt _DOKZUGANG[_kennung]
-                    erlaubte_dokumente(self.headers)
+                    if erlaubte_dokumente(self.headers) is None:
+                        _kennung = ""      # Zugang unbekannt -> Marke ohne Dokumentrechte (fail closed)
                     _k = pruefprotokoll.konto_aus(self.headers)
-                    if _k and not _k.startswith(("sitzung-", "dienst-", "unbekannt")):
+                    if _kennung and _k and not _k.startswith(("sitzung-", "dienst-", "unbekannt")):
                         _KONTEN_JE_MARKE[_kennung] = (_k, time.time())
                         _konten_speichern()
             except Exception:

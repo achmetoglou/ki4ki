@@ -11,7 +11,7 @@ name: ki4ki
 services:
   ollama:
     # ROCm-Variante des Ollama-Abbilds (statt der CUDA-Standardfassung)
-    image: ollama/ollama:rocm
+    image: ollama/ollama:rocm@sha256:eaddb04a9e21fa3950c279792f04752db7addeebc5e9f314d9abc0dda33bca24
     devices:
     - /dev/kfd
     - /dev/dri
