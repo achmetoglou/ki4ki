@@ -139,6 +139,11 @@ Dateien bleiben im Eingang und werden beim nächsten Durchgang erneut genommen.
 
 ## 6 · Schalter (`.env` im Projektordner, danach `docker compose up -d`)
 
+Die `.env` enthält nur, was vom Standard abweicht — nach dem ersten Start sind das
+vier Zeilen von `start.sh`. Alle Schalter mit Standardwert und Erklärung stehen in
+[`../.env.beispiel`](../.env.beispiel): Zeile in die `.env` kopieren, `#` entfernen,
+Wert anpassen.
+
 | Schalter | Standard | Wirkung |
 |---|---|---|
 | `KI4KI_PROTOKOLL_EINSICHT` | `admin` | Konten (Komma-getrennt), die `/kpi`, `/rueckmeldungen`, `/protokoll`, `/selbstcheck` sehen dürfen — auch ohne Admin-Rolle. |
@@ -154,9 +159,10 @@ Dateien bleiben im Eingang und werden beim nächsten Durchgang erneut genommen.
 | `KI4KI_GID` | `1000` | Gruppe, der die Dokumentordner gehören (für SFTP-Zugang). |
 | `KI4KI_ROLLE_GLAETTEN` | an | Das Modell formuliert aus den drei Rollen-Feldern den Rollen-Absatz; `0` = die Vorlage gilt wörtlich. |
 
-Weitere Schalter mit Standardwerten stehen kommentiert in der `docker-compose.yml`
-beim Dienst `pruef-proxy` (`AUFFANGNETZ`, `E2B_ANTWORT`, `MODELL_ANZEIGE`,
-`BEREICH_HEILEN`, `LOESCHEN`, `POSITIVLISTE`).
+Weitere Schalter (`AUFFANGNETZ`, `E2B_ANTWORT`, `MODELL_ANZEIGE`, `NENNUNG_TILGEN`,
+`BEREICH_HEILEN`, `LOESCHEN`, `PROTOKOLL_TAGE`) stehen mit Erklärung in `.env.beispiel`.
+`KI4KI_POSITIVLISTE=sperren` (Fernverwaltung gesperrt) ist bewusst fest in der
+`docker-compose.yml` und nicht per `.env` änderbar.
 
 **Ohne Neustart änderbar:** `pruef-proxy/wortlisten.txt` (Auslöser-Wörter für
 Bestandsfragen, Kennungen), die Rolle je Bereich (Oberfläche oder `prompt.md`,

@@ -205,6 +205,8 @@ services:
     # Nachreichen der Bilder. Alltag (einzelne Uploads) bleibt mit Bildern.
     # Niemand schaltet von Hand. Per .env aenderbar.
     - KI4KI_MASSENLAUF_AB=${KI4KI_MASSENLAUF_AB:-6}
+    # Dateien je Durchgang der Aufnahme
+    - KI4KI_MENGE_JE_LAUF=${KI4KI_MENGE_JE_LAUF:-25}
     volumes:
     - n8n-daten:/home/node/.n8n
     - ./dokumente:/files/dokumente
@@ -265,15 +267,15 @@ services:
     environment:
     - KI4KI_ZIEL=http://anythingllm:3001
     - KI4KI_POSITIVLISTE=sperren
-    - KI4KI_AUFFANGNETZ=1
-    - KI4KI_E2B_ANTWORT=1
-    - KI4KI_MODELL_ANZEIGE=1
-    - KI4KI_NENNUNG_TILGEN=1
+    - KI4KI_AUFFANGNETZ=${KI4KI_AUFFANGNETZ:-1}
+    - KI4KI_E2B_ANTWORT=${KI4KI_E2B_ANTWORT:-1}
+    - KI4KI_MODELL_ANZEIGE=${KI4KI_MODELL_ANZEIGE:-1}
+    - KI4KI_NENNUNG_TILGEN=${KI4KI_NENNUNG_TILGEN:-1}
     # ⭐ Jeder NEU angelegte Arbeitsbereich (per Skript ODER per Klick in der
     #   Oberflaeche) bekommt automatisch die gepruef-ten Werte: Prompt, Modus
     #   "query", topN/Schwelle/Verlauf/Temperatur. So ist er von Geburt an
     #   beleg-faehig. BESTEHENDE Bereiche werden nie angefasst. =0 schaltet ab.
-    - KI4KI_BEREICH_HEILEN=1
+    - KI4KI_BEREICH_HEILEN=${KI4KI_BEREICH_HEILEN:-1}
     - KI4KI_SYSTEMPROMPT=/systemprompt.txt
     # fuer Zusammenfassungen ganzer Dokumente: am Suchweg vorbei
     - KI4KI_MODELL=http://nothink-proxy:11435/api/chat
@@ -307,7 +309,7 @@ services:
     # ueberall entfernt (Arbeitsbereiche, System, Katalog, Vormerkliste,
     # Archiv-PDF), Protokoll in <bereich>/loeschen.log. Nur dieser Ordner
     # loest Loeschen aus. Abschaltbar mit 0.
-    - KI4KI_LOESCHEN=1
+    - KI4KI_LOESCHEN=${KI4KI_LOESCHEN:-1}
     # Zeitstempel in aussortiert.log/claim.log in Ortszeit (gemessen 25.08.:
     # UTC, zwei Stunden daneben). Gleiche Quelle wie n8n.
     - TZ=${TZ:-Europe/Berlin}
@@ -320,6 +322,10 @@ services:
     - KI4KI_PROTOKOLL_EINSICHT=${KI4KI_PROTOKOLL_EINSICHT:-admin}
     # Zusaetzlich jeder AnythingLLM-Administrator (0 = nur die Liste oben)
     - KI4KI_EINSICHT_ADMINS=${KI4KI_EINSICHT_ADMINS:-1}
+    # Aufbewahrung des Pruefprotokolls in Tagen
+    - KI4KI_PROTOKOLL_TAGE=${KI4KI_PROTOKOLL_TAGE:-90}
+    # Das Modell glaettet den Rollen-Absatz aus den drei Feldern (0 = Vorlage woertlich)
+    - KI4KI_ROLLE_GLAETTEN=${KI4KI_ROLLE_GLAETTEN:-1}
     # ⭐ STUFE 1 (ARCHITEKTUR-GESPRAECH.md): Das Modell erkennt die Absicht
     # jeder Eingabe im Gespraechszusammenhang; Regeln bleiben Waechter und
     # Rueckfall. Abnahme 26.08.: 31/32 Zuege (97 %) mit gemma4:12b, 3,0 s je
