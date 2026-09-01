@@ -4456,6 +4456,11 @@ class Griff(BaseHTTPRequestHandler):
             self._json({"error": "Workspace does not exist."}, code=404)
             return
         try:
+            if self._rueckfrage_wahl(frage):
+                return
+        except Exception:
+            traceback.print_exc(file=sys.stderr)
+        try:
             if self._anhang_antwort(frage):
                 return
         except Exception:
@@ -6755,6 +6760,8 @@ class Griff(BaseHTTPRequestHandler):
             kennungen=[assistent._titel_saubern(n) for n in namen])
         self._stand_weg(stand)
         text = e.get("text") or ""
+        if not text.strip() and not e.get("fehler"):
+            e["fehler"] = "leere Antwort vom Modell"
         if e.get("fehler") and not text:
             print("[Gespraech] ausgefallen: %s" % e["fehler"], file=sys.stderr, flush=True)
             _m = _neue_marke("gespraech")
@@ -6936,8 +6943,14 @@ class Griff(BaseHTTPRequestHandler):
                   + [{"urteil": "ungedeckt"}] * (nein + unbelegt))
         self._festhalten("gespraech", frage, text, quellen=[{"title": d} for d in zustand["dokumente"][:5]],
                          pruefungen=_pruef or None, seit=begonnen)
+        # Faden-Dokument: bleibt das Dokument des Zugs, wenn die Werkzeuge es
+        # beruehrt haben - sonst wurde nach "Welche Methode benutzt sie?" Koebel
+        # zum Faden, weil bestand_durchsuchen ihn zuerst traf (01.09.).
+        _doks = list(zustand["dokumente"])
+        if faden_dok and faden_dok in _doks:
+            _doks = [faden_dok] + [d for d in _doks if d != faden_dok]
         GESPRAECHE.merken(gespraech_k, frage, "gespraech",
-                          [{"title": d} for d in zustand["dokumente"][:3]],
+                          [{"title": d} for d in _doks[:3]],
                           antwort=re.sub(r"\n\n\*(?:Quelle:|durchsucht:|Bestand|Katalog|gelesen|gezählt|Bilder|Bild|Seite|Abkürzung|Export|Störfall|⚠)[^\n]*\*\s*$", "", text.split("\n\n---\n")[0]).strip())
         _marke = _neue_marke("gespraech")
         self._strom_stueck({"uuid": _marke, "type": "textResponseChunk",
@@ -7412,9 +7425,15 @@ class Griff(BaseHTTPRequestHandler):
         # Anschluss an die letzte Bestandsantwort ("und im Bereich Spritzgiessen",
         # "nur Dissertationen"): die vorige Frage liefert den Rahmen. Vorher lief
         # das ueber Stufe 2 und wurde zur Inhaltszusammenfassung (01.09.).
+        _art_oder_kat = False
+        try:
+            import bestand as _bst, kategorie as _katm
+            _art_oder_kat = bool(_bst.gefragte_art(frage)[0] or _katm.gefragte(frage)[0])
+        except Exception:
+            pass
         if GESPRAECHE.letzte_art(k) == "bestand" and assistent.ist_bestand_verfeinerung(frage) \
                 and not assistent.ist_inhaltsfrage(frage) \
-                and not assistent.dokument_gemeint(frage, namen_der_anfrage(self.path, self.headers))[0]:
+                and (_art_oder_kat or not assistent.dokument_gemeint(frage, namen_der_anfrage(self.path, self.headers))[0]):
             if self._bestandsauskunft(frage, vorher=GESPRAECHE.letzte_frage(k)):
                 return True
         # Formwunsch ("als Katalogliste meinte ich", "als Tabelle"): die VORIGE
@@ -7488,7 +7507,7 @@ class Griff(BaseHTTPRequestHandler):
         Zusammenfassungs-Kurzweg liess den zweiten Teil unter den Tisch fallen)."""
         f = (frage or "").lower()
         absichten = sum(1 for m in (r"zusammenfass|kernaussage|worum geht", r"bild|abbildung|grafik|diagramm", r"vergleich",
-                                    r"wie viele|anzahl", r"liste|tabelle", r"zitat|beleg|seite") if re.search(m, f))
+                                    r"wie viele|anzahl", r"liste|tabelle", r"zitat|beleg|fundstelle|auf seite") if re.search(m, f))
         return absichten >= 2 or bool(re.search(r"\b(?:und (?:dann|danach|anschließend|anschliessend|außerdem|zeig)|anschließend|anschliessend|danach)\b", f))
 
     def _fundstellen_vorab(self, frage):
@@ -7524,8 +7543,44 @@ class Griff(BaseHTTPRequestHandler):
             zeilen.append("%d. %s" % (i + 1, assistent.dokument_zeile(n)))
         zeilen.append("")
         zeilen.append("Nenne die Kennung oder die Nummer, dann lese ich dort nach.")
+        GESPRAECHE.notiz_setzen(GESPRAECHE.kennung(self.path, self.headers), "rueckfrage",
+                                {"frage": frage, "kandidaten": sorted(kand)})
         self._direkt_senden("rueckfrage", frage, "\n".join(zeilen))
         return True
+
+    def _rueckfrage_wahl(self, frage):
+        """Antwort auf die Dokument-Rueckfrage ("2", "die zweite", "DVS 2290 Werkzeugliste"):
+        Dokument setzen und die urspruengliche Frage dort beantworten."""
+        k = GESPRAECHE.kennung(self.path, self.headers)
+        offen = GESPRAECHE.notiz(k, "rueckfrage")
+        if not isinstance(offen, dict) or not offen.get("kandidaten"):
+            return False
+        f = (frage or "").strip().lower()
+        kand = offen["kandidaten"]
+        wahl = None
+        m = re.match(r"^\s*(?:die\s+|das\s+|nummer\s+|nr\.?\s*)?(\d{1,2})\b\.?\s*$", f)
+        if m and 1 <= int(m.group(1)) <= len(kand):
+            wahl = kand[int(m.group(1)) - 1]
+        else:
+            worte = {"erste": 1, "ersten": 1, "zweite": 2, "zweiten": 2, "dritte": 3, "dritten": 3, "vierte": 4, "vierten": 4,
+                     "fünfte": 5, "fuenfte": 5, "sechste": 6}
+            for w, i in worte.items():
+                if re.search(r"\b" + w + r"\b", f) and i <= len(kand):
+                    wahl = kand[i - 1]
+                    break
+            if not wahl and len(f) <= 80:
+                treffer = [n for n in kand if assistent._flach(assistent._titel_saubern(n)) in assistent._flach(f)
+                           or assistent._flach(f) in assistent._flach(assistent._titel_saubern(n))]
+                if len(treffer) == 1:
+                    wahl = treffer[0]
+        if not wahl:
+            return False
+        GESPRAECHE.notiz_setzen(k, "rueckfrage", None)
+        GESPRAECHE.merken(k, frage, "wahl", [{"title": wahl}])
+        urspruenglich = offen.get("frage") or frage
+        if gespraechsmodus.AN and self._gespraech_antwort(urspruenglich):
+            return True
+        return bool(self._faden_antwort(urspruenglich, wahl))
 
     def _fakten_vorab(self, frage):
         """'Wie viele Abbildungen/Seiten/Tabellen hat ...' -> gezaehlt, nicht geraten
@@ -7604,7 +7659,7 @@ class Griff(BaseHTTPRequestHandler):
         self._sammeln = []
         try:
             getroffen = False
-            for hook in (self._rolle_antwort, self._kategorie_antwort, self._leerer_bereich, self._fundstellen_vorab, self._pruefung_antwort,
+            for hook in (self._rueckfrage_wahl, self._rolle_antwort, self._kategorie_antwort, self._leerer_bereich, self._fundstellen_vorab, self._pruefung_antwort,
                          self._vergleich_vorab, self._bild_vorab, self._fakten_vorab, self._dokument_rueckfrage, self._bestand_vorab,
                          (self._gespraech_antwort if gespraechsmodus.AN else None)):
                 if hook is None:

@@ -829,6 +829,11 @@ def szenario_32_bestand_thema():
         pruefe(assistent.ist_bestandsfrage_unscharf("Welche Dokumente beschreiben das Spritzgießen?"), "Listenfrage mit Inhaltsverb bleibt Bestandsfrage")
         pruefe(assistent.ist_bestandsfrage_unscharf("Was haben wir im Bestand?"), "klassische Bestandsfrage bleibt")
         pruefe(assistent.ist_bestand_verfeinerung("und im Bereich Spritzgießen"), "'und im Bereich Spritzgießen' = Verfeinerung der Bestandsfrage")
+        _q = open(os.path.join(HIER, "pruef_proxy.py"), encoding="utf-8").read()
+        _a = _q.index("    def _mehrfachauftrag(frage):"); _e = _q.index("\n    def ", _a + 1)
+        _ns = {"re": __import__("re")}; exec("\n".join(z[4:] for z in _q[_a:_e].splitlines()), _ns)
+        pruefe(not _ns["_mehrfachauftrag"]("Wie viele Seiten hat die Arbeit?") and _ns["_mehrfachauftrag"]("Fasse zusammen und zeig ein Diagramm"),
+               "'Wie viele Seiten' ist EIN Auftrag (Seite != Beleg)")
         pruefe(assistent.ist_vertiefung("genauer bitte") and assistent.ist_vertiefung("mehr dazu") and not assistent.ist_vertiefung("Welche Methode benutzt sie?"), "Vertiefung erkannt")
         pruefe(assistent.ist_fundstellenfrage("wo steht das?") and assistent.ist_fundstellenfrage("Quelle?") and not assistent.ist_fundstellenfrage("Wo steht die Maschine?"), "'wo steht das?' erkannt")
         st = assistent.fundstellen_aus("Text [DS-24-006, S. 125](/stelle?dok=DS-24-006&seite=125&zitat=x) und (DS-24-006, S. 10) sowie (DS-24-006, S. 125).")
