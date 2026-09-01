@@ -4500,11 +4500,15 @@ class Griff(BaseHTTPRequestHandler):
             if _weg and len(re.sub(r"[^\wäöüÄÖÜß]+", " ", frage).split()) <= 8:
                 self._direkt_senden("meta", frage, "In Ordnung — %s ist nicht mehr das Faden-Dokument. Die nächste Frage geht wieder über den ganzen Bestand." % assistent._titel_saubern(_weg))
                 return
+            if self._fundstellen_vorab(frage):
+                return
             if self._vergleich_vorab(frage):
                 return
             if self._bild_vorab(frage):
                 return
             if self._fakten_vorab(frage):
+                return
+            if self._dokument_rueckfrage(frage):
                 return
         except Exception:
             traceback.print_exc(file=sys.stderr)
@@ -6643,6 +6647,21 @@ class Griff(BaseHTTPRequestHandler):
         faden_dok = GESPRAECHE.letztes_dokument(gespraech_k)
         if faden_dok and not self._dok_im_bereich(faden_dok):
             faden_dok = None            # fremdes Dokument aus einem alten Faden
+        if not faden_dok:
+            # Nennt die Frage ein Dokument ("Was sagt die DVS 2213 zu ..."), gilt es
+            # fuer diesen Zug als Faden - sonst sucht das Modell im ganzen Bereich.
+            try:
+                _g = assistent.dokument_gemeint(frage, namen)[0]
+                if _g and self._dok_im_bereich(_g):
+                    faden_dok = _g
+            except Exception:
+                pass
+        if assistent.ist_vertiefung(frage) and GESPRAECHE.letzte_frage(gespraech_k):
+            # "genauer bitte" -> die vorige Frage, tiefer (gemessen 01.09.: das Modell
+            # suchte sonst nach dem Wort 'genauer' im falschen Dokument)
+            frage = "%s — bitte ausführlicher: weitere Einzelheiten und Belege%s." % (
+                GESPRAECHE.letzte_frage(gespraech_k),
+                (" aus %s" % assistent._titel_saubern(faden_dok)) if faden_dok else "")
         zeilen = [assistent.dokument_zeile(n) for n in sorted(namen)[:40]]
         begonnen = time.time()
         self._strom_beginnen()
@@ -7472,6 +7491,42 @@ class Griff(BaseHTTPRequestHandler):
                                     r"wie viele|anzahl", r"liste|tabelle", r"zitat|beleg|seite") if re.search(m, f))
         return absichten >= 2 or bool(re.search(r"\b(?:und (?:dann|danach|anschließend|anschliessend|außerdem|zeig)|anschließend|anschliessend|danach)\b", f))
 
+    def _fundstellen_vorab(self, frage):
+        """'Wo steht das?' -> die Belege der letzten Antwort, ohne Modell."""
+        if not assistent.ist_fundstellenfrage(frage):
+            return False
+        k = GESPRAECHE.kennung(self.path, self.headers)
+        st = assistent.fundstellen_aus(GESPRAECHE.letzte_antwort(k))
+        if st:
+            zeilen = ["Die letzte Antwort stützt sich auf diese Stellen:", ""]
+            for kz, seite, link in st[:12]:
+                zeilen.append("- [%s, S. %d](%s)" % (kz, seite, link))
+            zeilen.append("")
+            zeilen.append("Klick auf eine Stelle öffnet die Seite im Original, gelb markiert.")
+            text = "\n".join(zeilen)
+        else:
+            text = ("Die letzte Antwort hatte keine Fundstelle im Bestand — sie war eine Liste, "
+                    "eine Rückfrage oder Allgemeinwissen. Stell die Fachfrage noch einmal, dann suche ich die Stellen.")
+        self._direkt_senden("meta", frage, text)
+        return True
+
+    def _dokument_rueckfrage(self, frage):
+        """"Was steht in DVS 2290?" bei drei DVS-2290-Dokumenten: nachfragen statt
+        alle drei lesen (gemessen 01.09.: 90 s, Antwort ueber alle vermischt)."""
+        namen = namen_der_anfrage(self.path, self.headers)
+        kz, kand = assistent.kennung_kandidaten(frage, namen)
+        if not kz or len(kand) < 2 or len(kand) > 6:
+            return False
+        if assistent.ist_bestandsfrage_unscharf(frage) and not assistent.ist_inhaltsfrage(frage):
+            return False                  # Listenfrage: die zeigt ohnehin alle
+        zeilen = ["Zu **%s** liegen hier %d Dokumente — welches meinst du?" % (kz, len(kand)), ""]
+        for i, n in enumerate(sorted(kand)):
+            zeilen.append("%d. %s" % (i + 1, assistent.dokument_zeile(n)))
+        zeilen.append("")
+        zeilen.append("Nenne die Kennung oder die Nummer, dann lese ich dort nach.")
+        self._direkt_senden("rueckfrage", frage, "\n".join(zeilen))
+        return True
+
     def _fakten_vorab(self, frage):
         """'Wie viele Abbildungen/Seiten/Tabellen hat ...' -> gezaehlt, nicht geraten
         (gemessen 27.08.: das Modell nannte 38 und 91 in einer Antwort)."""
@@ -7549,8 +7604,8 @@ class Griff(BaseHTTPRequestHandler):
         self._sammeln = []
         try:
             getroffen = False
-            for hook in (self._rolle_antwort, self._kategorie_antwort, self._leerer_bereich, self._pruefung_antwort, self._vergleich_vorab, self._bild_vorab,
-                         self._fakten_vorab, self._bestand_vorab,
+            for hook in (self._rolle_antwort, self._kategorie_antwort, self._leerer_bereich, self._fundstellen_vorab, self._pruefung_antwort,
+                         self._vergleich_vorab, self._bild_vorab, self._fakten_vorab, self._dokument_rueckfrage, self._bestand_vorab,
                          (self._gespraech_antwort if gespraechsmodus.AN else None)):
                 if hook is None:
                     continue
@@ -7827,12 +7882,19 @@ class Griff(BaseHTTPRequestHandler):
             print("[Fakten] %s fuer %d Dokumente" % (was, len(namen)), file=sys.stderr, flush=True)
             return True
         schluessel = _pdf_schluessel(dok)
-        if not schluessel or not dokument_erlaubt(schluessel, self.headers):
+        if not schluessel:
+            print("[Fakten] kein PDF-Schluessel fuer %r" % dok, file=sys.stderr, flush=True)
+            return False
+        if not (dokument_erlaubt(schluessel, self.headers) or self._dok_im_bereich(dok)):
+            print("[Fakten] %r nicht erlaubt" % dok, file=sys.stderr, flush=True)
             return False
         try:
             seiten = _seitentexte_pdf(schluessel) or []
         except Exception:
             seiten = []
+        if not seiten:
+            print("[Fakten] keine Seiten fuer %r" % dok, file=sys.stderr, flush=True)
+            return False
         try:
             import bestand as _b
             ang = _b.angaben(dok) or {}
