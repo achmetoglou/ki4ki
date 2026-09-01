@@ -675,6 +675,11 @@ def bereich_ordner_aufraeumen(slug):
                 continue
             if d == rolle.DATEI or d.endswith(".neu"):
                 continue          # Rolle/Verwaltung - kein Inhalt (Emrach 27.08.: Ordner soll weg)
+            if d == kategorie.DATEI or d == "bilder-nachholen.txt" or d.endswith(".log"):
+                # Von der Anlage selbst erzeugt (Kategorienliste, Vormerkliste,
+                # Quittungen) - kein Inhalt des Partners. Gemessen 01.09.: die
+                # neue kategorien.txt hielt jeden geloeschten Bereich am Leben.
+                continue
             try:
                 if os.path.getsize(os.path.join(w, d)) > 0:
                     inhalt.append(os.path.relpath(os.path.join(w, d), wurzel))

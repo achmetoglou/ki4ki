@@ -758,6 +758,27 @@ def szenario_30_leerer_bereich():
     pruefe('fuss.append("⚠ enthält Allgemeinwissen' not in quelle, "doppelte Fusszeilen-Warnung entfernt")
 
 
+def szenario_31_bereich_ordner_aufraeumen():
+    print("\n[31] Geloeschter Bereich: Ordner mit nur anlage-eigenen Dateien verschwindet")
+    import tempfile, kategorie, rolle
+    quelle = open(os.path.join(HIER, "pruef_proxy.py"), encoding="utf-8").read()
+    start = quelle.index("def bereich_ordner_aufraeumen"); ende = quelle.index("\ndef ", start + 1)
+    wurzel = tempfile.mkdtemp()
+    ns = {"os": os, "sys": sys, "EINGANG_ORDNER": wurzel, "_ordnername": lambda s: s, "rolle": rolle, "kategorie": kategorie}
+    exec(quelle[start:ende], ns)
+    b = os.path.join(wurzel, "test")
+    for u in ("input", "archiv", "aussortiert", "loeschen", "parkplatz"):
+        os.makedirs(os.path.join(b, u))
+    for name, inhalt in (("bereich.json", "{}"), ("prompt.md", "# Rolle"), (kategorie.DATEI, "Norm: din"),
+                         ("bilder-nachholen.txt", "x.pdf"), ("loeschen.log", "eine Zeile"), ("aussortiert/aussortiert.log", "z")):
+        with open(os.path.join(b, name), "w") as fh: fh.write(inhalt)
+    pruefe(ns["bereich_ordner_aufraeumen"]("test") == "geloescht" and not os.path.exists(b),
+           "nur anlage-eigene Dateien (bereich.json, prompt.md, kategorien.txt, Vormerk, Logs) -> Ordner weg")
+    os.makedirs(os.path.join(b, "archiv")); open(os.path.join(b, "archiv", "x.pdf"), "w").write("pdf")
+    open(os.path.join(b, "bereich.json"), "w").write("{}")
+    pruefe(ns["bereich_ordner_aufraeumen"]("test") == "behalten" and os.path.exists(b), "eine PDF im Archiv -> Ordner bleibt (verwaist gemeldet)")
+
+
 def szenario_27_wegabgleich_und_bildarten():
     print("\n[27] A2 Rechtepruefung je Ausgabeweg (wegabgleich) · Bildarten · Kategorie-Vorgabe per Unterordner")
     import wegabgleich
@@ -794,7 +815,8 @@ if __name__ == "__main__":
               szenario_27_wegabgleich_und_bildarten,
               szenario_28_aufnahme_uebersicht,
               szenario_29_bereich_isolation,
-              szenario_30_leerer_bereich):
+              szenario_30_leerer_bereich,
+              szenario_31_bereich_ordner_aufraeumen):
         try:
             s()
         except Exception as e:
