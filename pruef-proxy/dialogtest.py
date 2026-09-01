@@ -728,6 +728,36 @@ def szenario_29_bereich_isolation():
     pruefe(not reste, "kein 'titel_im_bereich(...) or nur_erlaubte(...)' mehr im Quelltext (%d)" % len(reste))
 
 
+def szenario_30_leerer_bereich():
+    print("\n[30] Leerer Bereich: kein Stufe-1/2-Durchlauf, ein Hinweis statt zwei")
+    import re as _re
+    quelle = open(os.path.join(HIER, "pruef_proxy.py"), encoding="utf-8").read()
+    start = quelle.index("    def _leerer_bereich(self, frage):"); ende = quelle.index("\n    def ", start + 1)
+    src = "\n".join(z[4:] for z in quelle[start:ende].splitlines())
+    ns = {"re": _re, "_ordnername": lambda s: s, "_rolle_lesen": lambda s: "", "rolle": type("R", (), {"fuer_prompt": staticmethod(lambda t: "")})()}
+    exec(src, ns)
+    class Fake:
+        def __init__(self, pfad): self.path = pfad; self.headers = {}; self.gesendet = []; self.gefragt = []
+        def _direkt_senden(self, art, frage, text, **k): self.gesendet.append((art, text))
+        def _modell_fragen(self, auftrag, **k): self.gefragt.append(auftrag); return "Mehl, Zucker, Eier."
+    Fake._leerer_bereich = ns["_leerer_bereich"]
+    lage = {"titel": [], "modus": "query"}
+    ns["titel_im_bereich"] = lambda p, k: lage["titel"]
+    ns["_bereich_modus"] = lambda s: lage["modus"]
+    f = Fake("/api/workspace/test/thread/x/stream-chat")
+    pruefe(f._leerer_bereich("Wie backt man Kuchen?") and f.gesendet[-1][0] == "meta" and "keine Dokumente" in f.gesendet[-1][1] and not f.gefragt,
+           "Abfrage-Modus, leer -> sofortiger Hinweis, kein Modellaufruf")
+    lage["modus"] = "chat"; f = Fake("/api/workspace/test/thread/x/stream-chat")
+    ok = f._leerer_bereich("Wie backt man Kuchen?")
+    pruefe(ok and len(f.gefragt) == 1 and f.gesendet[-1][0] == "allgemein", "Chat-Modus, leer -> EIN direkter Modellaufruf")
+    pruefe(f.gesendet[-1][1].count("Allgemeinwissen") == 1, "genau EIN Allgemeinwissen-Hinweis in der Antwort")
+    lage["titel"] = ["A"]; f = Fake("/api/workspace/test/thread/x/stream-chat")
+    pruefe(not f._leerer_bereich("Frage") and not f.gesendet, "Bereich mit Dokumenten -> normaler Weg")
+    lage["titel"] = None; f = Fake("/api/workspace/test/thread/x/stream-chat")
+    pruefe(not f._leerer_bereich("Frage"), "Bereich unbekannt -> normaler Weg")
+    pruefe('fuss.append("⚠ enthält Allgemeinwissen' not in quelle, "doppelte Fusszeilen-Warnung entfernt")
+
+
 def szenario_27_wegabgleich_und_bildarten():
     print("\n[27] A2 Rechtepruefung je Ausgabeweg (wegabgleich) · Bildarten · Kategorie-Vorgabe per Unterordner")
     import wegabgleich
@@ -763,7 +793,8 @@ if __name__ == "__main__":
               szenario_24_pruefungskatalog, szenario_25_rolle, szenario_26_kategorien,
               szenario_27_wegabgleich_und_bildarten,
               szenario_28_aufnahme_uebersicht,
-              szenario_29_bereich_isolation):
+              szenario_29_bereich_isolation,
+              szenario_30_leerer_bereich):
         try:
             s()
         except Exception as e:

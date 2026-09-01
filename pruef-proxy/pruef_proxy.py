@@ -4407,6 +4407,11 @@ class Griff(BaseHTTPRequestHandler):
             traceback.print_exc(file=sys.stderr)
         # 'Tu das Dokument raus' / Vergleich zweier Dokumente / 'Zeig Bild 2.1' - ohne Modell
         try:
+            if self._leerer_bereich(frage):
+                return
+        except Exception:
+            traceback.print_exc(file=sys.stderr)
+        try:
             _weg = self._faden_raus(frage)
             if _weg and len(re.sub(r"[^\wäöüÄÖÜß]+", " ", frage).split()) <= 8:
                 self._direkt_senden("meta", frage, "In Ordnung — %s ist nicht mehr das Faden-Dokument. Die nächste Frage geht wieder über den ganzen Bestand." % assistent._titel_saubern(_weg))
@@ -6782,8 +6787,9 @@ class Griff(BaseHTTPRequestHandler):
         _warn = [w for w in _warn if w]
         if _warn:
             fuss.append("⚠ " + "; ".join(_warn))
-        if "Aus Allgemeinwissen" in text:
-            fuss.append("⚠ enthält Allgemeinwissen des Modells (nicht aus den Dokumenten)")
+        # Allgemeinwissen ist im Absatz selbst gekennzeichnet ("Aus Allgemeinwissen
+        # (nicht aus den Dokumenten):") - eine zweite Warnung in der Fusszeile war
+        # doppelt (Emrach 01.09.: "zu viele Hinweise").
         if fuss:
             text += "\n\n*" + " · ".join(fuss) + "*"
         # ---- Merken und senden -------------------------------------------
@@ -7391,6 +7397,44 @@ class Griff(BaseHTTPRequestHandler):
         self.send_header("Connection", "close")
         self.end_headers()
         self.wfile.write(daten)
+        return True
+
+    def _leerer_bereich(self, frage):
+        """Bereich ohne Dokumente: kein Stufe-1/2-Durchlauf.
+
+        Gemessen 01.09.: 54-74 s fuer "nicht belegt" bei null Werkzeugen -
+        das Modell hat mit dem ganzen Werkzeugkasten ueber einer leeren Menge
+        nachgedacht. Modus Chat -> das Modell antwortet direkt aus
+        Allgemeinwissen, EINMAL gekennzeichnet (Fusszeile); Modus Abfrage ->
+        sofort der Hinweis, wie der Bereich gefuellt wird. True = erledigt."""
+        m = re.match(r"^/api/(?:v1/)?workspace/([^/]+)", self.path or "")
+        if not m:
+            return False
+        slug = m.group(1)
+        namen = titel_im_bereich(self.path, self.headers)
+        if namen is None or namen:
+            return False                  # unbekannt oder gefuellt: normaler Weg
+        if _bereich_modus(slug) != "chat":
+            self._direkt_senden("meta", frage,
+                "Dieser Bereich enthält noch keine Dokumente. Dateien über den Hochladen-Knopf "
+                "oder nach `dokumente/%s/input/` legen — die Aufnahme startet von selbst. "
+                "Soll der Bereich ohne Dokumente nur mit dem Sprachmodell antworten, in den "
+                "Chat-Einstellungen den Modus auf „Chat“ stellen." % _ordnername(slug))
+            return True
+        rollen_text = ""
+        try:
+            rollen_text = rolle.fuer_prompt(_rolle_lesen(slug)) or ""
+        except Exception:
+            pass
+        auftrag = ("Du bist der Assistent des Bereichs „%s“. In diesem Bereich liegen keine Dokumente. "
+                   "Antworte aus deinem Allgemeinwissen: auf Deutsch, knapp, sachlich, ohne Quellen oder "
+                   "Fundstellen zu erfinden.%s\n\nFrage: %s"
+                   % (slug, ("\n\nRolle dieses Bereichs:\n" + rollen_text) if rollen_text.strip() else "", frage))
+        text = self._modell_fragen(auftrag, zeitgrenze=300)
+        if not text:
+            return False
+        text += "\n\n---\n*\U0001F9E0 Allgemeinwissen des Modells — dieser Bereich enthält keine Dokumente.*"
+        self._direkt_senden("allgemein", frage, text)
         return True
 
     def _direkt_senden(self, art, frage, text, merk_art=None, dok=None, pruefungen=None):

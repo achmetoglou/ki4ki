@@ -36,7 +36,10 @@ beantwortet einen Teil der Anfragen selbst.
 
 **Deterministische Wege vor dem Modell** (im Proxy, ohne Modell): Bestandsliste,
 Kategorien-Abfragen, Prüfungskatalog, Dokument-Fakten (Seiten, Abbildungen,
-Verfasser, Jahr), Vergleich-Vorbereitung, Bild-Weg, Rollen-Einrichtung, Feedback.
+Verfasser, Jahr), Vergleich-Vorbereitung, Bild-Weg, Rollen-Einrichtung, Feedback —
+und der **leere Bereich** (`_leerer_bereich`): ohne Dokumente kein Stufe-1/2-Durchlauf,
+im Chat-Modus eine direkte Modellantwort mit einer Kennzeichnung, im Abfrage-Modus der
+Hinweis, wie der Bereich gefüllt wird.
 Fällt das Modell aus, greift der alte Regel-Router (`assistent.py`).
 
 ## 2 · Was die Aufnahme je Dokument ablegt
