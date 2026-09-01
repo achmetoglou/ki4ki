@@ -127,7 +127,7 @@ def _ist_admin(kopfzeilen):
     ueber den Anlagen-Schluessel; ohne Schluessel: nein.)"""
     if not API_SCHLUESSEL:
         return False
-    if time.time() - _ADMINS["wann"] > 300:
+    if time.time() - _ADMINS["wann"] > (300 if _ADMINS["namen"] else 60):
         try:
             d = _api("GET", "/api/v1/admin/users", timeout=15) or {}
             _ADMINS["namen"] = {str(u.get("username")) for u in (d.get("users") or []) if u.get("role") == "admin"}
@@ -1467,6 +1467,8 @@ def _konto_merken(kopfzeilen):
         k = marke_kennung(marke_aus_kopf(kopfzeilen))
         if not k or k in _KONTEN_JE_MARKE:
             return
+        if not angemeldet(kopfzeilen):
+            return               # ungeprueften Kopf nie dauerhaft an eine Marke binden
         konto = pruefprotokoll.konto_aus(kopfzeilen)
         if not konto or konto.startswith(("sitzung-", "dienst-", "unbekannt")):
             return
@@ -1736,6 +1738,23 @@ def nur_erlaubte(titel, kopfzeilen):
     return raus
 
 
+def bereichs_pruefer(pfad, kopfzeilen):
+    """Wie erlaubt_pruefer, aber auf den BEREICH der Anfrage begrenzt - fuer
+    die woertliche Suche und die E2B-Antwort. Kontoweit (erlaubte_dokumente)
+    ist ein Recht, kein Gegenstand: ein Chat-Bereich darf nicht aus fremden
+    Bereichen zitieren (Fund 01.09.). None = nichts beilegen."""
+    namen = namen_der_anfrage(pfad, kopfzeilen)
+    if not namen:
+        return None
+    grund = {re.sub(r"\.(md|pdf|docx?|xlsx?)$", "", n or "", flags=re.I).strip().lower() for n in namen}
+    flach = {_flach_stamm(g) for g in grund if g}
+
+    def pruef(name):
+        g = re.sub(r"\.(md|pdf|docx?|xlsx?)$", "", name or "", flags=re.I).strip().lower()
+        return bool(g) and (g in grund or _flach_stamm(g) in flach)
+    return pruef
+
+
 def erlaubt_pruefer(kopfzeilen):
     """Ein Pruefer name->bool fuer die woertliche Suche (A3).
 
@@ -1844,7 +1863,7 @@ def dokumente_im_bereich(pfad, kopfzeilen):
     slug = m.group(1)
     jetzt = time.time()
     gemerkt = _ANZAHL.get(slug)
-    if gemerkt and jetzt - gemerkt[1] < ANZAHL_HALTBAR:
+    if gemerkt and jetzt - gemerkt[1] < (ANZAHL_HALTBAR if gemerkt[0] else 15):
         return gemerkt[0]
     # AnythingLLM hat zwei getrennte Anmeldewelten:
     #   /api/v1/...  erwartet einen API-Schluessel  (n8n, Wartungsskripte)
@@ -1937,8 +1956,11 @@ def _titel_im_bereich_roh(pfad, kopfzeilen):
     slug = m.group(1)
     jetzt = time.time()
     gemerkt = _TITEL.get(slug)
-    if gemerkt and jetzt - gemerkt[1] < ANZAHL_HALTBAR:
+    # Ein leerer Bereich nur 15 s gemerkt: nach dem ersten Upload soll die
+    # Anlage nicht 5 Minuten lang 'noch keine Dokumente' sagen.
+    if gemerkt and jetzt - gemerkt[1] < (ANZAHL_HALTBAR if gemerkt[0] else 15):
         return gemerkt[0]
+    fehler = False
     for weg in ("/api/workspace/", "/api/v1/workspace/"):
         req = urllib.request.Request(ZIEL + weg + slug, method="GET")
         for kopf in ("Authorization", "Cookie"):
@@ -1979,7 +2001,10 @@ def _titel_im_bereich_roh(pfad, kopfzeilen):
                 continue     # kein Zugang dieser Sitzung zu dem Bereich - normal, kein Fehler
             print("[Titel] %s%s: %s" % (weg, slug, str(e)[:90]),
                   file=sys.stderr, flush=True)
-    return None
+            fehler = True
+    # Technischer Fehler (Zeitablauf, 5xx): lieber "keine Dokumente" als der
+    # Rueckfall auf alle Bereiche des Kontos. None nur bei "kein Zugang".
+    return [] if fehler else None
 
 
 _TITELNAMEN = {}
@@ -4262,6 +4287,7 @@ class Griff(BaseHTTPRequestHandler):
                         daten = seite.encode("utf-8")
                     except UnicodeDecodeError:
                         pass
+                    self._letzter_status = r.status
                     self.send_response(r.status)
                     for k, v in r.headers.items():
                         # ⛔ ETag und Last-Modified beschreiben die
@@ -4284,6 +4310,7 @@ class Griff(BaseHTTPRequestHandler):
                     self.end_headers()
                     self.wfile.write(daten)
                     return
+                self._letzter_status = r.status
                 self.send_response(r.status)
                 for k, v in r.headers.items():
                     if k.lower() not in ("transfer-encoding", "connection",
@@ -4299,6 +4326,7 @@ class Griff(BaseHTTPRequestHandler):
                     self.wfile.flush()
         except urllib.error.HTTPError as e:
             daten = e.read()
+            self._letzter_status = e.code
             self.send_response(e.code)
             for k, v in e.headers.items():
                 if k.lower() not in ("transfer-encoding", "connection",
@@ -4390,6 +4418,11 @@ class Griff(BaseHTTPRequestHandler):
         except Exception:
             frage = ""
         # KI4KI-ANHANG-WEG-A: frisch angehaengte Datei -> direkt daraus antworten
+        # Bereich zuerst: Kein Hook darf Titel oder Inhalte liefern, bevor
+        # feststeht, dass AnythingLLM diesen Bereich dieser Anmeldung gibt.
+        if re.match(r"^/api/(?:v1/)?workspace/", self.path or "") and not bereich_sichtbar(self.path, self.headers):
+            self._json({"error": "Workspace does not exist."}, code=404)
+            return
         try:
             if self._anhang_antwort(frage):
                 return
@@ -4935,7 +4968,7 @@ class Griff(BaseHTTPRequestHandler):
             _d = json.loads(koerper or b"{}") or {}
             # A3: nur in erlaubten Arbeiten woertlich suchen. Kein
             # ermittelbarer Zugang -> keine woertliche Suche (nichts beilegen).
-            _pruef = erlaubt_pruefer(self.headers)
+            _pruef = bereichs_pruefer(self.path, self.headers)
             _zusatz = "" if _pruef is None else wortsuche.zusatz_zur_frage(
                 BESTAND, _d.get("message") or frage, erlaubt=_pruef,
                 melden=lambda m: print("[Wortsuche] %s" % m,
@@ -5203,6 +5236,12 @@ class Griff(BaseHTTPRequestHandler):
         """K2: /rueckmeldungen - alle Daumen und 'falsche Quelle'-Meldungen.
         K5: /kpi - die eine Seite Auswertung (Leitfaden S. 101, 105, 127).
         Beide nur mit Einsichtsrecht (KI4KI_PROTOKOLL_EINSICHT)."""
+        # A1 (wie in _protokoll): Eine mitgeschickte Anmeldungskopfzeile stiftet
+        # nur Identitaet, wenn AnythingLLM sie bestaetigt - sonst koennte ein
+        # Cookie-Inhaber mit gebasteltem Kopf als "admin" gelten (Fund 01.09.).
+        if (self.headers.get("Authorization") or "").strip() and not angemeldet(self.headers):
+            self._fehler(401, "Nicht angemeldet. Bitte in der Oberflaeche anmelden.")
+            return
         if not darf_sehen(self.headers):
             self._fehler(401, "Nicht angemeldet. Bitte zuerst in der Oberflaeche anmelden.")
             return
@@ -5712,7 +5751,7 @@ class Griff(BaseHTTPRequestHandler):
         try:
             _d = json.loads(koerper or b"{}") or {}
             # A3: auch im JSON-Weg nur in erlaubten Arbeiten woertlich suchen.
-            _pruef = erlaubt_pruefer(self.headers)
+            _pruef = bereichs_pruefer(self.path, self.headers)
             _zusatz = "" if _pruef is None else wortsuche.zusatz_zur_frage(
                 BESTAND, _d.get("message") or frage_roh, erlaubt=_pruef,
                 melden=lambda m: print("[Wortsuche/json] %s" % m,
@@ -6532,7 +6571,8 @@ class Griff(BaseHTTPRequestHandler):
             import wortsuche as _ws
             for w in [x for x in re.findall(r"[A-Za-zÄÖÜäöüß0-9][\w\-]{2,}", begriffe)][:4]:
                 gef, _n = _ws.ueber_verzeichnis(BESTAND, w, hoechstens_arbeiten=12, je_arbeit=1,
-                                                erlaubt=(lambda t, _namen=set(namen): t in _namen))
+                                                erlaubt=(lambda t, _n={_flach_stamm(re.sub(r"\.(md|pdf|docx?|xlsx?)$", "", x, flags=re.I).lower()) for x in namen}:
+                                                         _flach_stamm(re.sub(r"\.(md|pdf|docx?|xlsx?)$", "", t or "", flags=re.I).lower()) in _n))
                 for g in gef or []:
                     t = g.get("titel")
                     if t and t not in kandidaten:
@@ -6566,6 +6606,8 @@ class Griff(BaseHTTPRequestHandler):
         if not namen:
             return False
         faden_dok = GESPRAECHE.letztes_dokument(gespraech_k)
+        if faden_dok and not self._dok_im_bereich(faden_dok):
+            faden_dok = None            # fremdes Dokument aus einem alten Faden
         zeilen = [assistent.dokument_zeile(n) for n in sorted(namen)[:40]]
         begonnen = time.time()
         self._strom_beginnen()
@@ -7357,9 +7399,20 @@ class Griff(BaseHTTPRequestHandler):
             return False
         namen = namen_der_anfrage(self.path, self.headers)
         dok = assistent.dokument_gemeint(frage, namen)[0] or GESPRAECHE.letztes_dokument(GESPRAECHE.kennung(self.path, self.headers))
-        if not dok:
+        if not dok or not self._dok_im_bereich(dok):
             return False
         return bool(self._fakten_antwort(frage, dok))
+
+    def _dok_im_bereich(self, dok):
+        """Gehoert dieses (Faden-)Dokument zum Bereich der Anfrage? Das Faden-
+        Gedaechtnis liegt dauerhaft auf Platte - ein Faden, der frueher ein
+        fremdes Dokument bekam, traegt es sonst weiter (Fund 01.09.)."""
+        if not dok:
+            return False
+        def _f(x):
+            return _flach_stamm(re.sub(r"\.(md|pdf|docx?|xlsx?)$", "", str(x or ""), flags=re.I).strip().lower())
+        ziel = _f(dok)
+        return any(_f(n) == ziel for n in namen_der_anfrage(self.path, self.headers))
 
     def _bild_vorab(self, frage):
         """'Zeig mir Bild 2.1' mit Faden-Dokument -> direkt das Bild (kein Modell)."""
@@ -7374,7 +7427,7 @@ class Griff(BaseHTTPRequestHandler):
             return False
         k = GESPRAECHE.kennung(self.path, self.headers)
         dok = GESPRAECHE.letztes_dokument(k)
-        if not dok:
+        if not dok or not self._dok_im_bereich(dok):
             return False
         nummer = m.group(1).replace("-", ".")
         liste = self._abbildungen_liste(dok)
@@ -7740,6 +7793,8 @@ class Griff(BaseHTTPRequestHandler):
     def _faden_antwort(self, frage, dok, vorspann=""):
         """Eine Frage NUR aus dem Faden-Dokument beantworten (fadenfrage.py).
         True = beantwortet (auch "steht nicht drin"). False = normaler Weg."""
+        if not self._dok_im_bereich(dok):
+            return False               # Faden-Dokument aus einem anderen Bereich
         schluessel = _pdf_schluessel(dok)
         if not schluessel or not dokument_erlaubt(schluessel, self.headers):
             return False
@@ -7831,7 +7886,7 @@ class Griff(BaseHTTPRequestHandler):
         ueber das grosse Modell. Abschaltbar: KI4KI_E2B_ANTWORT=0."""
         if not E2B_ANTWORT or not _ist_definitionsfrage(frage):
             return False
-        pruef = erlaubt_pruefer(self.headers)
+        pruef = bereichs_pruefer(self.path, self.headers)
         if pruef is None:
             return False
         try:
@@ -8443,10 +8498,12 @@ class Griff(BaseHTTPRequestHandler):
                     _gpu_pruefen()
                 except Exception:
                     pass
+            _voll = darf_sehen(self.headers)     # Healthcheck/README brauchen nur die Zahlen
             daten = json.dumps({"bestand": len(BESTAND.titel()),
-                                "verwaiste_bereiche": list(VERWAISTE_BEREICHE),
+                                "verwaiste_bereiche": list(VERWAISTE_BEREICHE) if _voll else len(VERWAISTE_BEREICHE),
                                 "pdfs": len(PDFS),
-                                "gpu": {"modelle": GPU_STAND.get("modelle"), "warnung": GPU_STAND.get("warnung")}},
+                                "gpu": {"modelle": GPU_STAND.get("modelle") if _voll else len(GPU_STAND.get("modelle") or []),
+                                        "warnung": GPU_STAND.get("warnung")}},
                                ensure_ascii=False).encode("utf-8")
             self.send_response(200)
             self.send_header("Content-Type", "application/json")
@@ -8852,7 +8909,7 @@ class Griff(BaseHTTPRequestHandler):
                 text = _tika_text(inhalt)
                 if text and text.strip():
                     _voll = text.strip()
-                    _ANHANG[slug] = {"text": _voll[:_ANHANG_MAX],
+                    _ANHANG[(slug, pruefprotokoll.pseudonym(konto_aus_anfrage(self.headers)))] = {"text": _voll[:_ANHANG_MAX],
                                      "roh_len": len(_voll),
                                      "name": os.path.basename(name),
                                      "wann": time.time()}
@@ -8900,7 +8957,8 @@ class Griff(BaseHTTPRequestHandler):
         m = re.match(r"^/api/(?:v1/)?workspace/([^/]+)", self.path or "")
         if not m:
             return False
-        eintrag = _ANHANG.get(m.group(1))
+        # je Bereich UND Konto - sonst beantwortet A's Anhang 20 Minuten lang B's Fragen
+        eintrag = _ANHANG.get((m.group(1), pruefprotokoll.pseudonym(konto_aus_anfrage(self.headers))))
         if not eintrag or time.time() - eintrag["wann"] > _ANHANG_HALTBAR:
             return False
         if not bereich_sichtbar(self.path, self.headers):
@@ -9025,7 +9083,10 @@ class Griff(BaseHTTPRequestHandler):
                 koerper = self.rfile.read(laenge) if laenge else b""
             except Exception:
                 koerper = b""
+            self._letzter_status = 0
             self._weiterleiten("POST", koerper)
+            if not (200 <= int(getattr(self, "_letzter_status", 0) or 0) < 300):
+                return           # AnythingLLM hat abgelehnt (401/403) - nichts uebernehmen
             try:
                 leib = json.loads(koerper or b"{}") or {}
                 if isinstance(leib.get("openAiPrompt"), str):
@@ -9121,11 +9182,27 @@ class Griff(BaseHTTPRequestHandler):
         # (Archiv-PDF, Katalog, Vormerkliste, Vorrat) zieht die Anlage danach
         # selbst nach. Kein zweiter Handgriff mehr.
         if LOESCH_WACHE and _LOESCH_UI.match(self.path or ""):
+            if not angemeldet(self.headers):
+                self._fehler(401, "Nicht angemeldet.")
+                return
             koerper = self._koerper()
-            self._weiterleiten("DELETE", koerper=koerper)
             try:
                 names = (json.loads(koerper or b"{}") or {}).get("names") or []
-                _nach_ui_loeschung(names)
+            except Exception:
+                names = []
+            # Nur Textfassungen, die VOR der Weiterleitung wirklich vorlagen (und
+            # im Bestandsordner liegen): Ein erfundener Pfad "existiert nie" und
+            # haette sonst Archiv-PDF und Katalogeintrag geraeumt, obwohl
+            # AnythingLLM den Loeschbefehl abgelehnt hat (Fund 01.09.).
+            wurzel = os.path.realpath(BESTAND_ORDNER)
+            vorher = []
+            for n in names:
+                p = os.path.realpath(os.path.join(BESTAND_ORDNER, str(n)))
+                if p.startswith(wurzel + os.sep) and os.path.exists(p):
+                    vorher.append(n)
+            self._weiterleiten("DELETE", koerper=koerper)
+            try:
+                _nach_ui_loeschung(vorher)
             except Exception:
                 traceback.print_exc(file=sys.stderr)
             return
