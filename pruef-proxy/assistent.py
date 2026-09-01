@@ -1455,6 +1455,50 @@ def ist_listenwunsch(frage):
     return bool(_LISTENWUNSCH.match(f)) or bool(re.search(r"\bals\s+(?:katalog(?:liste)?|liste|tabelle)\b", f, re.I))
 
 
+_VERTIEFUNG = re.compile(r"^\s*(?:bitte\s+)?(?:genauer|mehr\s+dazu|mehr\s+details|ausf(?:ü|ue)hrlicher|erkl(?:ä|ae)r\w*\s+(?:das\s+)?genauer|"
+                         r"kannst\s+du\s+das\s+genauer|(?:und\s+)?weiter|details|mehr)\b", re.I)
+
+
+def ist_vertiefung(frage):
+    """"genauer bitte", "mehr dazu", "ausfuehrlicher" - die vorige Frage noch
+    einmal, tiefer. Ohne Umschreibung sucht das Modell nach dem Wort 'genauer'."""
+    f = (frage or "").strip()
+    return bool(f) and len(f) <= 40 and bool(_VERTIEFUNG.match(f))
+
+
+_WO_STEHT_DAS = re.compile(r"^\s*(?:wo\s+steht\s+das|wo\s+genau|wo\s+steht\s+(?:das|es)\s+geschrieben|quelle\??|belege?\??|"
+                           r"woher\s+(?:weißt|weisst)\s+du\s+das|auf\s+welcher\s+seite|welche\s+seite|fundstelle\??)\s*[?.!]*\s*$", re.I)
+
+
+def ist_fundstellenfrage(frage):
+    return bool(_WO_STEHT_DAS.match((frage or "").strip()))
+
+
+def fundstellen_aus(antwort):
+    """[(Kennung, Seite, Link)] aus einer Antwort - Links zuerst, dann Klammerbelege."""
+    aus, gesehen = [], set()
+    for m in re.finditer(r"\[([^\]\n]+?),\s*S\.\s*(\d+)\]\((/stelle[^)\s]*)\)", antwort or ""):
+        k = (m.group(1).strip(), int(m.group(2)))
+        if k not in gesehen:
+            gesehen.add(k); aus.append((k[0], k[1], m.group(3)))
+    for m in re.finditer(r"\(([A-Za-z][\w\-\. ]{2,40}?),\s*S\.\s*(\d+)\)", antwort or ""):
+        k = (m.group(1).strip(), int(m.group(2)))
+        if k not in gesehen:
+            gesehen.add(k); aus.append((k[0], k[1], "/stelle?dok=%s&seite=%d" % (k[0], k[1])))
+    return aus
+
+
+def kennung_kandidaten(frage, titel):
+    """Normkennung im Satz -> Titel, die damit beginnen. Mehr als einer = Rueckfrage noetig."""
+    for m in re.finditer(r"\b([A-Z]{2,5}(?:\s+[A-Z]{2,3})?)[\s\-]?(\d{3,5}(?:[\-\.]\d+)*)", frage or ""):
+        kz = _flach(m.group(1) + m.group(2))
+        if len(kz) >= 5:
+            anf = [t for t in titel if _flach(t).startswith(kz)]
+            if anf:
+                return m.group(0).strip(), anf
+    return None, []
+
+
 def ist_bestand_verfeinerung(frage):
     """Anschluss-Verfeinerung einer vorigen Bestandsfrage? ("Nur
     Dissertationen", "und ueber Kleben"). Nennt eine Art ODER ein Thema -
