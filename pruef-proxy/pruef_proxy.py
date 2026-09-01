@@ -7384,8 +7384,27 @@ class Griff(BaseHTTPRequestHandler):
         return True
 
     def _bestand_vorab(self, frage):
-        return bool(assistent.ist_bestandsfrage_unscharf(frage) and not assistent.ist_beschwerde(frage)
-                    and self._bestandsauskunft(frage))
+        if assistent.ist_beschwerde(frage):
+            return False
+        # Zweifel an der letzten Themen-Auskunft ("nur den einen wirklich?"):
+        # nicht die Liste wiederholen, sondern gegenpruefen - Katalog UND
+        # Volltext, und sagen, was das Wort NICHT enthaelt (Emrach 01.09.).
+        k = GESPRAECHE.kennung(self.path, self.headers)
+        thema = GESPRAECHE.notiz(k, "bestand_thema")
+        if thema and assistent.ist_bestand_zweifel(frage):
+            if not bereich_sichtbar(self.path, self.headers):
+                self._json({"error": "Workspace does not exist."}, code=404)
+                return True
+            namen = namen_der_anfrage(self.path, self.headers)
+            text = assistent.themen_gegenpruefung(thema, namen, bereich=True)
+            rest = assistent.ohne_zweifel(frage)
+            if rest and assistent.ist_bestandsfrage_unscharf(rest):
+                liste = assistent.bestandsauskunft(rest, namen, bereich=True, zusatz=self._bestand_zusatz(namen))
+                if liste:
+                    text += "\n\n---\n\n" + liste
+            self._direkt_senden("bestand", frage, text + _katalog_zeile())
+            return True
+        return bool(assistent.ist_bestandsfrage_unscharf(frage) and self._bestandsauskunft(frage))
 
     def _faden_raus(self, frage):
         """'Tu das Dokument raus' - Faden-Dokument vergessen; der Rest der Frage laeuft weiter."""
@@ -8018,6 +8037,11 @@ class Griff(BaseHTTPRequestHandler):
                                           vorher=vorher, zusatz=self._bestand_zusatz(titel))
         if not text:
             return False
+        try:                                   # Thema merken - fuer "nur den einen wirklich?"
+            _st = assistent._stichwort_aus(frage) or (assistent._stichwort_aus(vorher) if isinstance(vorher, str) else None)
+            GESPRAECHE.notiz_setzen(GESPRAECHE.kennung(self.path, self.headers), "bestand_thema", _st or "")
+        except Exception:
+            pass
         self._festhalten("bestand", frage, text)
         if not bereich:
             text += ("\n\n*(Hinweis: Diese Liste umfasst den gesamten "

@@ -1166,25 +1166,8 @@ def _volltext_zusatz(stichwort, namen, ausser=()):
     Wortverzeichnis, ohne Modell. Der Katalog kennt nur Titel und Themen;
     bei 2.000 Dokumenten ist das die ehrliche zweite Haelfte der Antwort
     ("nur den einen wirklich?", Emrach 01.09.). Leer, wenn nichts da ist."""
-    try:
-        import wortverzeichnis as _wv
-    except Exception:
-        return ""
-    gefunden = set()
-    for w in {stichwort, _wortstamm(stichwort)}:
-        if not w or len(w) < 4:
-            continue
-        try:
-            r = _wv.arbeiten_mit(w)
-        except Exception:
-            r = None
-        for x in (r or []):
-            gefunden.add(_titel_saubern(str(x)).lower())
-    if not gefunden:
-        return ""
     raus = {_titel_saubern(a).lower() for a in ausser}
-    treffer = sorted(n for n in {_titel_saubern(x) for x in namen}
-                     if n.lower() in gefunden and n.lower() not in raus)
+    treffer = [n for n in _volltext_namen(stichwort, namen) if n.lower() not in raus]
     if not treffer:
         return ""
     from urllib.parse import quote
@@ -1195,28 +1178,18 @@ def _volltext_zusatz(stichwort, namen, ausser=()):
             % (stichwort, len(treffer), "" if len(treffer) == 1 else "en", liste))
 
 
-def _treffer_im_katalog(stichwort, namen, bereich=None, gattung=None):
-    """Arbeiten zu einem Stichwort - ueber Titel und Schlagworte.
-
-    Gibt None zurueck, wenn der Katalog fehlt oder nichts trifft; dann
-    greift die alte Namenssuche weiter.
-
-    ⚠ Es wird gesagt, WARUM eine Arbeit getroffen wurde. Ein Treffer,
-      dessen Grund man nicht sieht, laesst sich nicht beurteilen.
-    """
+def _katalog_treffer(stichwort, namen):
+    """[(name, angaben, grund)] fuer ein Stichwort - Titel, Themen, Methoden,
+    Gebiet, Kurzfassung; wortgenau oder ueber den Wortstamm."""
     try:
         import bestand
     except Exception:
-        return None
+        return []
     w = (stichwort or "").strip().lower()
     if len(w) < 3:
-        return None
-    # ⭐ "X oder Y" -> Vereinigung: nach JEDEM Teilbegriff suchen.
+        return []
     teile = [t.strip() for t in re.split(r"\s+oder\s+|\s+und\s+|\s*[,/]\s*", w)
              if len(t.strip()) >= 3] or [w]
-    # Wortstamm dazu: "Spritzgiessen" soll "Spritzgiessverfahren" treffen,
-    # "Kleben" die "Klebeverbindungen" (gemessen 01.09.: 11 Dokumente, 0 Treffer
-    # bei "im Bereich Spritzgiessen" - die Liste kam ungefiltert).
     staemme = [s for s in (_wortstamm(t) for t in teile) if s]
 
     def _trifft(text):
@@ -1225,8 +1198,6 @@ def _treffer_im_katalog(stichwort, namen, bereich=None, gattung=None):
             return True
         tx2 = tx.replace("ß", "ss")
         return any(s in tx2 for s in staemme)
-
-    from urllib.parse import quote
     treffer = []
     for n in namen:
         a = bestand.angaben(n) or {}
@@ -1245,6 +1216,83 @@ def _treffer_im_katalog(stichwort, namen, bereich=None, gattung=None):
                 grund = "Kurzfassung"
         if grund:
             treffer.append((n, a, grund))
+    return treffer
+
+
+def _volltext_namen(stichwort, namen):
+    """Dokumente des Bereichs, die das Wort (oder seinen Stamm) im Volltext tragen."""
+    try:
+        import wortverzeichnis as _wv
+    except Exception:
+        return []
+    gefunden = set()
+    for w in {stichwort, _wortstamm(stichwort)}:
+        if not w or len(w) < 4:
+            continue
+        try:
+            r = _wv.arbeiten_mit(w)
+        except Exception:
+            r = None
+        for x in (r or []):
+            gefunden.add(_titel_saubern(str(x)).lower())
+    return sorted(n for n in {_titel_saubern(x) for x in namen} if n.lower() in gefunden)
+
+
+_ZWEIFEL_BESTAND = re.compile(
+    r"^\s*(?:nur\b[^?.!]{0,40}\bwirklich|wirklich|sicher|echt|tats(?:ä|ae)chlich|stimmt\s+das|mehr\s+nicht|"
+    r"das\s+kann\s+nicht\s+sein|bist\s+du\s+(?:dir\s+)?sicher|ist\s+das\s+alles|nicht\s+mehr|so\s+wenige?|"
+    r"nur\s+(?:der|die|das|den|einer|eine|eines|zwei|drei)\b)", re.I)
+
+
+def ist_bestand_zweifel(frage):
+    """"nur den einen wirklich?", "Sicher?", "mehr nicht?" nach einer
+    Themen-Auskunft - ein Zweifel an der Antwort, keine neue Frage."""
+    erster = re.split(r"[?.!]", (frage or "").strip(), maxsplit=1)[0].strip()
+    return bool(erster) and len(erster) <= 80 and bool(_ZWEIFEL_BESTAND.match(erster))
+
+
+def ohne_zweifel(frage):
+    """Der Rest hinter dem Zweifel ("... ? Welche Dokumente haben wir im Bestand?")."""
+    teile = re.split(r"[?.!]", (frage or "").strip(), maxsplit=1)
+    return teile[1].strip() if len(teile) > 1 else ""
+
+
+def themen_gegenpruefung(thema, namen, bereich=True):
+    """Antwort auf einen Zweifel: Katalog UND Volltext, Rest ausdruecklich benannt."""
+    from urllib.parse import quote
+    def _link(n):
+        return "[%s](/pdf/%s)" % (n, quote(n, safe=""))
+    kat = _katalog_treffer(thema, namen)
+    kat_namen = [n for n, _, _ in sorted(kat)]
+    vt = [n for n in _volltext_namen(thema, namen) if n not in {_titel_saubern(k).lower() and k for k in kat_namen} and n not in kat_namen]
+    alle = {_titel_saubern(n) for n in namen}
+    rest = sorted(alle - set(kat_namen) - set(vt))
+    zeilen = ["Gegengeprüft für **%s** (%d Dokumente %s):" % (thema, len(alle), "in diesem Arbeitsbereich" if bereich else "im Bestand"), ""]
+    zeilen.append("- **Katalog** (Titel, Themen, Kurzfassung): %s" % (", ".join("%s (%s)" % (_link(n), g) for n, _, g in sorted(kat)) or "kein Dokument"))
+    zeilen.append("- **Volltext** (Wortverzeichnis, ohne Modell): %s" % (
+        (", ".join(_link(n) for n in vt[:12]) + (" … (%d weitere)" % (len(vt) - 12) if len(vt) > 12 else "")) if vt else "kein weiteres Dokument nennt das Wort"))
+    if rest:
+        zeilen.append("- Die übrigen **%d** enthalten das Wort weder im Titel noch im Text: %s" % (len(rest), ", ".join(rest[:12]) + (" …" if len(rest) > 12 else "")))
+    zeilen.append("")
+    zeilen.append("Mehr ist zu **%s** nicht da. Frag nach der Sache selbst, dann zeige ich die Stellen im Text." % thema)
+    return "\n".join(zeilen)
+
+
+def _treffer_im_katalog(stichwort, namen, bereich=None, gattung=None):
+    """Arbeiten zu einem Stichwort - ueber Titel und Schlagworte.
+
+    Gibt None zurueck, wenn der Katalog fehlt oder nichts trifft; dann
+    greift die alte Namenssuche weiter.
+
+    ⚠ Es wird gesagt, WARUM eine Arbeit getroffen wurde. Ein Treffer,
+      dessen Grund man nicht sieht, laesst sich nicht beurteilen.
+    """
+    try:
+        import bestand
+    except Exception:
+        return None
+    from urllib.parse import quote
+    treffer = _katalog_treffer(stichwort, namen)
     if not treffer:
         return None
 
