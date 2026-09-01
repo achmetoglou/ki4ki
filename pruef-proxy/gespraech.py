@@ -203,8 +203,8 @@ def system_text(faden_dok=None, dokumente=None, kontakt="", rolle="", allgemeinw
     ]
     if allgemeinwissen:
         teile.append("ALLGEMEINWISSEN ERLAUBT (dieser Bereich steht auf Modus 'Chat'): Findet sich im Bestand nichts "
-                     "oder fragt der Mensch ausdruecklich nach 'ausserhalb der Dokumente', darfst du aus eigenem Wissen "
-                     "antworten - als EIGENER Absatz, der woertlich mit 'Aus Allgemeinwissen (nicht aus den Dokumenten):' "
+                     "oder fragt der Mensch ausdruecklich nach 'ausserhalb der Dokumente', MUSST du aus eigenem Wissen "
+                     "antworten (nicht nur 'nicht belegt' sagen) - als EIGENER Absatz, der woertlich mit 'Aus Allgemeinwissen (nicht aus den Dokumenten):' "
                      "beginnt, ohne Belege, ohne erfundene Kennungen. Nie mit Aussagen aus den Dokumenten vermischen.")
     if rolle:
         teile.append("ROLLE DIESES BEREICHS (vom Betreiber festgelegt - gilt zusaetzlich zu den Grundsaetzen):\n" + rolle.strip())

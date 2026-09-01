@@ -726,6 +726,22 @@ def szenario_29_bereich_isolation():
     import re
     reste = re.findall(r"titel_im_bereich\(self\.path, self\.headers\)\s*or nur_erlaubte", quelle)
     pruefe(not reste, "kein 'titel_im_bereich(...) or nur_erlaubte(...)' mehr im Quelltext (%d)" % len(reste))
+    # Der Bereichs-Abruf selbst: ein Bereich OHNE Dokumente ist [] (bekannt, leer), nicht None
+    import io, json as _json, urllib.request as _ur
+    start = quelle.index("def _titel_im_bereich_roh"); ende = quelle.index("\ndef ", start + 1)
+    ns2 = {"re": re, "time": __import__("time"), "json": _json, "urllib": __import__("urllib"), "sys": sys,
+           "_TITEL": {}, "ANZAHL_HALTBAR": 300, "ZIEL": "http://x", "_titel_aus_json": lambda p: ""}
+    exec(quelle[start:ende], ns2)
+    class _Antwort(io.BytesIO):
+        def __enter__(self): return self
+        def __exit__(self, *a): return False
+    alt_open = _ur.urlopen
+    _ur.urlopen = lambda req, timeout=0: _Antwort(_json.dumps({"workspace": {"slug": "leer", "documents": []}}).encode())
+    try:
+        leer = ns2["_titel_im_bereich_roh"]("/api/workspace/leer/chat", {"Cookie": "x"})
+    finally:
+        _ur.urlopen = alt_open
+    pruefe(leer == [], "Bereich ohne Dokumente -> [] (nicht None): %r" % (leer,))
 
 
 def szenario_30_leerer_bereich():

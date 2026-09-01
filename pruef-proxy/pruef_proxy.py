@@ -1964,7 +1964,11 @@ def _titel_im_bereich_roh(pfad, kopfzeilen):
                 name = re.sub(r"\.md-[0-9a-f-]{36}\.json$", ".md", name)
                 if name:
                     titel.append(name)
-            if titel:
+            if isinstance(w, dict):
+                # Auch [] ist eine Antwort: der Bereich ist bekannt und LEER.
+                # Vorher wurde [] wie "unbekannt" (None) behandelt - ein neuer
+                # Bereich bekam dadurch die Dokumente ALLER Bereiche des Kontos
+                # (testchat, 01.09.: Osmanisches Reich -> Dissertationen).
                 _TITEL[slug] = (titel, jetzt)
                 return titel
         except Exception as e:
@@ -6781,7 +6785,10 @@ class Griff(BaseHTTPRequestHandler):
         _was = sorted({_kurz.get(n, n) for n, _, _ in e["aufrufe"] if n != "waechter"})
         fuss = []
         if _doks:
-            fuss.append("Quelle: %s" % _doks)
+            # "Quelle" nur, wenn wirklich etwas belegt wurde; sonst war es eine
+            # Suche ohne Fund - "Nicht belegt · Quelle: DS-24-005" las sich
+            # wie eine Zuschreibung (Emrach 01.09.).
+            fuss.append(("Quelle: %s" if (ok or beruehrt) else "durchsucht: %s") % _doks)
         if _was:
             fuss.append(", ".join(_was))
         for _d, (_g, _z) in (zustand.get("gelesen") or {}).items():
