@@ -813,6 +813,18 @@ def szenario_32_bestand_thema():
         _b.angaben = alt
     quelle = open(os.path.join(HIER, "pruef_proxy.py"), encoding="utf-8").read()
     pruefe("def _katalog_nachziehen" in quelle and "_katalog_nachziehen()" in quelle, "Katalog wird im Hintergrund nachgezogen (nicht erst bei der Frage)")
+    import wortverzeichnis as _wv
+    alt_wv = _wv.arbeiten_mit
+    _wv.arbeiten_mit = lambda w, **k: {"DS-24-006", "DS-24-007"} if "spritzg" in w.lower() else set()
+    _b.angaben = lambda n: {"DS-24-006": {"titel": "Einspritzprofilierung für das Spritzgießverfahren", "verfasser": "K.", "jahr": "2024", "themen": []},
+                            "DS-24-007": {"titel": "Direktverschraubungen in duroplastischen Formmassen", "verfasser": "M.", "jahr": "2024", "themen": []}}.get(n)
+    try:
+        t3 = assistent._treffer_im_katalog("Spritzgießen", ["DS-24-006", "DS-24-007"], bereich=True)
+        pruefe(bool(t3) and "Im Volltext" in t3 and "DS-24-007" in t3.split("Im Volltext")[1] and "DS-24-006" not in t3.split("Im Volltext")[1],
+               "Volltext-Zusatz nennt nur Dokumente, die NICHT schon in der Katalog-Tabelle stehen")
+    finally:
+        _wv.arbeiten_mit = alt_wv
+        _b.angaben = alt
 
 
 def szenario_27_wegabgleich_und_bildarten():

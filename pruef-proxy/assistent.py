@@ -1022,10 +1022,10 @@ def bestandsauskunft(frage, titel, bereich=None, vorher=None, zusatz=None):
             kopf = ("Zu **%s** liegen %d Dokumente vor:"
                     % (stichwort, len(passend)))
             return kopf + "\n\n" + _liste(passend, zusatz) + _fussnote(len(sauber))
-        return ("Zu **%s** finde ich im Bestand%s keinen Dokumenttitel. "
-                "Das heisst nicht, dass es inhaltlich nichts dazu gibt - "
-                "frag ruhig direkt nach der Sache."
-                % (stichwort, " dieses Arbeitsbereichs" if bereich else ""))
+        _vt = _volltext_zusatz(stichwort, sauber)
+        return ("Zu **%s** finde ich im Katalog%s keinen Titel und kein Thema.%s"
+                % (stichwort, " dieses Arbeitsbereichs" if bereich else "",
+                   _vt or " Das heißt nicht, dass es inhaltlich nichts dazu gibt — frag ruhig direkt nach der Sache."))
 
     kopf = ("Der Arbeitsbereich enthält **%d Dokumente**." % len(sauber)
             if bereich else "Der Bestand umfasst **%d Dokumente**." % len(sauber))
@@ -1154,6 +1154,47 @@ def _liste_nach_art(frage, namen, bereich=None, zusatz=None):
     return kopf + "\n\n" + "\n".join(zeilen) + fuss
 
 
+def _wortstamm(t):
+    """'Spritzgiessen' -> 'spritzgiess', 'Kleben' -> 'kleb' (fuer Katalog und Wortverzeichnis)."""
+    t = (t or "").lower().replace("ß", "ss")
+    t = re.sub(r"(verfahren|prozesse?s?|techniken?|technik|ungen|ung|ens?|es|er|en|e|s)$", "", t)
+    return t if len(t) >= 4 else ""
+
+
+def _volltext_zusatz(stichwort, namen, ausser=()):
+    """Welche Dokumente des Bereichs nennen das Wort im VOLLTEXT - ueber das
+    Wortverzeichnis, ohne Modell. Der Katalog kennt nur Titel und Themen;
+    bei 2.000 Dokumenten ist das die ehrliche zweite Haelfte der Antwort
+    ("nur den einen wirklich?", Emrach 01.09.). Leer, wenn nichts da ist."""
+    try:
+        import wortverzeichnis as _wv
+    except Exception:
+        return ""
+    gefunden = set()
+    for w in {stichwort, _wortstamm(stichwort)}:
+        if not w or len(w) < 4:
+            continue
+        try:
+            r = _wv.arbeiten_mit(w)
+        except Exception:
+            r = None
+        for x in (r or []):
+            gefunden.add(_titel_saubern(str(x)).lower())
+    if not gefunden:
+        return ""
+    raus = {_titel_saubern(a).lower() for a in ausser}
+    treffer = sorted(n for n in {_titel_saubern(x) for x in namen}
+                     if n.lower() in gefunden and n.lower() not in raus)
+    if not treffer:
+        return ""
+    from urllib.parse import quote
+    liste = ", ".join("[%s](/pdf/%s)" % (n, quote(n, safe="")) for n in treffer[:12])
+    if len(treffer) > 12:
+        liste += " … (%d weitere)" % (len(treffer) - 12)
+    return ("\n\n*Im Volltext kommt „%s“ außerdem in %d Dokument%s vor: %s — frag nach der Sache, dann suche ich die Stellen.*"
+            % (stichwort, len(treffer), "" if len(treffer) == 1 else "en", liste))
+
+
 def _treffer_im_katalog(stichwort, namen, bereich=None, gattung=None):
     """Arbeiten zu einem Stichwort - ueber Titel und Schlagworte.
 
@@ -1176,11 +1217,7 @@ def _treffer_im_katalog(stichwort, namen, bereich=None, gattung=None):
     # Wortstamm dazu: "Spritzgiessen" soll "Spritzgiessverfahren" treffen,
     # "Kleben" die "Klebeverbindungen" (gemessen 01.09.: 11 Dokumente, 0 Treffer
     # bei "im Bereich Spritzgiessen" - die Liste kam ungefiltert).
-    def _stamm_von(t):
-        t = t.lower().replace("ß", "ss")
-        t = re.sub(r"(verfahren|prozesse?s?|techniken?|technik|ungen|ung|ens?|es|er|en|e|s)$", "", t)
-        return t if len(t) >= 4 else ""
-    staemme = [s for s in (_stamm_von(t) for t in teile) if s]
+    staemme = [s for s in (_wortstamm(t) for t in teile) if s]
 
     def _trifft(text):
         tx = (text or "").lower()
@@ -1228,9 +1265,8 @@ def _treffer_im_katalog(stichwort, namen, bereich=None, gattung=None):
     if weitere:
         zeilen.append("")
         zeilen.append("… und **%d weitere**. Grenze die Frage ein — etwa mit einer Art („Welche Normen …“) oder einem zweiten Stichwort." % weitere)
-    fuss = ("\n\n*Gesucht wurde in Titeln und Schlagworten des "
-            "hinterlegten Katalogs — nicht im Volltext. "
-            "Für Fachbegriffe im Text frag ruhig direkt nach der Sache.*")
+    fuss = ("\n\n*Gefunden über Titel und Schlagworte des Katalogs.*"
+            + _volltext_zusatz(stichwort, namen, ausser=[n for n, _, _ in treffer]))
     return kopf + "\n\n" + "\n".join(zeilen) + fuss
 
 def _titel_saubern(t):
