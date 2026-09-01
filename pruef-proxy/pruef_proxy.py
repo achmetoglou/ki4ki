@@ -2727,7 +2727,11 @@ EINHAENGER = """
 
   function einbauen() {
     if (document.getElementById(ID)) return;
-    if (/\\/settings\\b/.test(location.pathname)) return;   // Einstellungsseiten: dort gehoert das nicht hin
+    // KEIN Ausschluss ueber die Seitenadresse: Der Dialog "Neuer Arbeitsbereich"
+    // laesst sich von jeder Seite aus oeffnen - auch aus den Chat-Einstellungen
+    // eines Bereichs (Adresse .../settings/...). Genau dort blieben die Felder
+    // aus (Emrach 01.09.: "nur manchmal klappt es"). Die Einstellungsseite
+    // selbst wird unten ueber "schwebendes Fenster" ausgeschlossen.
     var eingaben = document.querySelectorAll('input[name="name"]');
     for (var i = 0; i < eingaben.length; i++) {
       var inp = eingaben[i];
