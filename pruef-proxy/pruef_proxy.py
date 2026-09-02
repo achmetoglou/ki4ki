@@ -5266,7 +5266,7 @@ class Griff(BaseHTTPRequestHandler):
             # Live-Modellhinweis OHNE Zahlen (AnythingLLMs graue Metrik
             #   liefert Zeit/Token erst beim Neuladen; hier nur der Name,
             #   damit im Direkt-Output steht, WER geantwortet hat).
-            geprueft += _modell_zeile(MODELL_NAME, time.time() - begonnen)
+            geprueft += _modell_zeile(self._modell_name_hier(), time.time() - begonnen)
         except Exception:
             traceback.print_exc(file=sys.stderr)
             geprueft = roh      # im Zweifel die Rohantwort, nie gar nichts
@@ -6085,6 +6085,15 @@ class Griff(BaseHTTPRequestHandler):
         _auftrag, _ = assistent.zusammenfassungs_auftrag(ganz, titel)
         return self._modell_fragen(_auftrag), min(len(ganz), 48000), len(ganz)
 
+    def _modell_name_hier(self):
+        """Der Name des Modells, das fuer DIESEN Bereich antwortet - fuer
+        ehrliche Fusszeilen (sonst stand "gemma4:12b" unter Qwen-Antworten)."""
+        try:
+            _mm = re.match(r"^/api/(?:v1/)?workspace/([^/]+)", self.path or "")
+            return (modell_fuer_bereich(_mm.group(1)) if _mm else None) or MODELL_NAME
+        except Exception:
+            return MODELL_NAME
+
     def _modell_fragen(self, auftrag, zeitgrenze=900, modell=None, denken=False):
         """Das Sprachmodell direkt fragen - ohne Suche, ohne AnythingLLM.
 
@@ -6092,7 +6101,17 @@ class Griff(BaseHTTPRequestHandler):
         gesucht werden soll. Alles andere gehoert weiter durch die
         gewoehnliche Kette, damit Belegpruefung und Quellen erhalten
         bleiben.
+
+        Ohne ausdrueckliches modell= gilt das Modell des BEREICHS aus dem
+        Anfragepfad - sonst antwortete im Qwen-Bereich der Vergleichsweg
+        mit Gemma (Fund 02.09.: Fusszeile "gemma4:12b" im qwen-test).
         """
+        if modell is None:
+            try:
+                _mm = re.match(r"^/api/(?:v1/)?workspace/([^/]+)", self.path or "")
+                modell = modell_fuer_bereich(_mm.group(1)) if _mm else None
+            except Exception:
+                modell = None
         daten = json.dumps({
             "model": modell or MODELL_NAME,
             "messages": [{"role": "user", "content": auftrag}],
@@ -6452,7 +6471,7 @@ class Griff(BaseHTTPRequestHandler):
                 text += "\n" + assistent.naechste_schritte("bild", gewaehlt)
         text = vorspann + text
         if modell_benutzt:
-            text += _modell_zeile(MODELL_NAME, time.time() - begonnen)
+            text += _modell_zeile(self._modell_name_hier(), time.time() - begonnen)
         self._festhalten("bild", frage, text)
         self._sende_strom([
             {"uuid": _neue_marke("bild"), "type": "textResponseChunk",
@@ -7921,7 +7940,7 @@ class Griff(BaseHTTPRequestHandler):
                     ("%d Zitat(e) wörtlich geprüft%s." % (ok, ", %d nicht gefunden" % nein if nein else ""))
                     if (ok or nein) else "Seitenangaben verlinkt, Zitate nicht wörtlich geprüft."))
         text += "\n*Weiter: „Exportiere das als CSV“ · anderer Aspekt: „Vergleiche die Methodik von %s und %s“*" % (ta, tb)
-        text += _modell_zeile(MODELL_NAME, time.time() - begonnen)
+        text += _modell_zeile(self._modell_name_hier(), time.time() - begonnen)
         gespraech = GESPRAECHE.kennung(self.path, self.headers)
         self._festhalten("vergleich", frage, text)
         GESPRAECHE.merken(gespraech, frage, "vergleich", [{"title": dok_a}, {"title": dok_b}])

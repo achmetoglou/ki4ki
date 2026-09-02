@@ -908,6 +908,9 @@ def szenario_33_quellen_heilen():
            "Budget erschoepft -> letzte Antwort aus dem Gelesenen statt Fehlermeldung")
     pruefe("Deine Antwort war leer. Schreibe die Antwort jetzt." in _g,
            "leere Modellantwort -> ein Zweitversuch vor der Fehlermeldung")
+    pruefe('if modell is None:' in _q and '_modell_name_hier' in _q
+           and '_modell_zeile(MODELL_NAME' not in _q,
+           "Hook-Wege (Vergleich, Zusammenfassung, Allgemein) nutzen das Bereichs-Modell und nennen es ehrlich in der Fusszeile")
 
 
 def szenario_27_wegabgleich_und_bildarten():
