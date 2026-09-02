@@ -875,6 +875,25 @@ def szenario_32_bestand_thema():
         _b.angaben = alt
 
 
+def szenario_33_quellen_heilen():
+    print("\n[33] Zitat-Fenster: gespeicherte Quellen alter Form werden beim Ausliefern geheilt")
+    _q = open(os.path.join(HIER, "pruef_proxy.py"), encoding="utf-8").read()
+    _a = _q.index("def _quelle_objekt"); _e = _q.index("\ndef _neue_marke", _a)
+    _ns = {}
+    exec(_q[_a:_e], _ns)
+    alt = _ns["_quellen_heilen"]([{"title": "DS-24-006.md"}])
+    pruefe(len(alt) == 1 and alt[0].get("url") and alt[0].get("id") and isinstance(alt[0].get("chunkSource"), str),
+           "alte Form {'title'} -> vollstaendiges Quellen-Objekt (url, id, chunkSource)")
+    pruefe(all(alt[0].get(f) is not None for f in ("docAuthor", "description", "docSource", "published", "text", "score")),
+           "kein Feld None - das Zitat-Fenster brach an undefined")
+    seite = _ns["_quellen_heilen"]([{"title": "DS-24-006.md · Seite 12"}])[0]
+    pruefe("Seite 12" in seite["title"] and seite["url"].endswith("/DS-24-006.md"), "Seitenangabe im Titel bleibt, Adresse ohne Seiten-Anhang")
+    voll = _ns["_quelle_objekt"]("DS-25-001", "Textstelle", 3)
+    pruefe(_ns["_quellen_heilen"]([voll]) == [voll], "vollstaendige Quelle bleibt unangetastet")
+    pruefe(_ns["_quellen_heilen"]([None, "x", {}]) and len(_ns["_quellen_heilen"]([None, "x"])) == 0, "Nicht-Objekte werden verworfen, leeres Objekt geheilt")
+    pruefe(_q.count("_quellen_heilen(") >= 3, "Heilung haengt an beiden Auslieferstellen (Nachtrag + Verlauf)")
+
+
 def szenario_27_wegabgleich_und_bildarten():
     print("\n[27] A2 Rechtepruefung je Ausgabeweg (wegabgleich) · Bildarten · Kategorie-Vorgabe per Unterordner")
     import wegabgleich
@@ -913,7 +932,7 @@ if __name__ == "__main__":
               szenario_29_bereich_isolation,
               szenario_30_leerer_bereich,
               szenario_31_bereich_ordner_aufraeumen,
-              szenario_32_bestand_thema):
+              szenario_32_bestand_thema, szenario_33_quellen_heilen):
         try:
             s()
         except Exception as e:

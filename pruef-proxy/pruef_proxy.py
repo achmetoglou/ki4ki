@@ -3105,6 +3105,29 @@ def _quelle_objekt(titel, text="", seite=None):
             "text": text or titel, "score": 1.0}
 
 
+def _quellen_heilen(liste):
+    """Gespeicherte Quellen auf die Form bringen, die die Oberflaeche erwartet.
+
+    Vor dem 02.09. hielt der Thread-Nachtrag Quellen nur als {"title": ...} -
+    beim Klick auf so eine Quelle brach das Zitat-Fenster mit "e is undefined"
+    ab. Neue Antworten sind vollstaendig; die alten werden hier beim
+    AUSLIEFERN repariert, damit auch bestehende Gespraeche anklickbar bleiben."""
+    heil = []
+    for q in liste or []:
+        if not isinstance(q, dict):
+            continue
+        if q.get("url") and q.get("id"):
+            heil.append(q)
+            continue
+        titel = str(q.get("title") or q.get("titel") or "Fundstelle")
+        seite = None
+        if " · Seite " in titel:
+            titel, _, rest = titel.rpartition(" · Seite ")
+            seite = int(rest) if rest.isdigit() else None
+        heil.append(_quelle_objekt(titel, str(q.get("text") or ""), seite))
+    return heil
+
+
 def _neue_marke(vorsilbe="ki4ki"):
     """Eine frische Nachrichtenkennung.
 
@@ -3236,7 +3259,7 @@ def _nachtrag_einblenden(history, gespeichert):
         u = {"role": "user", "content": e.get("prompt") or "",
              "sentAt": wann, "attachments": [], "chatId": cid}
         a = {"type": "chart", "role": "assistant", "content": e.get("text") or "",
-             "sources": e.get("sources") or [], "chatId": cid, "sentAt": wann,
+             "sources": _quellen_heilen(e.get("sources")), "chatId": cid, "sentAt": wann,
              "feedbackScore": None, "metrics": {}}
         paare.append((wann, [u, a]))
         n += 1
@@ -3407,7 +3430,7 @@ def verlauf_veredeln(daten):
                     if treffer:
                         x[feld] = treffer["text"]
                         if treffer.get("sources"):
-                            x["sources"] = treffer["sources"]
+                            x["sources"] = _quellen_heilen(treffer["sources"])
                         ersetzt[0] += 1
             for w in x.values():
                 gehe(w)
