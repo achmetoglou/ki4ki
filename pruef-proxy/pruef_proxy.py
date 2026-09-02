@@ -3090,6 +3090,21 @@ _gsperre = threading.Lock()
 
 
 
+def _quelle_objekt(titel, text="", seite=None):
+    """Quelle in der Form, die die Oberflaeche erwartet. Ohne id/url und die
+    uebrigen Felder brach das Zitat-Fenster mit "e is undefined" ab (02.09.)."""
+    import uuid as _uuid
+    name = titel if titel.endswith(".md") else titel + ".md"
+    return {"id": str(_uuid.uuid4()),
+            "url": "file:///app/collector/hotdir/%s" % name,
+            "title": name + ((" · Seite %d" % seite) if seite else ""),
+            "docAuthor": "KI4KI", "description": "Fundstelle der Belegprüfung",
+            "docSource": "KI4KI Belegprüfung", "chunkSource": "",
+            "published": "", "wordCount": len((text or "").split()),
+            "token_count_estimate": max(1, len(text or "") // 4),
+            "text": text or titel, "score": 1.0}
+
+
 def _neue_marke(vorsilbe="ki4ki"):
     """Eine frische Nachrichtenkennung.
 
@@ -4503,6 +4518,10 @@ class Griff(BaseHTTPRequestHandler):
         if re.match(r"^/api/(?:v1/)?workspace/", self.path or "") and not bereich_sichtbar(self.path, self.headers):
             self._json({"error": "Workspace does not exist."}, code=404)
             return
+        try:
+            self._faden_taufen(frage)
+        except Exception:
+            pass
         try:
             if self._rueckfrage_wahl(frage):
                 return
@@ -7808,7 +7827,7 @@ class Griff(BaseHTTPRequestHandler):
         self._sende_strom([
             {"uuid": _neue_marke(art), "type": "textResponseChunk",
              "textResponse": text, "sources": [], "close": False, "error": False},
-        ], quellen=[{"title": assistent._titel_saubern(dok), "text": "", "chunkSource": assistent._titel_saubern(dok)}] if dok else [])
+        ], quellen=[_quelle_objekt(assistent._titel_saubern(dok))] if dok else [])
 
     def _vergleich_antwort(self, frage, dok_a, dok_b, aspekt):
         """Zwei Dokumente nebeneinander - Tabelle, jede Zelle mit Seite."""
@@ -8317,6 +8336,27 @@ class Griff(BaseHTTPRequestHandler):
         return {"uuid": uuid, "type": "finalizeResponseStream", "textResponse": "", "close": True, "error": False,
                 "chatId": cid, "sources": quellen or [], "metrics": metr}
 
+    def _faden_taufen(self, frage):
+        """Erste Frage eines Fadens wird sein Name - sonst heisst jeder Reiter
+        "new thread" (Emrach 02.09.). Laeuft im Hintergrund, kostet nichts."""
+        m = re.match(r"^/api/(?:v1/)?workspace/([^/]+)/thread/([^/]+)/", self.path or "")
+        if not m or not API_SCHLUESSEL or not (frage or "").strip():
+            return
+        k = GESPRAECHE.kennung(self.path, self.headers)
+        e = GESPRAECHE._hol(k) if hasattr(GESPRAECHE, "_hol") else None
+        if e and e.get("schritte"):
+            return                       # nicht der erste Zug
+        slug, faden = m.group(1), m.group(2)
+        name = re.sub(r"\s+", " ", frage).strip()[:48]
+
+        def lauf():
+            try:
+                _api("POST", "/api/v1/workspace/%s/thread/%s/update" % (slug, faden),
+                     {"name": name}, timeout=10)
+            except Exception:
+                pass
+        threading.Thread(target=lauf, daemon=True).start()
+
     def _quellen_fuer_oberflaeche(self, zustand):
         """Die beruehrten Seiten als Quellen fuer die Quellenleiste der Oberflaeche."""
         aus = []
@@ -8327,9 +8367,9 @@ class Griff(BaseHTTPRequestHandler):
                 _sch, texte = _seitentexte_von(dok)
                 for n in seiten[:4]:
                     t = (texte[n - 1] if 0 < n <= len(texte) else "") or ""
-                    aus.append({"title": "%s · Seite %d" % (titel, n), "text": re.sub(r"\s+", " ", t)[:600], "chunkSource": "%s.pdf · Seite %d" % (titel, n)})
+                    aus.append(_quelle_objekt(titel, re.sub(r"\s+", " ", t)[:600], seite=n))
             else:
-                aus.append({"title": titel, "text": "", "chunkSource": titel})
+                aus.append(_quelle_objekt(titel))
         return aus[:12]
 
     def _strom_beginnen(self):
