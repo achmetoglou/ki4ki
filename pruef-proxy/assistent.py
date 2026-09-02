@@ -812,6 +812,8 @@ def ist_bestandsfrage_unscharf(text):
     t = (text or "").strip()
     if ist_inhaltsfrage(t):
         return False
+    if re.search(r"\b(?:diagramm|abbildung|abb\.|bild(?!ung)|grafik|foto|schaubild)\w*\b", t, re.I):
+        return False          # "Zeig mir ein Diagramm aus der Arbeit" = Bild-Weg, kein Index (01.09.)
     if re.match(r"^\s*(?:ok(?:ay)?\.?\s*|gut\.?\s*|und\s+)?(?:was|welche\w*)\s+(?:gibt\s+es|habt\s+ihr|haben\s+wir|hast\s+du|liegt|liegen|existier\w+)\b",
                 t, re.I) and _stichwort_aus(t):
         return True           # "Was gibt es zum Thema X" = Liste zum Thema (README-Zusage)
@@ -1432,6 +1434,8 @@ def _stichwort_aus(frage):
                   r"dem\s+|den\s+|thema\s+)?([A-Za-zÄÖÜäöüß0-9\-\s]{3,40}?)"
                   r"\s*(?:besch(?:ä|ae)ftigen|befassen)?\s*[\?\.,;]?\s*$", frage, re.I)
     if not m:
+        m = re.match(r"^\s*(?:und|oder)\s+(?:zu[mr]?\s+|im\s+bereich\s+|(?:ü|ue)ber\s+)?([A-Za-zÄÖÜäöüß0-9][\w\- ]{2,40}?)\s*\??\s*$", frage, re.I)
+    if not m:
         return None
     wort = m.group(1).strip()
     if re.fullmatch(r"(verfuegung|verfügung|thema|themen)", wort, re.I):
@@ -1526,6 +1530,10 @@ def ist_bestand_verfeinerung(frage):
     except Exception:
         pass
     if _stichwort_aus(f):
+        return True
+    # "und 3D Druck?" - nacktes Thema hinter "und/oder" (nur als Anschluss sinnvoll,
+    # der Aufrufer prueft, dass davor eine Bestandsantwort kam)
+    if re.match(r"^\s*(?:und|oder)\s+(?:zu[mr]?\s+|im\s+bereich\s+|(?:ü|ue)ber\s+)?[A-Za-zÄÖÜäöüß0-9][\w\- ]{2,40}\s*\??\s*$", f, re.I):
         return True
     return False
 

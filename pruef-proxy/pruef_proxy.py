@@ -7627,7 +7627,12 @@ class Griff(BaseHTTPRequestHandler):
         if not m and len((frage or "").split()) <= 8:
             # "Danke und jetzt Bild 1.1?" / "und 4.4?" nach einem Bild
             m = re.search(r"\b(?:bild|abbildung|abb\.?|grafik|diagramm)\s*(\d{1,2}[.\-]\d{1,3})\b", frage or "", re.I)
-            if not m and GESPRAECHE.letzte_art(GESPRAECHE.kennung(self.path, self.headers)) == "bild":
+            _k = GESPRAECHE.kennung(self.path, self.headers)
+            if not m and (GESPRAECHE.letzte_art(_k) == "bild"
+                          or "| Bild | Seite |" in GESPRAECHE.letzte_antwort(_k)
+                          or "Welche Abbildung" in GESPRAECHE.letzte_antwort(_k)):
+                # Die letzte Antwort war eine Abbildungs-Liste: "5.3" heisst "zeig 5.3"
+                # (gemessen 01.09.: ging ans Modell, das leer antwortete)
                 m = re.search(r"(?<![\d.])(\d{1,2}[.\-]\d{1,3})(?![\d.])", frage or "")
         if not m:
             return False
