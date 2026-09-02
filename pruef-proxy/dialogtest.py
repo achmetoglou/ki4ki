@@ -893,6 +893,9 @@ def szenario_33_quellen_heilen():
     pruefe(_ns["_quellen_heilen"]([None, "x", {}]) and len(_ns["_quellen_heilen"]([None, "x"])) == 0, "Nicht-Objekte werden verworfen, leeres Objekt geheilt")
     pruefe(_q.count("_quellen_heilen(") >= 3, "Heilung haengt an beiden Auslieferstellen (Nachtrag + Verlauf)")
     pruefe("GESPRAECHE.letzte_frage(gespraech_k)[0]" in _q, "Vertiefungs-Umbau nimmt nur die Frage, nicht das (Frage, Art)-Paar")
+    pruefe('GESPRAECHE.dokument_merken(gespraech_k, _neuer)' in _q
+           and 'GESPRAECHE.dokument_merken(gespraech_k, zustand["dokumente"][-1])' not in _q,
+           "Faden-Vorfahrt beim Merken: genannt > Faden des Zugs > zuletzt angefasst (nie blind [-1])")
 
 
 def szenario_27_wegabgleich_und_bildarten():

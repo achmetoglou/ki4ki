@@ -7034,7 +7034,21 @@ class Griff(BaseHTTPRequestHandler):
             text += "\n\n*" + " · ".join(fuss) + "*"
         # ---- Merken und senden -------------------------------------------
         if zustand["dokumente"]:
-            GESPRAECHE.dokument_merken(gespraech_k, zustand["dokumente"][-1])
+            # Faden-Vorfahrt (Fund 02.09.: "[-1]" machte nach "Welche Methode
+            # benutzt sie?" Koebel zum Faden, weil bestand_durchsuchen ihn als
+            # LETZTES traf - die naechste Vertiefung fragte dann im falschen
+            # Dokument nach): ausdruecklich genannt > Faden des Zugs > zuletzt
+            # angefasst.
+            _neuer = zustand["dokumente"][-1]
+            try:
+                _genannt = assistent.dokument_gemeint(frage, namen)[0]
+            except Exception:
+                _genannt = None
+            if _genannt and self._dok_im_bereich(_genannt):
+                _neuer = _genannt
+            elif faden_dok:
+                _neuer = faden_dok
+            GESPRAECHE.dokument_merken(gespraech_k, _neuer)
         # Protokoll (K5): geprüfte Zitate und verifizierte Belege zaehlen als
         # "belegt" - vorher stand jede Stufe-2-Antwort als "eigen" da und die
         # Kennzahl "quellenbasiert" zeigte 2,9 % bei 91 % Trefferquote (27.08.).
