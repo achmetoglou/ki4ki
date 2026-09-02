@@ -792,6 +792,14 @@ _INHALTSFRAGE = re.compile(
     r"was\s+ist|was\s+sind|wie\s+wird|wie\s+werden|wie\s+hat|wie\s+kann|wie\s+viele?\s+(?:seiten|abbildungen|bilder|tabellen|kapitel|formeln))\b", re.I)
 
 
+def ist_bildwunsch(frage):
+    """"Zeig mir eine Grafik/ein Diagramm/Bild ..." - gehoert in den Bild-Weg,
+    nie in den Index (gemessen 02.09.: Stufe 1 stufte es als Bestand ein und
+    die Guards liessen es durch)."""
+    return bool(re.search(r"\b(?:diagramm|abbildung|abb\.|bild(?!ung)|grafik|graphik|grafi\b|foto|schaubild)\w*\b",
+                          (frage or ""), re.I))
+
+
 def ist_inhaltsfrage(frage):
     """Inhaltsfrage trotz Bestandswort ("Was sagt die DVS 2213 zu ...",
     "Wie viele Seiten hat die Arbeit") - gehoert ans Dokument, nie in den Index."""
@@ -812,7 +820,7 @@ def ist_bestandsfrage_unscharf(text):
     t = (text or "").strip()
     if ist_inhaltsfrage(t):
         return False
-    if re.search(r"\b(?:diagramm|abbildung|abb\.|bild(?!ung)|grafik|foto|schaubild)\w*\b", t, re.I):
+    if ist_bildwunsch(t):
         return False          # "Zeig mir ein Diagramm aus der Arbeit" = Bild-Weg, kein Index (01.09.)
     if re.match(r"^\s*(?:ok(?:ay)?\.?\s*|gut\.?\s*|und\s+)?(?:was|welche\w*)\s+(?:gibt\s+es|habt\s+ihr|haben\s+wir|hast\s+du|liegt|liegen|existier\w+)\b",
                 t, re.I) and _stichwort_aus(t):

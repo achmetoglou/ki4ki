@@ -4781,7 +4781,7 @@ class Griff(BaseHTTPRequestHandler):
             except Exception:
                 traceback.print_exc(file=sys.stderr)
 
-        if art == "bestand" and not assistent.ist_inhaltsfrage(frage):
+        if art == "bestand" and not assistent.ist_inhaltsfrage(frage) and not assistent.ist_bildwunsch(frage):
             try:
                 if self._bestandsauskunft(frage, _vorher_best):
                     GESPRAECHE.merken(gespraech, frage, "bestand", [])
@@ -5711,7 +5711,7 @@ class Griff(BaseHTTPRequestHandler):
             self._json({"error": "Workspace does not exist."}, code=404)
             return
 
-        if art == "bestand" and not assistent.ist_inhaltsfrage(frage_roh):
+        if art == "bestand" and not assistent.ist_inhaltsfrage(frage_roh) and not assistent.ist_bildwunsch(frage_roh):
             try:
                 titel = titel_im_bereich(self.path, self.headers)
                 bereich = titel is not None      # [] = bekannter, leerer Bereich

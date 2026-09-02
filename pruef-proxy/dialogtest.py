@@ -833,6 +833,7 @@ def szenario_32_bestand_thema():
         pruefe(assistent.ist_bestand_verfeinerung("nur die Normen") and assistent.ist_bestand_verfeinerung("und die Prüfungskataloge?"), "Kategorie-Verfeinerung ('nur die Normen') erkannt")
         pruefe(assistent.ist_bestand_verfeinerung("und 3D Druck?") and assistent._stichwort_aus("und 3D Druck?") == "3D Druck", "'und 3D Druck?' = Themen-Anschluss")
         pruefe(not assistent.ist_bestandsfrage_unscharf("Zeig mir ein Diagramm aus der Arbeit"), "Bildwunsch ist keine Bestandsfrage")
+        pruefe(assistent.ist_bildwunsch("Zeig mir eine Grafik von der Dissertation") and assistent.ist_bildwunsch("Zeig mir eine Grafi von der Dissertation"), "Bildwunsch auch mit Tippfehler 'Grafi' erkannt")
         pruefe(not assistent.ist_bestandsfrage_unscharf("Ein Diagramm zu der Dissertation von Jana Sasse"), "'Ein Diagramm zu der Dissertation von X' ist keine Bestandsfrage")
         _q = open(os.path.join(HIER, "pruef_proxy.py"), encoding="utf-8").read()
         _a = _q.index("    def _mehrfachauftrag(frage):"); _e = _q.index("\n    def ", _a + 1)
