@@ -152,7 +152,7 @@ def ohne_pseudo(text):
     return re.sub(r"[ \t]{2,}", " ", t).strip()
 
 
-def system_text(faden_dok=None, dokumente=None, kontakt="", rolle="", allgemeinwissen=False):
+def system_text(faden_dok=None, dokumente=None, kontakt="", rolle="", allgemeinwissen=False, modell=None):
     teile = [
         "Du bist die Wissensdatenbank dieses Bereichs und fuehrst ein Gespraech ueber die "
         "hinterlegten Dokumente - was immer dort liegt: Berichte, Normen, Arbeitsanweisungen, "
@@ -208,6 +208,14 @@ def system_text(faden_dok=None, dokumente=None, kontakt="", rolle="", allgemeinw
         "21. HALBSAETZE ('genauer bitte', 'mehr dazu', 'und weiter'): beziehen sich auf das Faden-Dokument und die "
         "letzte Antwort - dort weiterlesen (seiten_lesen), keine Bestandssuche. ZAHLEN wie Seitenzahl, Anzahl "
         "Abbildungen/Tabellen kommen aus dem Werkzeug zaehlen, nie aus dem Text abgelesen.",
+        # Fremdmodelle (Modell je Bereich) kennen unsere Zitierform nicht aus
+        # dem Alltag - ohne diese Erinnerung schrieben sie Fettdruck statt
+        # (Kennung, S. n), und die Belegpruefung lief ins Leere (gemessen 02.09.).
+        ("22. ZITIERFORM - WICHTIGSTE REGEL FUER DICH: JEDE inhaltliche Aussage endet mit ihrem Beleg in GENAU dieser "
+         "Form: (Kennung, S. n) - die Kennung exakt wie in DOKUMENTE IM BEREICH, die Seite aus dem gelesenen Text. "
+         "Beispiel: 'Die Routine berechnet das Profil (DS-24-006, S. 125).' Fettgedruckte Namen, Fussnoten oder "
+         "Aussagen ohne Seitenangabe gelten als UNBELEGT und werden gestrichen. Erst lesen (seiten_lesen), dann "
+         "mit Seite belegen." if modell else None),
         "GESPRAECHSZUSTAND:\nFaden-Dokument: %s" % (faden_dok or "keins (frag nach oder nutze dokument_finden/bestand)"),
     ]
     if allgemeinwissen:
@@ -221,7 +229,7 @@ def system_text(faden_dok=None, dokumente=None, kontakt="", rolle="", allgemeinw
         teile.append("DOKUMENTE IM BEREICH (%d):\n%s" % (len(dokumente), "\n".join("- " + d for d in dokumente[:40])))
     if kontakt:
         teile.append("Ansprechpartner fuer alles, was du nicht kannst: %s" % kontakt)
-    return "\n\n".join(teile)
+    return "\n\n".join(t for t in teile if t)
 
 
 def nachrichten(system, verlauf, frage):
@@ -370,7 +378,7 @@ def fuehren(frage, verlauf, faden_dok, dokumente, werkzeug, rufen=None, kontakt=
     Kennungen), runden, ms, fehler."""
     begonnen = time.time()
     rufen = rufen or (lambda m: _modell_aufruf(m, denken=denken, modell=modell))
-    msgs = nachrichten(system_text(faden_dok, dokumente, kontakt, rolle, allgemeinwissen), verlauf, frage)
+    msgs = nachrichten(system_text(faden_dok, dokumente, kontakt, rolle, allgemeinwissen, modell=modell), verlauf, frage)
     aufrufe, beruehrt, texte = [], [], []
     nutzung = {"prompt": 0, "antwort": 0, "dauer_ms": 0}
     # ⭐ VORWISSEN: Belege, die der Proxy VOR dem Modell deterministisch geholt
