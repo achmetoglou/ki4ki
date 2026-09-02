@@ -119,7 +119,7 @@ mitgeschickte, aber unbestätigte Kopfzeile wird abgewiesen.
 
 | Werkzeug | Was es prüft | Wann |
 |---|---|---|
-| `python3 pruef-proxy/dialogtest.py` | 28 Szenarien, ~300 Prüfungen ohne Modell: Router, Faden, Prüfungskatalog, Rolle, Kategorien, Rechte je Ausgabeweg, Aufnahme-Übersicht | vor jedem Push |
+| `python3 pruef-proxy/dialogtest.py` | 32 Szenarien, 345 Prüfungen ohne Modell: Router, Faden, Prüfungskatalog, Rolle, Kategorien, Rechte je Ausgabeweg, Aufnahme-Übersicht | vor jedem Push |
 | `python3 pruef-proxy/wegabgleich.py` | Rechteprüfung an jedem Ausgabeweg (Teil von dialogtest) | vor jedem Push |
 | `docker exec ki4ki-pruef-proxy python3 /app/absichttest.py` | 32 echte Dialogzüge gegen das Absichts-Modell, Bedingung ≥ 90 % | nach Modell-/Prompt-Änderung |
 | `docker exec ki4ki-pruef-proxy python3 /app/selbstcheck.py [bereich] [n]` | Zufallsfragen aus dem eigenen Bestand, mechanisches Urteil, Ampel unter `/selbstcheck` | im Betrieb |
@@ -136,6 +136,8 @@ n8n grün, und die Wahrheit steht in `aussortiert.log` und auf `/kpi`.
 | `pruef-proxy/pruef_proxy.py` | Der Kern: einzige Tür, Wege, Belegprüfung, Rechte, Wachen (Löschen, Einräumen, Bereiche, Rolle, GPU) |
 | `assistent.py` | Regel-Router, Faden-Gedächtnis, Bestandsliste, Index-Tabelle |
 | `absicht.py` / `gespraech.py` | Stufe 1 (Absicht) / Stufe 2 (Werkzeuge, Wächter, Belege) |
+| `mehrstufig.py` | Zusammenfassung in mehreren Durchgängen — das ganze Dokument wird gelesen, nicht ein Ausschnitt |
+| `namen.py` | Dokumentnamen säubern, bevor sie in die Anlage kommen (Sonderzeichen, Umbenennungen durch die Oberfläche) |
 | `bestand.py` / `kategorie.py` | Katalog nachtragen / Kategorien und Themen |
 | `pruefungskatalog.py` | Prüfungsfragen aus Katalogen |
 | `fadenfrage.py` | Seitenwahl im Faden-Dokument, Abbildungen und Bildarten |
@@ -145,7 +147,7 @@ n8n grün, und die Wahrheit steht in `aussortiert.log` und auf `/kpi`.
 | `veredeln.py` / `pdfstelle.py` / `abbildung.py` | Zitate prüfen / Stelle im PDF finden / Abbildung ausschneiden |
 | `wortsuche.py` / `wortverzeichnis.py` / `wortlisten.py` | wörtliche Suche seltener Fachbegriffe / Auslöser-Wörter |
 | `selbstcheck.py` / `wegabgleich.py` / `dialogtest.py` / `absichttest.py` | Prüfwerkzeuge |
-| `mkmd-dienst/mk_md.py` | Textfassung mit Kopfdaten |
+| `mkmd-dienst/` | Textfassung mit Kopfdaten (`mk_md.py`), echte Seitenzahlen aus dem PDF (`seiten_echt.py`), Bildbeschreibungen (`bildbeschreibung.py`), Deckblatt-Erkennung (`vorspann_finden.py`) |
 | `office-dienst/office_dienst.py` | LibreOffice → PDF (`POST /pdf`, Ziel neben dem Original) |
 | `nothink-proxy/` | schaltet das laute Denken des Modells ab |
 
