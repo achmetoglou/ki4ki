@@ -151,6 +151,7 @@ Wert anpassen.
 | `KI4KI_KONTAKT` | leer | Name/Mail des Ansprechpartners, den die Anlage bei Störfällen ohne Beleg nennt. |
 | `KI4KI_GESPRAECH` | `1` | Gesprächsmodus (das Modell führt das Gespräch mit Werkzeugen des Proxys). `0` = alter Regel-Router. |
 | `KI4KI_ABSICHT_MODELL` | `1` | Das Modell erkennt die Absicht einer Frage (Stufe 1). |
+| `KI4KI_MODELLE_ERLAUBT` | leer | Modell je Bereich: Das in den Chat-Einstellungen eines Bereichs gewählte Sprachmodell gilt auch für die Antworten der Anlage in diesem Bereich. Erlaubt sind installierte Ollama-Modelle plus diese Liste. |
 | `KI4KI_GESPRAECH_BUDGET` | `300` | Gesamtzeit je Frage in Sekunden; danach bricht die Anlage ehrlich ab (`KI4KI_GESPRAECH_TIMEOUT` = je Modellaufruf, `KI4KI_GESPRAECH_RUNDEN` = Werkzeug-Runden). |
 | `KI4KI_BILDBESCHREIBUNG` | `aus` | Abbildungen bei der Aufnahme beschreiben lassen (~6 s je Bild). |
 | `KI4KI_FORMELN` | `aus` | Formeln als LaTeX erkennen (~6 min je Dissertation). |

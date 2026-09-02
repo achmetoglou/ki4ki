@@ -90,6 +90,10 @@ Bereichs. Dazu die Wahl des Modus:
 Der Ordner `dokumente/<bereich>/` entsteht automatisch. Ändern lässt sich die Rolle
 später in den Chat-Einstellungen des Bereichs.
 
+In den Chat-Einstellungen eines Bereichs lässt sich auch das **Sprachmodell** wählen —
+es gilt dann für die Antworten dieses Bereichs (z. B. ein Testbereich auf einem neuen
+Modell, alle anderen auf dem Standard). Unter der Antwort steht, welches Modell sie gab.
+
 Ein Bereich antwortet **nur aus seinen eigenen Dokumenten** — auch für Administratoren,
 die alle Bereiche sehen. Ein Bereich im Modus „Chat" ohne Dokumente ist damit ein
 reiner Modell-Chat ohne Bezug auf Unterlagen.

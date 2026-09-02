@@ -750,7 +750,8 @@ def szenario_30_leerer_bereich():
     quelle = open(os.path.join(HIER, "pruef_proxy.py"), encoding="utf-8").read()
     start = quelle.index("    def _leerer_bereich(self, frage):"); ende = quelle.index("\n    def ", start + 1)
     src = "\n".join(z[4:] for z in quelle[start:ende].splitlines())
-    ns = {"re": _re, "_ordnername": lambda s: s, "_rolle_lesen": lambda s: "", "rolle": type("R", (), {"fuer_prompt": staticmethod(lambda t: "")})()}
+    ns = {"re": _re, "_ordnername": lambda s: s, "_rolle_lesen": lambda s: "", "modell_fuer_bereich": lambda s: None,
+          "rolle": type("R", (), {"fuer_prompt": staticmethod(lambda t: "")})()}
     exec(src, ns)
     class Fake:
         def __init__(self, pfad): self.path = pfad; self.headers = {}; self.gesendet = []; self.gefragt = []
@@ -842,6 +843,16 @@ def szenario_32_bestand_thema():
         pruefe(assistent.ist_fundstellenfrage("wo steht das?") and assistent.ist_fundstellenfrage("Quelle?") and not assistent.ist_fundstellenfrage("Wo steht die Maschine?"), "'wo steht das?' erkannt")
         st = assistent.fundstellen_aus("Text [DS-24-006, S. 125](/stelle?dok=DS-24-006&seite=125&zitat=x) und (DS-24-006, S. 10) sowie (DS-24-006, S. 125).")
         pruefe([(a, b) for a, b, _ in st] == [("DS-24-006", 125), ("DS-24-006", 10)], "Fundstellen aus der Antwort, ohne Dopplung: %s" % [(a, b) for a, b, _ in st])
+        _q2 = open(os.path.join(HIER, "pruef_proxy.py"), encoding="utf-8").read()
+        _a2 = _q2.index("def modell_fuer_bereich"); _e2 = _q2.index("\n\n_ADMINS", _a2)
+        _ns2 = {"os": os, "sys": sys, "time": __import__("time"), "json": __import__("json"), "urllib": __import__("urllib"),
+                "_bereich_llm": lambda s: {"llm-test": "qwen3.8:latest", "auw": "", "kaputt": "gibtsnicht"}.get(s, ""),
+                "gespraechsmodus": type("G", (), {"MODELL": "gemma4:12b"})(), "OLLAMA_URL": "http://x",
+                "_MODELLE_DA": {"wann": __import__("time").time(), "namen": {"qwen3.8:latest", "gemma4:12b"}}}
+        exec(_q2[_a2:_e2], _ns2)
+        pruefe(_ns2["modell_fuer_bereich"]("llm-test") == "qwen3.8:latest", "Bereich mit Qwen -> Qwen")
+        pruefe(_ns2["modell_fuer_bereich"]("auw") is None, "Bereich ohne Auswahl -> Standardmodell")
+        pruefe(_ns2["modell_fuer_bereich"]("kaputt") is None, "nicht installiertes Modell -> Standard bleibt")
         kz, kand = assistent.kennung_kandidaten("Was steht in DVS 2290?", ["DVS 2290 Werkzeugliste.md", "DVS 2290 Kontext 2022_Ausbilder.md", "DVS 2213-1_neu.md"])
         pruefe(kz == "DVS 2290" and len(kand) == 2, "Kennung mit zwei Kandidaten -> Rueckfrage-Grundlage")
         pruefe(assistent._stichwort_aus("Welche Arbeit befasst sich mit Blattfedern?") == "Blattfedern", "'befasst sich mit X' -> Thema")
