@@ -892,6 +892,7 @@ def szenario_33_quellen_heilen():
     pruefe(_ns["_quellen_heilen"]([voll]) == [voll], "vollstaendige Quelle bleibt unangetastet")
     pruefe(_ns["_quellen_heilen"]([None, "x", {}]) and len(_ns["_quellen_heilen"]([None, "x"])) == 0, "Nicht-Objekte werden verworfen, leeres Objekt geheilt")
     pruefe(_q.count("_quellen_heilen(") >= 3, "Heilung haengt an beiden Auslieferstellen (Nachtrag + Verlauf)")
+    pruefe("GESPRAECHE.letzte_frage(gespraech_k)[0]" in _q, "Vertiefungs-Umbau nimmt nur die Frage, nicht das (Frage, Art)-Paar")
 
 
 def szenario_27_wegabgleich_und_bildarten():

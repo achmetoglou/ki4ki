@@ -6758,8 +6758,10 @@ class Griff(BaseHTTPRequestHandler):
         if assistent.ist_vertiefung(frage) and GESPRAECHE.letzte_frage(gespraech_k):
             # "genauer bitte" -> die vorige Frage, tiefer (gemessen 01.09.: das Modell
             # suchte sonst nach dem Wort 'genauer' im falschen Dokument)
+            # letzte_frage liefert (Frage, Art) - nur die Frage in den Text,
+            # sonst steht das Paar woertlich im Verlauf (Fund 02.09.)
             frage = "%s — bitte ausführlicher: weitere Einzelheiten und Belege%s." % (
-                GESPRAECHE.letzte_frage(gespraech_k),
+                GESPRAECHE.letzte_frage(gespraech_k)[0],
                 (" aus %s" % assistent._titel_saubern(faden_dok)) if faden_dok else "")
         zeilen = [assistent.dokument_zeile(n) for n in sorted(namen)[:40]]
         begonnen = time.time()
