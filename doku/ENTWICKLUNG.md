@@ -119,7 +119,7 @@ mitgeschickte, aber unbestätigte Kopfzeile wird abgewiesen.
 
 | Werkzeug | Was es prüft | Wann |
 |---|---|---|
-| `python3 pruef-proxy/dialogtest.py` | 33 Szenarien, 353 Prüfungen ohne Modell: Router, Faden, Prüfungskatalog, Rolle, Kategorien, Rechte je Ausgabeweg, Aufnahme-Übersicht | vor jedem Push |
+| `python3 pruef-proxy/dialogtest.py` | 33 Szenarien, 354 Prüfungen ohne Modell: Router, Faden, Prüfungskatalog, Rolle, Kategorien, Rechte je Ausgabeweg, Aufnahme-Übersicht | vor jedem Push |
 | `python3 pruef-proxy/wegabgleich.py` | Rechteprüfung an jedem Ausgabeweg (Teil von dialogtest) | vor jedem Push |
 | `docker exec ki4ki-pruef-proxy python3 /app/absichttest.py` | 32 echte Dialogzüge gegen das Absichts-Modell, Bedingung ≥ 90 % | nach Modell-/Prompt-Änderung |
 | `docker exec ki4ki-pruef-proxy python3 /app/selbstcheck.py [bereich] [n]` | Zufallsfragen aus dem eigenen Bestand, mechanisches Urteil, Ampel unter `/selbstcheck` | im Betrieb |

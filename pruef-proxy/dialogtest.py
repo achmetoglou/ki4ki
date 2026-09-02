@@ -896,6 +896,13 @@ def szenario_33_quellen_heilen():
     pruefe('GESPRAECHE.dokument_merken(gespraech_k, _genannt)' in _q
            and 'if faden_dok and faden_dok in zustand["dokumente"]:' in _q,
            "Faden-Vorfahrt: genannt zaehlt auch OHNE Werkzeuge; alter Faden nur, wenn der Zug ihn beruehrt hat")
+    _a3 = _q.index("CHAT_JSON = re.compile"); _e3 = _q.index("\n", _a3)
+    _ns3 = {"re": __import__("re")}
+    exec(_q[_a3:_e3], _ns3)
+    pruefe(bool(_ns3["CHAT_JSON"].match("/api/v1/workspace/auw/chat"))
+           and bool(_ns3["CHAT_JSON"].match("/api/v1/workspace/auw/thread/abc-123/chat"))
+           and not _ns3["CHAT_JSON"].match("/api/v1/workspace/auw/thread/abc/new"),
+           "API-Chat MIT und OHNE Thread laeuft durch die Pruefung (Thread-Chats liefen roh durch)")
 
 
 def szenario_27_wegabgleich_und_bildarten():

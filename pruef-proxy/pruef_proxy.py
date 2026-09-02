@@ -1047,7 +1047,10 @@ def chat_gemeldet():
 #  - /api/v1/.../chat: der Weg fuer Maschinen, u. a. n8n (schlichtes JSON)
 # Beide bekommen dieselbe Pruefung, damit die Belege ueberall gleich sind.
 CHAT = re.compile(r"^/api/workspace/[^/]+(?:/thread/[^/]+)?/stream-chat/?$")
-CHAT_JSON = re.compile(r"^/api/v1/workspace/[^/]+/chat/?$")
+# Auch der Thread-Weg der API gehoert vor die Pruefung - ohne den zweiten
+# Zweig liefen Thread-Chats UNGEPRUEFT an AnythingLLM durch: rohe .md-Namen
+# statt Belegen, keine /stelle-Links, keine Belegpruefung (Fund 02.09.).
+CHAT_JSON = re.compile(r"^/api/v1/workspace/[^/]+(?:/thread/[^/]+)?/chat/?$")
 FEEDBACK = re.compile(r"^/api/workspace/([^/]+)/chat-feedback/(-?\d+)/?$")
 _RUECKMELDUNG_CHAT = re.compile(
     r"^\s*(?:feedback|r(?:ü|ue)ckmeldung|falsche\s+quelle|falscher\s+beleg|quelle\s+falsch)\s*[:\-–]\s*(.+)$",
