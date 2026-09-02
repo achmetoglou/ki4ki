@@ -7033,22 +7033,23 @@ class Griff(BaseHTTPRequestHandler):
         if fuss:
             text += "\n\n*" + " · ".join(fuss) + "*"
         # ---- Merken und senden -------------------------------------------
-        if zustand["dokumente"]:
-            # Faden-Vorfahrt (Fund 02.09.: "[-1]" machte nach "Welche Methode
-            # benutzt sie?" Koebel zum Faden, weil bestand_durchsuchen ihn als
-            # LETZTES traf - die naechste Vertiefung fragte dann im falschen
-            # Dokument nach): ausdruecklich genannt > Faden des Zugs > zuletzt
-            # angefasst.
-            _neuer = zustand["dokumente"][-1]
-            try:
-                _genannt = assistent.dokument_gemeint(frage, namen)[0]
-            except Exception:
-                _genannt = None
-            if _genannt and self._dok_im_bereich(_genannt):
-                _neuer = _genannt
-            elif faden_dok:
-                _neuer = faden_dok
-            GESPRAECHE.dokument_merken(gespraech_k, _neuer)
+        # Faden-Vorfahrt (Fund 02.09., zwei Stufen): ausdruecklich genannt >
+        # Faden des Zugs, WENN die Werkzeuge ihn beruehrt haben > zuletzt
+        # angefasst. Vorher stahl "[-1]" den Faden (bestand_durchsuchen traf
+        # Koebel als letztes), und die Nennung ("Welches Verfahren nutzt
+        # Koebel?") zaehlte gar nicht, wenn das Modell OHNE Werkzeuge aus den
+        # Fundstellen antwortete - die Folgefrage suchte dann im alten Faden.
+        try:
+            _genannt = assistent.dokument_gemeint(frage, namen)[0]
+        except Exception:
+            _genannt = None
+        if _genannt and self._dok_im_bereich(_genannt):
+            GESPRAECHE.dokument_merken(gespraech_k, _genannt)
+        elif zustand["dokumente"]:
+            if faden_dok and faden_dok in zustand["dokumente"]:
+                GESPRAECHE.dokument_merken(gespraech_k, faden_dok)
+            else:
+                GESPRAECHE.dokument_merken(gespraech_k, zustand["dokumente"][-1])
         # Protokoll (K5): geprüfte Zitate und verifizierte Belege zaehlen als
         # "belegt" - vorher stand jede Stufe-2-Antwort als "eigen" da und die
         # Kennzahl "quellenbasiert" zeigte 2,9 % bei 91 % Trefferquote (27.08.).
