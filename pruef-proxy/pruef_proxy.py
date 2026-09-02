@@ -5445,13 +5445,17 @@ class Griff(BaseHTTPRequestHandler):
             zeile("Wege", ", ".join("%s: %d" % kv for kv in (z.get("regeln") or {}).items())),
             zeile("Meistgenutzte Quellen", ", ".join("%s (%d)" % kv for kv in (z.get("meistgenutzte_quellen") or [])[:8])),
         ])
+        _zeitraum = ("<p><b>Zeitraum:</b> <a href='/kpi?seit=%s'>Heute</a> · <a href='/kpi?seit=%s'>7 Tage</a> · "
+                     "<a href='/kpi'>Gesamt</a>%s — Testläufe und Einrichtung verzerren lange Zeiträume.</p>"
+                     % (time.strftime("%Y-%m-%d"), time.strftime("%Y-%m-%d", time.localtime(time.time() - 6 * 86400)),
+                        (" · <b>gewählt: seit %s</b>" % html.escape(seit)) if seit else ""))
         seite = ("<h1>KI4KI — Kennzahlen</h1>"
                  "<p style='font-family:sans-serif;font-size:14px;max-width:900px'><b>Lesehilfe:</b> Trefferquote = Frage bekam eine Antwort aus dem "
                  "Bestand · Eskalation = ehrliches „nicht gefunden“ · belegt = Zitat/Beleg im Original nachgeschlagen · "
                  "Wege = welcher Antwortweg (gespraech = Gesprächsmodus, pruefung = Prüfungskatalog, bestand = Index-Tabelle).</p>"
                  "<p>Ohne Personenbezug (Kennungen pseudonym). "
                  "<a href='/rueckmeldungen'>Rückmeldungen</a> · <a href='/protokoll'>Protokoll (JSON)</a> · "
-                 "<a href='/kpi?format=json'>JSON</a> · Zeitraum: <code>/kpi?seit=2026-08-01&bis=2026-08-31</code></p>"
+                 "<a href='/kpi?format=json'>JSON</a></p>" + _zeitraum +
                  "<table border=1 cellpadding=6 style='border-collapse:collapse;font-family:sans-serif;font-size:14px'>%s</table>" % zeilen)
         self._sende_html(seite + aufnahme_html)
 
