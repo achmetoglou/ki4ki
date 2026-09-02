@@ -26,7 +26,7 @@ Voraussetzung: ein Linux-Server mit 32 GB Arbeitsspeicher, 100 GB freier Platte
 NVIDIA-Grafikkarte. Ohne Grafikkarte läuft alles, nur deutlich langsamer.
 
 ```bash
-git clone git@github.com:achmetoglou/ki4ki.git ~/ki4ki && cd ~/ki4ki && ./start.sh
+git clone https://github.com/achmetoglou/ki4ki.git ~/ki4ki && cd ~/ki4ki && ./start.sh
 ```
 
 Ein Befehl, ein Passwort (danach fragt `start.sh`), 25–40 Minuten Wartezeit —
@@ -36,8 +36,7 @@ fertig. Danach:
 - **`.secrets.env` sichern** (liegt im Projektordner). Ohne diese Datei kommt
   niemand mehr an die Anlage.
 
-Der Zugang zum Paket-Repository wird einmal pro Server eingerichtet — Anleitung in
-[`doku/BETRIEB.md`](doku/BETRIEB.md), Abschnitt 2.
+Details zur Installation stehen in [`doku/BETRIEB.md`](doku/BETRIEB.md), Abschnitt 2.
 
 ---
 

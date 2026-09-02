@@ -31,22 +31,17 @@ Windows-Installation als begleiteten Test einplanen.
 
 ## 2 · Installation im Detail
 
-### 2.1 Zugang zum Paket (einmal pro Server)
+### 2.1 Zugang zum Paket
 
-Das Repository ist privat. Am einfachsten mit einem Deploy-Key, der nur lesen darf:
-
-```bash
-ssh-keygen -t ed25519 -f ~/.ssh/ki4ki_repo -N "" -C "ki4ki-server"
-cat ~/.ssh/ki4ki_repo.pub        # bei GitHub eintragen: Repo → Settings → Deploy keys (ohne Schreibrecht)
-echo -e "Host github.com\n  IdentityFile ~/.ssh/ki4ki_repo\n  IdentitiesOnly yes" >> ~/.ssh/config
-```
-
-Wer keinen Schlüssel will, lädt das Paket als ZIP und entpackt es nach `~/ki4ki`.
+Das Repository ist öffentlich lesbar — klonen geht ohne Schlüssel und ohne
+GitHub-Konto. Wer kein Git auf dem Server will, lädt das Paket als ZIP
+(GitHub → Code → Download ZIP) und entpackt es nach `~/ki4ki`; dann entfällt
+später aber `./aktualisiere.sh` (Aktualisieren = neues ZIP drüber entpacken).
 
 ### 2.2 Start
 
 ```bash
-git clone git@github.com:achmetoglou/ki4ki.git ~/ki4ki && cd ~/ki4ki && ./start.sh
+git clone https://github.com/achmetoglou/ki4ki.git ~/ki4ki && cd ~/ki4ki && ./start.sh
 ```
 
 `start.sh` prüft Docker und die GPU-Brücke, erzeugt einmalig die Zugangsschlüssel
