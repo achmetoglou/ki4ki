@@ -163,7 +163,8 @@ HINWEISE AUS DER VORPRÜFUNG (sinngemäß einarbeiten, nicht abschreiben):
 
 INHALT DES ABSATZES, in genau dieser Reihenfolge:
 1. Zweck: Beginne mit „Du beantwortest hier" und nenne das Fachgebiet mit den Wörtern des Betreibers. Ein bis zwei Sätze.
-2. Fragende: Nenne die Gruppen mit den Wörtern des Betreibers. Fragen mehrere Gruppen, dann sage in einem Satz, woran das Modell die Gruppe an der Frage erkennt, und in ein bis zwei Sätzen, wie sich Tiefe und Ton unterscheiden: Auszubildende und Lernende bekommen kurze Sätze, erklärte Fachbegriffe und den Weg zum Nachlesen; erfahrene Fachleute und Wissenschaftler bekommen knappe Antworten mit Methode, Randbedingungen und Messunsicherheit; Techniker und Instandhalter bekommen Schritte in Reihenfolge mit Voraussetzungen. Fragt nur eine Gruppe, beschreibe nur deren Tiefe. Gruppen, die der Betreiber nicht nennt, erwähnst du mit keinem Wort.
+2. Fragende: Nenne die Gruppen mit den Wörtern des Betreibers und sage in einem Satz, woran das Modell die Gruppe an der Frage erkennt. Beschreibe Tiefe und Ton AUSSCHLIESSLICH so — andere Gruppen oder Tiefen gibt es nicht:
+{tiefen}
 3. Typische Fragearten: Drei bis fünf Arten von Fragen, die in diesem Fachgebiet erfahrungsgemäß gestellt werden, mit einem Halbsatz je Art, wie darauf geantwortet wird. Die Fragearten müssen zum FACHGEBIET passen — beschreibt das Feld nur die Anlage selbst (etwa „Wissensdatenbank" oder „Bibliothek"), dann nimm allgemeine Fragearten an Fachliteratur (Begriffe, Verfahren, Vergleiche, Fundstellen), keine Fragen über KI oder Datenbanken. Du darfst hier dein Fachwissen über das Gebiet nutzen — es geht um Fragearten und Antwortform, nicht um Fakten.
 4. Schwerpunkte des Betreibers, jeder als eigene Verhaltensregel. Setze GENAU diese Zuordnungen um — KEINE weiteren Dokumentarten oder Regeln erfinden:
 {zuordnungen}
@@ -186,6 +187,27 @@ Einstellwerte gibst du nur mit Wert, Einheit und Bedingung an, so wie das Dokume
 Du triffst keine Freigaben und ersetzt keine Entscheidung der verantwortlichen Person, und du beantwortest keine Fragen außerhalb des Spritzgießens.
 
 Schreibe jetzt den Rollen-Absatz für die Angaben des Betreibers. Antworte NUR mit dem Absatz."""
+
+
+_GRUPPEN_TIEFEN = [
+    (r"student|studier|azubi|auszubild|lernend|anwender|laie|einsteiger|sch(ü|ue)ler|f(ö|oe)rdermitglied",
+     "Lernende und fachfremde Fragende bekommen kurze Sätze, erklärte Fachbegriffe und den Weg zum Nachlesen."),
+    (r"wissenschaft|ingenieur|fachperson|fachleute|fachlich|experte|forscher|doktorand",
+     "Fachleute und Wissenschaftler bekommen knappe Antworten mit Methode, Randbedingungen und Messunsicherheit."),
+    (r"techniker|instandhalt|einrichter|monteur|werker|meister|handwerk",
+     "Techniker und Instandhalter bekommen Schritte in Reihenfolge mit Voraussetzungen."),
+]
+
+
+def _tiefen_fuer(nutzer):
+    """Nur die Tiefen-Beschreibungen der GENANNTEN Gruppen - sonst schreibt das
+    Modell den ganzen Katalog ab ('Techniker und Instandhalter' in der
+    Bibliothek, Emrach 02.09.)."""
+    n = (nutzer or "").lower()
+    treffer = [t for rx, t in _GRUPPEN_TIEFEN if re.search(rx, n)]
+    if not treffer:
+        return "   - Alle Fragenden bekommen knappe, belegte Antworten in verständlicher Sprache."
+    return "\n".join("   - " + t for t in treffer)
 
 
 ZUORDNUNGEN = [
@@ -227,12 +249,15 @@ def glaett_auftrag(fach, nutzer="", besonderes=""):
         besonderes = (_re.search(r"\*\*Besonderheiten:\*\* (.*)", t) or [None, ""])[1]
     hinweise = "\n".join("- " + r for r in _regeln(fach or "", nutzer or "", besonderes or ""))
     return META_AUFTRAG.format(fach=fach or "—", nutzer=nutzer or "—", besonderes=besonderes or "—", hinweise=hinweise,
-                               zuordnungen=_zuordnungen_fuer(fach, nutzer, besonderes))
+                               zuordnungen=_zuordnungen_fuer(fach, nutzer, besonderes),
+                               tiefen=_tiefen_fuer(nutzer))
 
 
 def geglaettet_brauchbar(text, fach, nutzer, besonderes=""):
     _alles = " ".join((fach or "", nutzer or "", besonderes or "")).lower()
-    for _rx, _hinweis in ((r"sicherheitsdatenbl", r"sicherheitsdatenbl|datenbl|chemikal|gefahrstoff|sicher|gefahr"),
+    for _rx, _hinweis in ((r"techniker|instandhalter", r"techniker|instandhalt|einrichter|monteur|werker|meister|handwerk"),
+                          (r"auszubildende|azubi", r"azubi|auszubild|lehrling|lernend"),
+                          (r"sicherheitsdatenbl", r"sicherheitsdatenbl|datenbl|chemikal|gefahrstoff|sicher|gefahr"),
                           (r"ursache, ?ma(ß|ss)nahme, ?quelle", r"st(ö|oe)r|reparatur|instandhalt|wartung|fehlerbild|anlage|maschine|techniker"),
                           (r"pr(ü|ue)fungsfragen|lehrgang", r"pr(ü|ue)f|ausbild|lehrgang|schul|kurs|azubi|lehrling|katalog")):
         if re.search(_rx, (text or "").lower()) and not re.search(_hinweis, _alles):
