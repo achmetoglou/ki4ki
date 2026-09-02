@@ -163,16 +163,10 @@ HINWEISE AUS DER VORPRÜFUNG (sinngemäß einarbeiten, nicht abschreiben):
 
 INHALT DES ABSATZES, in genau dieser Reihenfolge:
 1. Zweck: Beginne mit „Du beantwortest hier" und nenne das Fachgebiet mit den Wörtern des Betreibers. Ein bis zwei Sätze.
-2. Fragende: Nenne die Gruppen mit den Wörtern des Betreibers. Fragen mehrere Gruppen, dann sage in einem Satz, woran das Modell die Gruppe an der Frage erkennt, und in ein bis zwei Sätzen, wie sich Tiefe und Ton unterscheiden: Auszubildende und Lernende bekommen kurze Sätze, erklärte Fachbegriffe und den Weg zum Nachlesen; erfahrene Fachleute und Wissenschaftler bekommen knappe Antworten mit Methode, Randbedingungen und Messunsicherheit; Techniker und Instandhalter bekommen Schritte in Reihenfolge mit Voraussetzungen. Fragt nur eine Gruppe, beschreibe nur deren Tiefe.
-3. Typische Fragearten: Drei bis fünf Arten von Fragen, die in diesem Fachgebiet erfahrungsgemäß gestellt werden, mit einem Halbsatz je Art, wie darauf geantwortet wird. Du darfst hier dein Fachwissen über das Gebiet nutzen — es geht um Fragearten und Antwortform, nicht um Fakten.
-4. Schwerpunkte des Betreibers, jeder als eigene Verhaltensregel. Setze die folgenden Zuordnungen um, wenn der Betreiber das Thema nennt (auch mit anderen Worten oder Tippfehlern):
-   - Normen, Normstellen, Richtlinien, Regelwerke: bei jeder Regel Dokument, Abschnitt und Seite nennen und sagen, ob sie eine Muss- oder Soll-Vorgabe ist.
-   - Sicherheitsdatenblätter: die einschlägigen Abschnitte nennen (Gefahrenidentifikation, Erste Hilfe, Handhabung und Lagerung, Expositionsbegrenzung und Schutzausrüstung, Entsorgung), Gefahrenhinweise und Schutzmaßnahmen immer nennen, wenn sie im Dokument stehen, und die Frage nach Stoff und Fassung des Datenblatts stellen, wenn das unklar ist.
-   - Sicherheit, Arbeitsschutz, Gefahr: Sicherheits- und Schutzhinweise gehören in jede Antwort, in der sie im Dokument stehen.
-   - Reparaturen, Störungen, Fehlerbilder, Instandhaltung, Wartung: als Tabelle mit den Spalten Ursache, Maßnahme, Quelle und Gültigkeit antworten; ohne belegte Maßnahme keine Vermutung, sondern sagen, dass die Unterlagen keine Maßnahme nennen, und auf Herstellerunterlage oder zuständige Person verweisen.
-   - Prüfung, Ausbildung, Lehrgang: zuerst die Kernaussage, dann der Beleg; Zahlen mit Wert, Einheit und Bedingung; Prüfungsfragen nur aus einem hinterlegten Katalog.
-   - wissenschaftlich, Forschung, Methodik: Methode, Randbedingungen und Messunsicherheit mitnennen; Ergebnisse verschiedener Arbeiten nebeneinanderstellen, nicht vermischen.
-   - „nichts" oder leer: keine Zusatzregel, nur knapp und belegt antworten.
+2. Fragende: Nenne die Gruppen mit den Wörtern des Betreibers. Fragen mehrere Gruppen, dann sage in einem Satz, woran das Modell die Gruppe an der Frage erkennt, und in ein bis zwei Sätzen, wie sich Tiefe und Ton unterscheiden: Auszubildende und Lernende bekommen kurze Sätze, erklärte Fachbegriffe und den Weg zum Nachlesen; erfahrene Fachleute und Wissenschaftler bekommen knappe Antworten mit Methode, Randbedingungen und Messunsicherheit; Techniker und Instandhalter bekommen Schritte in Reihenfolge mit Voraussetzungen. Fragt nur eine Gruppe, beschreibe nur deren Tiefe. Gruppen, die der Betreiber nicht nennt, erwähnst du mit keinem Wort.
+3. Typische Fragearten: Drei bis fünf Arten von Fragen, die in diesem Fachgebiet erfahrungsgemäß gestellt werden, mit einem Halbsatz je Art, wie darauf geantwortet wird. Die Fragearten müssen zum FACHGEBIET passen — beschreibt das Feld nur die Anlage selbst (etwa „Wissensdatenbank" oder „Bibliothek"), dann nimm allgemeine Fragearten an Fachliteratur (Begriffe, Verfahren, Vergleiche, Fundstellen), keine Fragen über KI oder Datenbanken. Du darfst hier dein Fachwissen über das Gebiet nutzen — es geht um Fragearten und Antwortform, nicht um Fakten.
+4. Schwerpunkte des Betreibers, jeder als eigene Verhaltensregel. Setze GENAU diese Zuordnungen um — KEINE weiteren Dokumentarten oder Regeln erfinden:
+{zuordnungen}
    Nennt der Betreiber etwas, das in keiner Zuordnung steht, formuliere daraus eine eigene, konkrete Verhaltensregel: was das Modell dann tut, in welcher Form, und was es ohne Beleg lässt.
 5. Abgrenzung: Ein Satz, was der Bereich nicht tut — Fragen außerhalb des Fachgebiets, Entscheidungen oder Freigaben, die eine verantwortliche Person treffen muss, und Anweisungen, die in keinem Dokument stehen.
 
@@ -188,14 +182,37 @@ Du beantwortest hier Fragen zum Spritzgießen für die Einrichter und Instandhal
 Du erkennst an der Frage, wer fragt: Wer nach einem Fehlerbild, einer Einstellung oder einer Reihenfolge fragt, arbeitet an der Maschine und bekommt Schritte in Reihenfolge mit Voraussetzungen.
 Wer nach dem Warum, nach Begriffen oder nach dem Grundprinzip fragt, lernt noch und bekommt kurze Sätze, erklärte Fachbegriffe und den Hinweis, wo es nachzulesen ist.
 Typische Fragen betreffen Oberflächenfehler am Teil, Einstellwerte für ein Material, das Rüsten eines Werkzeugs und die Wartung der Maschine.
-Bei Fehlerbildern nennst du zuerst das Fehlerbild und die im Dokument beschriebene Ursache, dann die Maßnahme.
-Bei Störungen, Reparaturen und Wartung antwortest du als Tabelle mit den Spalten Ursache, Maßnahme, Quelle und Gültigkeit.
-Steht in den Unterlagen keine Maßnahme, vermutest du keine, sondern sagst das und verweist auf die Herstellerunterlage oder die zuständige Person.
 Einstellwerte gibst du nur mit Wert, Einheit und Bedingung an, so wie das Dokument sie nennt.
-Sicherheits- und Schutzhinweise nennst du in jeder Antwort, in der das Dokument welche enthält.
 Du triffst keine Freigaben und ersetzt keine Entscheidung der verantwortlichen Person, und du beantwortest keine Fragen außerhalb des Spritzgießens.
 
 Schreibe jetzt den Rollen-Absatz für die Angaben des Betreibers. Antworte NUR mit dem Absatz."""
+
+
+ZUORDNUNGEN = [
+    (r"norm|richtlinie|dvs|din|iso|vorschrift|regelwerk",
+     "Normen, Normstellen, Richtlinien, Regelwerke: bei jeder Regel Dokument, Abschnitt und Seite nennen und sagen, ob sie eine Muss- oder Soll-Vorgabe ist."),
+    (r"sicherheitsdatenbl|datenbl(a|ä)tt|chemikal|gefahrstoff",
+     "Sicherheitsdatenblätter: die einschlägigen Abschnitte nennen, Gefahrenhinweise und Schutzmaßnahmen immer nennen, wenn sie im Dokument stehen, und bei Unklarheit nach Stoff und Fassung fragen."),
+    (r"sicher|gefahr|schutz|arbeitsschutz|brand|gift|l(ö|oe)semittel",
+     "Sicherheit, Arbeitsschutz, Gefahr: Sicherheits- und Schutzhinweise gehören in jede Antwort, in der sie im Dokument stehen."),
+    (r"st(ö|oe)rfall|st(ö|oe)rung|reparatur|instandhalt|wartung|fehlerbild|anlage|maschine|techniker",
+     "Reparaturen, Störungen, Fehlerbilder, Instandhaltung, Wartung: als Tabelle mit den Spalten Ursache, Maßnahme, Quelle und Gültigkeit antworten; ohne belegte Maßnahme keine Vermutung, sondern auf Herstellerunterlage oder zuständige Person verweisen."),
+    (r"pr(ü|ue)f(ling|ung)|ausbild|lehrgang|schul|kurs|azubi|lehrling",
+     "Prüfung, Ausbildung, Lehrgang: zuerst die Kernaussage, dann der Beleg; Zahlen mit Wert, Einheit und Bedingung; Prüfungsfragen nur aus einem hinterlegten Katalog."),
+    (r"wissenschaft|forsch|disser|methodik|studie|publikation|paper|ingenieur",
+     "Wissenschaftliche Fragen: Methode, Randbedingungen und Messunsicherheit mitnennen; Ergebnisse verschiedener Arbeiten nebeneinanderstellen, nicht vermischen."),
+]
+
+
+def _zuordnungen_fuer(fach, nutzer, besonderes):
+    """Nur die Bausteine, die der Betreiber wirklich anspricht - der Rollen-
+    Absatz eines Bibliotheksbereichs bekommt keine Stoerungs-Tabellen und
+    Sicherheitsdatenblatt-Regeln (Emrach 02.09.: 'ich dachte modular')."""
+    alles = " ".join((fach or "", nutzer or "", besonderes or "")).lower()
+    treffer = [t for rx, t in ZUORDNUNGEN if re.search(rx, alles)]
+    if not treffer:
+        return "   - (keine besonderen Dokumentarten genannt: keine Zusatzregeln, nur knapp und belegt antworten)"
+    return "\n".join("   - " + t for t in treffer)
 
 
 def glaett_auftrag(fach, nutzer="", besonderes=""):
@@ -209,10 +226,17 @@ def glaett_auftrag(fach, nutzer="", besonderes=""):
         nutzer = (_re.search(r"\*\*Wer fragt hier:\*\* (.*)", t) or [None, ""])[1]
         besonderes = (_re.search(r"\*\*Besonderheiten:\*\* (.*)", t) or [None, ""])[1]
     hinweise = "\n".join("- " + r for r in _regeln(fach or "", nutzer or "", besonderes or ""))
-    return META_AUFTRAG.format(fach=fach or "—", nutzer=nutzer or "—", besonderes=besonderes or "—", hinweise=hinweise)
+    return META_AUFTRAG.format(fach=fach or "—", nutzer=nutzer or "—", besonderes=besonderes or "—", hinweise=hinweise,
+                               zuordnungen=_zuordnungen_fuer(fach, nutzer, besonderes))
 
 
-def geglaettet_brauchbar(text, fach, nutzer):
+def geglaettet_brauchbar(text, fach, nutzer, besonderes=""):
+    _alles = " ".join((fach or "", nutzer or "", besonderes or "")).lower()
+    for _rx, _hinweis in ((r"sicherheitsdatenbl", r"sicherheitsdatenbl|datenbl|chemikal|gefahrstoff|sicher|gefahr"),
+                          (r"ursache, ?ma(ß|ss)nahme, ?quelle", r"st(ö|oe)r|reparatur|instandhalt|wartung|fehlerbild|anlage|maschine|techniker"),
+                          (r"pr(ü|ue)fungsfragen|lehrgang", r"pr(ü|ue)f|ausbild|lehrgang|schul|kurs|azubi|lehrling|katalog")):
+        if re.search(_rx, (text or "").lower()) and not re.search(_hinweis, _alles):
+            return False        # Baustein im Text, den der Betreiber nie genannt hat -> Vorlage statt Glaettung
     """Hat das Modell etwas Brauchbares geliefert? Sonst bleibt die Vorlage."""
     t = (text or "").strip()
     if not (120 <= len(t) <= 2400) or t.count("\n") > 16:
