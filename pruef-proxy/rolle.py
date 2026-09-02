@@ -62,7 +62,7 @@ def _regeln(fach, nutzer, besonderes):
     if re.search(r"pr(ü|ue)f(ling|ung)|ausbild|lehrgang|schul|kurs|azubi|lehrling|studier", alles):
         r.append("Antworte prüfungsnah und verständlich: erst die Kernaussage, dann die Normstelle mit Seite; "
                  "Zahlen immer mit Einheit und Bedingung. Prüfungsfragen stellst du nur aus einem hinterlegten Katalog.")
-    if re.search(r"norm|richtlinie|dvs|din|iso|vorschrift|regelwerk", alles):
+    if re.search(r"\bnorm(?!al)|richtlinie|dvs|din|iso|vorschrift|regelwerk", alles):
         r.append("Nenne bei jeder Regel die Normstelle (Dokument, Abschnitt, Seite) und ob sie eine Muss- oder Soll-Vorgabe ist.")
     if re.search(r"sicher|gefahr|schutz|arbeitsschutz|brand|gift|l(ö|oe)semittel", alles):
         r.append("Sicherheits- und Arbeitsschutzhinweise gehören in jede Antwort, in der sie im Dokument stehen — nie weglassen.")
@@ -211,7 +211,7 @@ def _tiefen_fuer(nutzer):
 
 
 ZUORDNUNGEN = [
-    (r"norm|richtlinie|dvs|din|iso|vorschrift|regelwerk",
+    (r"\bnorm(?!al)|richtlinie|dvs|din|iso|vorschrift|regelwerk",
      "Normen, Normstellen, Richtlinien, Regelwerke: bei jeder Regel Dokument, Abschnitt und Seite nennen und sagen, ob sie eine Muss- oder Soll-Vorgabe ist."),
     (r"sicherheitsdatenbl|datenbl(a|ä)tt|chemikal|gefahrstoff",
      "Sicherheitsdatenblätter: die einschlägigen Abschnitte nennen, Gefahrenhinweise und Schutzmaßnahmen immer nennen, wenn sie im Dokument stehen, und bei Unklarheit nach Stoff und Fassung fragen."),
