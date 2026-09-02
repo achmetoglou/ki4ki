@@ -401,6 +401,18 @@ def fuehren(frage, verlauf, faden_dok, dokumente, werkzeug, rufen=None, kontakt=
     for runde in range(max_runden or MAX_RUNDEN):
         if time.time() - _beginn > BUDGET:
             fehler = "Zeitbudget von %d s erschoepft" % BUDGET
+            # Mit dem Gelesenen antworten statt mit leeren Haenden (Fund 02.09.:
+            # 5 Volltext-Teile gelesen, dann Fehlermeldung statt Antwort, waehrend
+            # das nackte System in 8 s antwortete). Ein letzter Zug ohne Werkzeuge.
+            if any(x.get("role") == "tool" for x in msgs):
+                try:
+                    msgs.append({"role": "user", "content": "Das Zeitbudget ist erschoepft. Schreibe JETZT die Antwort aus dem bereits gelesenen Material, ohne weitere Werkzeuge."})
+                    m = rufen(msgs)
+                    inhalt = bereinigen(m.get("content") or "")
+                    if inhalt:
+                        texte.append(inhalt)
+                except Exception:
+                    pass
             break
         try:
             m = rufen(msgs)
@@ -500,6 +512,15 @@ def fuehren(frage, verlauf, faden_dok, dokumente, werkzeug, rufen=None, kontakt=
     for t in texte:
         if t and t not in text:
             text = (text + "\n\n" + t).strip() if text else t
+    if not text and not fehler:
+        # Sporadisch leere Modellantwort (Gemma, 2x am 02.09.): EIN Zweitversuch,
+        # bevor die ehrliche Fehlermeldung an den Menschen geht.
+        try:
+            msgs.append({"role": "user", "content": "Deine Antwort war leer. Schreibe die Antwort jetzt."})
+            m = rufen(msgs)
+            text = bereinigen(m.get("content") or "").strip()
+        except Exception as e2:
+            fehler = "Modell: %s" % str(e2)[:120]
     return {"text": text, "aufrufe": aufrufe, "dokumente": beruehrt,
             "runden": len(aufrufe), "ms": int((time.time() - begonnen) * 1000),
             "fehler": fehler, "nutzung": nutzung}

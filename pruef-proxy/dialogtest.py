@@ -903,6 +903,11 @@ def szenario_33_quellen_heilen():
            and bool(_ns3["CHAT_JSON"].match("/api/v1/workspace/auw/thread/abc-123/chat"))
            and not _ns3["CHAT_JSON"].match("/api/v1/workspace/auw/thread/abc/new"),
            "API-Chat MIT und OHNE Thread laeuft durch die Pruefung (Thread-Chats liefen roh durch)")
+    _g = open(os.path.join(HIER, "gespraech.py"), encoding="utf-8").read()
+    pruefe("Das Zeitbudget ist erschoepft. Schreibe JETZT die Antwort" in _g,
+           "Budget erschoepft -> letzte Antwort aus dem Gelesenen statt Fehlermeldung")
+    pruefe("Deine Antwort war leer. Schreibe die Antwort jetzt." in _g,
+           "leere Modellantwort -> ein Zweitversuch vor der Fehlermeldung")
 
 
 def szenario_27_wegabgleich_und_bildarten():
