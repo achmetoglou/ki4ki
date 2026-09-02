@@ -6998,7 +6998,10 @@ class Griff(BaseHTTPRequestHandler):
         # beruehrt haben - sonst wurde nach "Welche Methode benutzt sie?" Koebel
         # zum Faden, weil bestand_durchsuchen ihn zuerst traf (01.09.).
         _doks = list(zustand["dokumente"])
-        if faden_dok and faden_dok in _doks:
+        if faden_dok:
+            # Das Faden-Dokument des Zugs bleibt vorn - auch wenn eine Suche
+            # nebenbei andere Dokumente beruehrt hat. Gemessen 02.09. (Qwen):
+            # bestand_durchsuchen traf Koebel, der Sasse-Faden sprang um.
             _doks = [faden_dok] + [d for d in _doks if d != faden_dok]
         GESPRAECHE.merken(gespraech_k, frage, "gespraech",
                           [{"title": d} for d in _doks[:3]],
