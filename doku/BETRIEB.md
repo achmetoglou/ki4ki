@@ -233,6 +233,21 @@ während eine Aufnahme läuft. Hat sich der Kern-Prompt geändert:
 `./bereiche_nachziehen.sh` bringt bestehende Bereiche auf die geprüften Einstellwerte
 (die Anlage fasst bestehende Bereiche sonst nie an).
 
+### 9.1 Gegenvergleich für Vorführungen
+
+Für Präsentationen lässt sich das nackte AnythingLLM zusätzlich auf Tor 3000
+öffnen — ohne die Belegprüfung davor. Dieselbe Frage auf `:3000` (Rohantwort)
+und auf `:3001` (Anlage) zeigt den Unterschied unmittelbar.
+
+```bash
+./gegenvergleich.sh an     # Tor 3000 öffnen (Firewall muss Tor 3000 durchlassen)
+./gegenvergleich.sh aus    # nach der Vorführung wieder schließen
+```
+
+Die Anmeldung ist auf beiden Toren dieselbe. Das Umschalten erzeugt den
+AnythingLLM-Behälter neu (einige Sekunden Unterbrechung, Daten und Anmeldungen
+bleiben) — nicht umschalten, während jemand mit der Anlage arbeitet.
+
 Alle fremden Abbilder — Laufzeit-Dienste, AMD-Fassung und die Basis-Abbilder der selbst gebauten Dienste — sind auf ihren Fingerabdruck (`@sha256`) festgelegt —
 ein Update bringt exakt die geprüfte Fassung, nicht die jeweils neueste vom Anbieter.
 Ein einzelnes Abbild anheben: vorher das Volume sichern und den alten Wert notieren,

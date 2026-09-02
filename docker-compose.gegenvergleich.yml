@@ -1,0 +1,16 @@
+# ============================================================================
+#  NUR FUER VORFUEHRUNGEN - nicht im Normalbetrieb einbinden.
+#
+#  Oeffnet das nackte AnythingLLM auf Tor 3000, OHNE die Belegpruefung des
+#  Pruef-Proxys davor. Damit laesst sich im direkten Vergleich zeigen, was
+#  die Anlage hinzufuegt: dieselbe Frage auf :3000 (Rohantwort ohne gepruefte
+#  Belege) und auf :3001 (Antwort mit Belegpruefung, Rechten und Wachen).
+#
+#  Ein-/Ausschalten ueber ./gegenvergleich.sh an|aus - NICHT von Hand in die
+#  COMPOSE_FILE-Zeile der .env aufnehmen, sonst bleibt das Tor dauerhaft offen.
+#  Die Anmeldung von AnythingLLM (Benutzer + Passwort) gilt auch auf Tor 3000.
+# ============================================================================
+services:
+  anythingllm:
+    ports:
+    - "3000:3001"
