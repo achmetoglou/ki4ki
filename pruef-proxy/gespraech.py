@@ -246,9 +246,9 @@ def bereinigen(text):
     return t.strip()
 
 
-def _modell_aufruf(messages, tools=True, denken=None):
+def _modell_aufruf(messages, tools=True, denken=None, modell=None):
     leib = json.dumps({
-        "model": MODELL,
+        "model": modell or MODELL,
         "messages": messages,
         "tools": WERKZEUGE if tools else [],
         "stream": False,
@@ -364,12 +364,12 @@ def waechter(text, aufrufe, faden_dok=None, frage="", tool_texte=None, verlauf_t
 
 def fuehren(frage, verlauf, faden_dok, dokumente, werkzeug, rufen=None, kontakt="",
             melden=None, max_runden=None, pruefer=None, vorwissen=None, denken=None, kennungen=None, rolle="",
-            allgemeinwissen=False):
+            allgemeinwissen=False, modell=None):
     """Ein Gespraechszug. werkzeug(name, args) -> str. rufen(messages) -> message.
     Rueckgabe dict: text, aufrufe [(name, args, ms)], dokumente (beruehrte
     Kennungen), runden, ms, fehler."""
     begonnen = time.time()
-    rufen = rufen or (lambda m: _modell_aufruf(m, denken=denken))
+    rufen = rufen or (lambda m: _modell_aufruf(m, denken=denken, modell=modell))
     msgs = nachrichten(system_text(faden_dok, dokumente, kontakt, rolle, allgemeinwissen), verlauf, frage)
     aufrufe, beruehrt, texte = [], [], []
     nutzung = {"prompt": 0, "antwort": 0, "dauer_ms": 0}

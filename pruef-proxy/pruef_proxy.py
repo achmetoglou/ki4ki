@@ -119,6 +119,54 @@ def _bereich_modus(slug):
         pass
     _MODUS_JE_BEREICH[slug] = (modus, time.time())
     return modus
+_LLM_JE_BEREICH = {}          # slug -> (chatModel, wann)
+_MODELLE_DA = {"wann": 0.0, "namen": set()}
+
+
+def _bereich_llm(slug):
+    """Das in der Oberflaeche je Bereich eingestellte Sprachmodell (chatModel) - 5 min gemerkt."""
+    if not slug or not API_SCHLUESSEL:
+        return ""
+    alt = _LLM_JE_BEREICH.get(slug)
+    if alt and time.time() - alt[1] < 300:
+        return alt[0]
+    m = ""
+    try:
+        w = (_api("GET", "/api/v1/workspace/%s" % slug, timeout=15) or {}).get("workspace")
+        w = w[0] if isinstance(w, list) else (w or {})
+        m = str(w.get("chatModel") or "")
+    except Exception:
+        pass
+    _LLM_JE_BEREICH[slug] = (m, time.time())
+    return m
+
+
+def modell_fuer_bereich(slug):
+    """⭐ MODELL JE BEREICH (Emrach 02.09.): Das in den Chat-Einstellungen des
+    Bereichs gewaehlte Modell gilt auch fuer die Antworten der Anlage (Stufe 2,
+    leerer Bereich) - nicht nur fuer AnythingLLMs eigene Rueckfaelle. So laesst
+    sich z. B. llm-test auf ein anderes Modell stellen, waehrend die uebrigen
+    Bereiche auf dem Standard bleiben. Erlaubt ist, was auf dem Server
+    installiert ist (Ollama) oder in KI4KI_MODELLE_ERLAUBT steht.
+    None = Standardmodell."""
+    m = _bereich_llm(slug)
+    if not m or m == gespraechsmodus.MODELL:
+        return None
+    erlaubt = {x.strip() for x in (os.environ.get("KI4KI_MODELLE_ERLAUBT") or "").split(",") if x.strip()}
+    if time.time() - _MODELLE_DA["wann"] > 600:
+        try:
+            with urllib.request.urlopen(OLLAMA_URL + "/api/tags", timeout=8) as r:
+                _MODELLE_DA["namen"] = {str(x.get("name") or "") for x in (json.load(r).get("models") or [])}
+        except Exception:
+            pass
+        _MODELLE_DA["wann"] = time.time()
+    if m in _MODELLE_DA["namen"] or m in erlaubt or (m + ":latest") in _MODELLE_DA["namen"]:
+        return m if m in _MODELLE_DA["namen"] or m in erlaubt else m + ":latest"
+    print("[Modell] Bereich %r verlangt %r - nicht installiert, Standard bleibt" % (slug, m),
+          file=sys.stderr, flush=True)
+    return None
+
+
 _ADMINS = {"wann": 0.0, "namen": set()}
 
 
@@ -6750,6 +6798,7 @@ class Griff(BaseHTTPRequestHandler):
             traceback.print_exc(file=sys.stderr)
         _m = re.match(r"^/api/(?:v1/)?workspace/([^/]+)", self.path or "")
         _slug = _m.group(1) if _m else None
+        _modell_b = modell_fuer_bereich(_slug)
         e = gespraechsmodus.fuehren(
             _frage_modell, GESPRAECHE.verlauf_kurz(gespraech_k, hoechstens=20), assistent._titel_saubern(faden_dok) if faden_dok else None,
             zeilen, lambda n, a: self._werkzeug(n, a, zustand), kontakt=assistent.kontakt_zeile(),
@@ -6757,7 +6806,7 @@ class Griff(BaseHTTPRequestHandler):
             allgemeinwissen=(_bereich_modus(_slug) == "chat"),
             melden=melden, vorwissen=vorwissen,
             denken=True if (len(assistent.optionen_finden(frage)) >= 2 or assistent.ist_negativfrage(frage)) else None,
-            kennungen=[assistent._titel_saubern(n) for n in namen])
+            kennungen=[assistent._titel_saubern(n) for n in namen], modell=_modell_b)
         self._stand_weg(stand)
         text = e.get("text") or ""
         if not text.strip() and not e.get("fehler"):
@@ -6909,6 +6958,8 @@ class Griff(BaseHTTPRequestHandler):
         _doks = ", ".join(assistent._titel_saubern(d) for d in zustand["dokumente"][:3])
         _was = sorted({_kurz.get(n, n) for n, _, _ in e["aufrufe"] if n != "waechter"})
         fuss = []
+        if _modell_b:
+            fuss.append("Modell: %s" % _modell_b)
         if _doks:
             # "Quelle" nur, wenn wirklich etwas belegt wurde; sonst war es eine
             # Suche ohne Fund - "Nicht belegt · Quelle: DS-24-005" las sich
@@ -7732,7 +7783,7 @@ class Griff(BaseHTTPRequestHandler):
                    "Antworte aus deinem Allgemeinwissen: auf Deutsch, knapp, sachlich, ohne Quellen oder "
                    "Fundstellen zu erfinden.%s\n\nFrage: %s"
                    % (slug, ("\n\nRolle dieses Bereichs:\n" + rollen_text) if rollen_text.strip() else "", frage))
-        text = self._modell_fragen(auftrag, zeitgrenze=300)
+        text = self._modell_fragen(auftrag, zeitgrenze=300, modell=modell_fuer_bereich(slug))
         if not text:
             return False
         text += "\n\n---\n*\U0001F9E0 Allgemeinwissen des Modells — dieser Bereich enthält keine Dokumente.*"
