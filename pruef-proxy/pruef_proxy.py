@@ -7030,9 +7030,10 @@ class Griff(BaseHTTPRequestHandler):
                           [{"title": d} for d in _doks[:3]],
                           antwort=re.sub(r"\n\n\*(?:Quelle:|durchsucht:|Bestand|Katalog|gelesen|gezählt|Bilder|Bild|Seite|Abkürzung|Export|Störfall|⚠)[^\n]*\*\s*$", "", text.split("\n\n---\n")[0]).strip())
         _marke = _neue_marke("gespraech")
+        _qs = self._quellen_fuer_oberflaeche(zustand)
         self._strom_stueck({"uuid": _marke, "type": "textResponseChunk",
-                            "textResponse": text, "sources": [], "close": False, "error": False})
-        self._strom_stueck(self._abschluss_stueck(_marke, self._quellen_fuer_oberflaeche(zustand), e.get("nutzung"), e.get("ms")))
+                            "textResponse": text, "sources": _qs, "close": False, "error": False})
+        self._strom_stueck(self._abschluss_stueck(_marke, _qs, e.get("nutzung"), e.get("ms")))
         self._strom_schliessen()
         print("[Gespraech] %d Werkzeuge in %d ms, Zitate %d/%d, unbelegt %d, Bilder %d%s <- %r"
               % (len(e["aufrufe"]), e["ms"], ok, ok + nein, unbelegt, len(gezeigt),
@@ -8432,13 +8433,20 @@ class Griff(BaseHTTPRequestHandler):
         """
         marke = _neue_marke("ki4ki")
         _hinw = _netz_hinweis_zeile()
+        _letzter = None
         for n in nachrichten:
             if isinstance(n, dict) and n.get("type") in (
                     "textResponseChunk", "textResponse"):
                 n["uuid"] = marke
+                _letzter = n
                 if _hinw and n.get("textResponse"):
                     n["textResponse"] = n["textResponse"] + _hinw
                     _hinw = ""
+        # Die Oberflaeche zeigt das Zitat-Symbol LIVE nur, wenn die Quellen in
+        # einem Text-Stueck ankommen - das Abschluss-Ereignis reicht ihr nicht
+        # (gemessen 02.09.: Symbol erschien erst nach F5).
+        if quellen and _letzter is not None and not _letzter.get("sources"):
+            _letzter["sources"] = quellen
         self._strom_beginnen()
         for n in nachrichten:
             self._strom_stueck(n)
