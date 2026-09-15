@@ -136,14 +136,18 @@ ki4ki.firma.de {
 | `ki4ki-n8n` | Die Ablaufpläne der Aufnahme (Port 5678). |
 | `ki4ki-rechte-init` | Setzt beim Start die Ordnerrechte, endet dann. |
 
-Alle Dienste starten nach einem Server-Neustart von selbst (`restart: unless-stopped`).
+Alle neun Dauerdienste starten nach einem Server-Neustart von selbst
+(`restart: unless-stopped`). `ki4ki-rechte-init` ist bewusst davon ausgenommen
+(`restart: "no"`): Er setzt die Ordnerrechte und endet — ein beendeter
+`rechte-init` in `docker compose ps` ist also kein Fehler.
 
 ## 4 · Ordner je Bereich
 
 ```
 dokumente/<bereich>/
   input/          Eingang — hier hinein; Unterordner = Kategorie (tiefer = Themen)
-  parkplatz/      Zwischenlager, wird nie angefasst
+  parkplatz/      Zwischenlager — die Aufnahme greift nie hinein (liest ihn aber
+                  bei der Dublettenprüfung mit: was hier liegt, gilt als vorhanden)
   archiv/         fertig aufgenommene Originale (Word/PowerPoint zusätzlich als PDF)
   aussortiert/    was nicht aufgenommen werden konnte, mit aussortiert.log (Grund je Datei)
   loeschen/       Datei hineinlegen = vollständig löschen; Quittung in loeschen.log
@@ -185,9 +189,12 @@ Dateien bleiben im Eingang und werden beim nächsten Durchgang erneut genommen.
 ## 6 · Schalter (`.env` im Projektordner, danach `docker compose up -d`)
 
 Die `.env` enthält nur, was vom Standard abweicht — nach dem ersten Start sind das
-drei Zeilen von `start.sh` (Compose-Datei, Benutzer- und Gruppen-Nummer). Alle Schalter mit Standardwert und Erklärung stehen in
-[`../.env.beispiel`](../.env.beispiel): Zeile in die `.env` kopieren, `#` entfernen,
-Wert anpassen.
+drei Zeilen von `start.sh` (Compose-Datei, Benutzer- und Gruppen-Nummer). Jeder
+Schalter, den man im Betrieb sinnvoll verstellt, steht mit Standardwert und
+Erklärung in [`../.env.beispiel`](../.env.beispiel): Zeile in die `.env` kopieren,
+`#` entfernen, Wert anpassen. (Darüber hinaus kennt der Quelltext interne Adressen
+und Pfade — Container-Namen, Ablageorte —, die im Normalbetrieb niemand ändert;
+sie stehen in der `docker-compose.yml`.)
 
 | Schalter | Standard | Wirkung |
 |---|---|---|
@@ -198,6 +205,7 @@ Wert anpassen.
 | `KI4KI_ABSICHT_MODELL` | `1` | Das Modell erkennt die Absicht einer Frage (Stufe 1). |
 | `KI4KI_MODELLE_ERLAUBT` | leer | Modell je Bereich: Das in den Chat-Einstellungen eines Bereichs gewählte Sprachmodell gilt auch für die Antworten der Anlage in diesem Bereich. Erlaubt sind installierte Ollama-Modelle plus diese Liste. |
 | `KI4KI_GESPRAECH_BUDGET` | `300` | Gesamtzeit je Frage in Sekunden; danach bricht die Anlage ehrlich ab (`KI4KI_GESPRAECH_TIMEOUT` = je Modellaufruf, `KI4KI_GESPRAECH_RUNDEN` = Werkzeug-Runden). |
+| `KI4KI_MAX_UPLOAD` | `209715200` | Größte Datei beim Hochladen (200 MB). Steht ein Reverse-Proxy davor, muss dessen Grenze mitgezogen werden — siehe Abschnitt 2.4. |
 | `KI4KI_BILDBESCHREIBUNG` | `aus` | Abbildungen bei der Aufnahme beschreiben lassen (~6 s je Bild). |
 | `KI4KI_FORMELN` | `aus` | Formeln als LaTeX erkennen (~6 min je Dissertation). |
 | `KI4KI_MASSENLAUF_AB` | `6` | Ab so vielen Dateien im Eingang läuft die Aufnahme ohne Bildbeschreibung. |
@@ -352,9 +360,12 @@ und Bestandslisten stimmen. Ampel-Bericht unter `http://<server>:3001/selbstchec
    ausgehenden Verkehr per Firewall sperren ist möglich. Telemetrie ist aus.
 4. `.secrets.env` bleibt `chmod 600`, nie in Git oder Klartext-Backups.
 
-Ausgehende Verbindungen nur beim ersten Start: Docker Hub und `ghcr.io`
-(Programm-Abbilder), `ollama.com` (Modelle), `huggingface.co` (Docling-Modelle),
-`nvidia.github.io` (GPU-Brücke). Wer Air-Gap braucht, spiegelt das vorab.
+Ausgehende Verbindungen nur beim ersten Start: Docker Hub, `ghcr.io` und
+**`docker.n8n.io`** (Programm-Abbilder), `ollama.com` (Modelle), `huggingface.co`
+(Docling-Modelle), `nvidia.github.io` (GPU-Brücke) sowie `github.com` für das Paket
+selbst. Fehlt Docker auf dem Server, holt `start.sh` zusätzlich das offizielle
+Installationsskript von `get.docker.com`. Wer Air-Gap braucht, spiegelt das vorab —
+**alle sechs Ziele**, `docker.n8n.io` wird dabei gern übersehen.
 
 ## 13 · Datenschutz
 

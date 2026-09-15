@@ -26,10 +26,12 @@ beantwortet einen Teil der Anfragen selbst.
    Sicherheit folgt eine Klärfrage mit Optionen. Regel-Wächter bleiben davor hart:
    Beschwerde, Export, Fragen an die Anlage selbst, genanntes Dokument muss im
    Katalog existieren.
-2. **Gespräch mit Werkzeugen** (`gespraech.py`): Das Modell ruft Proxy-Funktionen auf
-   (Seiten lesen, Abbildungen auflisten und zeigen, zusammenfassen, zählen, Bestand,
-   Dokument finden, Abkürzung, exportieren, Prüfungsfrage), höchstens 24 Schritte, nur
-   lesend. Wächter holen Belege vorab selbst; jede Aussage mit `(Kennung, S. n)` wird
+2. **Gespräch mit Werkzeugen** (`gespraech.py`): Das Modell ruft Proxy-Funktionen auf —
+   13 Werkzeuge (Seiten lesen, Abbildungen auflisten und zeigen, Seite zeigen, Bestand
+   durchsuchen, Störfall suchen, zusammenfassen, zählen, Bestand, Dokument finden,
+   Abkürzung, Prüfungsfrage, exportieren), höchstens 5 Runden
+   (`KI4KI_GESPRAECH_RUNDEN`) innerhalb von 300 s (`KI4KI_GESPRAECH_BUDGET`) und
+   höchstens 3 Aufrufe je Runde, nur lesend. Wächter holen Belege vorab selbst; jede Aussage mit `(Kennung, S. n)` wird
    per Wortdeckung gegen die Seite geprüft, wörtliche Zitate werden geprüft und
    verlinkt, erfundene Bildnummern gestrichen. Textlich geschriebene Werkzeugaufrufe
    werden erkannt und ausgeführt.
@@ -52,7 +54,7 @@ stehen an jeder Abbildungsstelle.
 
 **Kategorie** (`kategorie.py`): 16 Standardkategorien mit deutschen und englischen
 Stichwörtern, je Bereich überschreibbar in `kategorien.txt`. Vorrang: von Hand
-gesetzt > Ordner-Vorgabe > Kennung (DS-/BS-/M-) > Prüfungskatalog erkannt >
+gesetzt > Ordner-Vorgabe > Prüfungskatalog erkannt > Kennung (DS-/BS-/M-) >
 Dokumenttyp der Aufnahme > Titel > Dateiname/Tags; bei mehreren Treffern gewinnt das
 längste Stichwort. Kein Modellaufruf.
 
@@ -101,15 +103,18 @@ automatisch (`KI4KI_BEREICH_HEILEN`).
 
 ## 4 · Rechte
 
-Vier Prüfungen: `bereich_sichtbar` (liefert AnythingLLM diesen Bereich für diese
-Anmeldung?), `erlaubte_dokumente`, `dokument_erlaubt`, `darf_sehen`. Die Dokumentmenge
+Acht Prüfungen entscheiden über Zugang (`RECHTE` in `wegabgleich.py`). Die vier
+inhaltlichen: `bereich_sichtbar` (liefert AnythingLLM diesen Bereich für diese
+Anmeldung?), `erlaubte_dokumente`, `dokument_erlaubt`, `darf_sehen`. Dazu vier
+allgemeine: `angemeldet`, `marke_gilt` (Cookie-Marke statt Kopfzeile),
+`_darf_rolle_setzen` und `darf_einsehen` (Protokoll und Kennzahlen). Die Dokumentmenge
 einer Chat-Anfrage liefert `namen_der_anfrage`: die Dokumente des Bereichs der Anfrage
 (`titel_im_bereich`, `[]` = bekannt und leer); nur bei unbekanntem Bereich (`None`) die
 kontoweite Menge. Zwei Mengen, zwei Zwecke: `erlaubte_dokumente` ist ein Recht (darf
 diesen Beleg-Link öffnen), `namen_der_anfrage` ist der Gegenstand (woraus antwortet
 dieser Bereich).
 
-Jeder Weg, der Daten ausgibt, muss an einer der vier Prüfungen vorbei. `wegabgleich.py` prüft das im
+Jeder Weg, der Daten ausgibt, muss an einer dieser acht Prüfungen vorbei. `wegabgleich.py` prüft das im
 Syntaxbaum, mit Gegenprobe (eine Prüfung entfernt → rot); Verteiler zählen nie als
 Prüfung. Das Konto einer Anfrage kommt aus der Anmeldungs-Kopfzeile oder — im
 Browser-Tab ohne Kopfzeile — über die Marke im Cookie (`konto_aus_anfrage`); eine

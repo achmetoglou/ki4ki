@@ -54,7 +54,7 @@ von selbst; fertig aufgenommene Dateien wandern nach `dokumente/<bereich>/archiv
 | Gut zu wissen | |
 |---|---|
 | **Ordner = Kategorie** | Wer Dateien in Unterordner legt (`input/Normen/`, `input/Handbücher/`), gibt damit die Kategorie vor. Tiefere Unterordner werden zu Themen. |
-| **Zwischenlager** | `dokumente/<bereich>/parkplatz/` wird nie angefasst — dort kann man Dateien ablegen und ordnerweise nach `input/` schieben. |
+| **Zwischenlager** | Aus `dokumente/<bereich>/parkplatz/` nimmt die Anlage nichts auf — dort kann man Dateien ablegen und ordnerweise nach `input/` schieben. (Beim Hochladen zählt der Parkplatz als Bestand: Was dort liegt, wird als Dublette erkannt.) |
 | **Dateiformate** | PDF, Word, PowerPoint, Excel, CSV, Text, HTML. Word und PowerPoint werden zusätzlich als PDF abgelegt, damit Belege ins Original zeigen. Excel-Tabellen bleiben Tabellen. |
 | **Gleicher Dateiname** | gilt als dasselbe Dokument. Eine neue Fassung unter gleichem Namen nach `input/` legen ersetzt die alte. |
 | **Dauer** | Eine Dissertation braucht 1–3 Minuten. Bei vielen Dateien auf einmal schaltet die Aufnahme automatisch in einen schnellen Massenlauf. |
