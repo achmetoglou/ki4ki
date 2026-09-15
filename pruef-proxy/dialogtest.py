@@ -967,6 +967,93 @@ def szenario_34_nachtrag_loeschen():
     pruefe("_nachtrag_bereich_vergessen(_wl.group(1))" in _q,
            "auch beim Loeschen eines Bereichs bleibt nichts liegen")
 
+
+def szenario_35_bandnummer():
+    print("\n[35] Bandnummer der Schriftenreihe landet im Katalog")
+    import re as _re
+    _b = open(os.path.join(HIER, "bestand.py"), encoding="utf-8").read()
+    _a = _b.index("_BAND_IMPRESSUM = re.compile")
+    _e = _b.index("def _deckblatt_lesen")
+    _ns = {"re": _re}
+    exec(_b[_a:_e], _ns)
+    band = _ns["band_aus_text"]
+
+    pruefe(band("[Seite 3] ## Impressum ## IKV-Berichte aus der Kunststoffverarbeitung "
+                "Band: 400 Jahr: 2023 Autor: Malte Schoen") == "400",
+           "Impressum 'Band: 400' wird gelesen (so steht es in den IKV-Arbeiten)")
+    pruefe(band("IKV-Berichte aus der Kunststoffverarbeitung BAND 407 Erik Wilms") == "407",
+           "Deckblatt 'BAND 407' wird gelesen")
+    pruefe(band("Schriftenreihe des Instituts, Band 12 der Reihe, Aachen 2021") == "12",
+           "'Band 12 der Reihe' zaehlt, wenn eine Reihe genannt ist")
+    for falle in ("Die Segmente wurden mit einer Bandsaege in Scheiben zerlegt",
+                  "die per Heizband aufzupraegenden 210 Grad",
+                  "Das Streuband der mechanischen Eigenschaften",
+                  "Band 3 zeigt den Verlauf der Messwerte"):
+        pruefe(band(falle) == "",
+               "kein Falschtreffer: %s" % falle[:42])
+    pruefe(band("") == "" and band(None) == "",
+           "leerer Text und None ergeben keine Bandnummer")
+    pruefe(band("... " * 4000 + "Band: 999") == "",
+           "nur der Vorspann zaehlt - Fliesstext weit hinten nicht")
+
+    pruefe('_band = alt.get("band") or band_aus_text(text)' in _b,
+           "Nachtrag traegt die Bandnummer ein, ohne das Modell zu fragen")
+    pruefe('angabe["band"] = e.get("band") or ""' in _b,
+           "angaben() reicht die Bandnummer durch (sonst kommt sie nie in einer Liste an)")
+
+    _as = open(os.path.join(HIER, "assistent.py"), encoding="utf-8").read()
+    pruefe(_as.count('mit_band = any(') >= 2,
+           "Bestandsliste UND Katalogtabelle blenden die Band-Spalte bedingt ein")
+    pruefe('["Band"] if mit_band else []' in _as,
+           "ohne Bandnummer im Bestand bleibt die Spalte weg (Normen, Pruefungsunterlagen)")
+
+    # --- Nachruestung bestehender Eintraege -------------------------------
+    # Das Modul bindet den Katalogpfad beim Import (laden(pfad=VERZEICHNIS)),
+    # deshalb per Umgebungsvariable + Neuimport testen, nicht per Zuweisung.
+    import json as _j, tempfile as _tf, sys as _sy, importlib as _il
+    _kat = os.path.join(_tf.mkdtemp(), "bestandsindex.json")
+    _j.dump({"DS-23-004": {"titel": "Eine simulationsgestuetzte Methodik",
+                              "verfasser": "Malte Schoen", "jahr": "2023",
+                              "kategorie": "Dissertation", "quelle": "modell"}},
+            open(_kat, "w", encoding="utf-8"))
+    _sy.path.insert(0, HIER)
+    _merk = os.environ.get("KI4KI_BESTANDSINDEX")
+    os.environ["KI4KI_BESTANDSINDEX"] = _kat
+    try:
+        _bm = _il.reload(_il.import_module("bestand"))
+        _bm._volltext_anfang = lambda n, zeichen=4000, ab_inhalt=False: \
+            "## Impressum ## IKV-Berichte aus der Kunststoffverarbeitung Band: 400 Jahr: 2023"
+        _getan = _bm._band_nachruesten(["DS-23-004.md"])
+        _gespeichert = _j.load(open(_kat, encoding="utf-8"))
+        pruefe(list(_gespeichert) == ["DS-23-004"],
+               "kein Doppeleintrag: geschrieben wird unter dem Katalog-Schluessel ohne Endung")
+        _neu = _gespeichert["DS-23-004"]
+        pruefe(_getan == 1 and _neu.get("band") == "400",
+               "bestehender Eintrag bekommt die Bandnummer nachtraeglich")
+        pruefe(_neu.get("titel") == "Eine simulationsgestuetzte Methodik"
+               and _neu.get("verfasser") == "Malte Schoen"
+               and _neu.get("jahr") == "2023" and _neu.get("kategorie") == "Dissertation",
+               "Titel, Verfasser, Jahr und Kategorie ueberleben die Nachruestung")
+        pruefe(_neu.get("band_gesucht") == 1, "Datei wird als geprueft markiert")
+        pruefe(_bm._band_nachruesten(["DS-23-004.md"]) == 0,
+               "zweiter Lauf tut nichts mehr - kein Dauer-Oeffnen bei jeder Bestandsfrage")
+        _bm._volltext_anfang = lambda n, zeichen=4000, ab_inhalt=False: "Eine Norm ohne Reihe."
+        _j.dump({"DIN-1234": {"titel": "Pruefung von Klebstoffen",
+                                 "kategorie": "Norm", "quelle": "modell"}},
+                open(_kat, "w", encoding="utf-8"))
+        _bm._GELADEN = None
+        _bm._band_nachruesten(["DIN-1234.md"])
+        _norm = _j.load(open(_kat, encoding="utf-8"))["DIN-1234"]
+        pruefe(_norm.get("band") == "" and _norm.get("band_gesucht") == 1,
+               "Dokument ohne Bandnummer wird als geprueft vermerkt, nicht endlos neu geoeffnet")
+    finally:
+        if _merk is None:
+            os.environ.pop("KI4KI_BESTANDSINDEX", None)
+        else:
+            os.environ["KI4KI_BESTANDSINDEX"] = _merk
+        _il.reload(_il.import_module("bestand"))
+
+
 def szenario_27_wegabgleich_und_bildarten():
     print("\n[27] A2 Rechtepruefung je Ausgabeweg (wegabgleich) · Bildarten · Kategorie-Vorgabe per Unterordner")
     import wegabgleich
@@ -1006,7 +1093,8 @@ if __name__ == "__main__":
               szenario_30_leerer_bereich,
               szenario_31_bereich_ordner_aufraeumen,
               szenario_32_bestand_thema, szenario_33_quellen_heilen,
-              szenario_34_nachtrag_loeschen):
+              szenario_34_nachtrag_loeschen,
+              szenario_35_bandnummer):
         try:
             s()
         except Exception as e:

@@ -60,7 +60,11 @@ längste Stichwort. Kein Modellaufruf.
 
 **Katalog** (`bestand.py`, `bestandsindex.json` im Volume `pruefdaten`): Kategorie,
 Themen, Sprache, Gebiet, Methoden und Kurzfassung liest der Proxy ohne Modell aus dem
-Kopf; Titel, Verfasser und Jahr liest das kleine Modell aus dem Inhalt (nicht aus dem
+Kopf; die **Bandnummer** einer Schriftenreihe (`band_aus_text`) ebenfalls ohne Modell
+aus dem Vorspann — sie steht im Impressum (`Band: 400`) oder auf dem Deckblatt
+(`BAND 400`); „Bandsäge" und „Heizband" zählen nicht. Bestehende Einträge rüstet
+`_band_nachruesten` einmalig nach (`band_gesucht`), ohne den teuren Deckblatt-Weg zu
+wiederholen. Titel, Verfasser und Jahr liest das kleine Modell aus dem Inhalt (nicht aus dem
 Kopf — sonst wird der Dateiname zum Titel). Englische Themen älterer Einträge
 werden beim Nachtragen eingedeutscht. Von Hand: „Kategorie von X ist Y" im Chat.
 
@@ -124,7 +128,7 @@ mitgeschickte, aber unbestätigte Kopfzeile wird abgewiesen.
 
 | Werkzeug | Was es prüft | Wann |
 |---|---|---|
-| `python3 pruef-proxy/dialogtest.py` | 34 Szenarien, 367 Prüfungen ohne Modell: Router, Faden, Prüfungskatalog, Rolle, Kategorien, Rechte je Ausgabeweg, Aufnahme-Übersicht | vor jedem Push |
+| `python3 pruef-proxy/dialogtest.py` | 35 Szenarien, 386 Prüfungen ohne Modell: Router, Faden, Prüfungskatalog, Rolle, Kategorien, Rechte je Ausgabeweg, Aufnahme-Übersicht | vor jedem Push |
 | `python3 pruef-proxy/wegabgleich.py` | Rechteprüfung an jedem Ausgabeweg (Teil von dialogtest) | vor jedem Push |
 | `docker exec ki4ki-pruef-proxy python3 /app/absichttest.py` | 32 echte Dialogzüge gegen das Absichts-Modell, Bedingung ≥ 90 % | nach Modell-/Prompt-Änderung |
 | `docker exec ki4ki-pruef-proxy python3 /app/selbstcheck.py [bereich] [n]` | Zufallsfragen aus dem eigenen Bestand, mechanisches Urteil, Ampel unter `/selbstcheck` | im Betrieb |

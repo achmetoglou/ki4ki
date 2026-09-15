@@ -1168,26 +1168,40 @@ def _liste_nach_art(frage, namen, bereich=None, zusatz=None):
         bestand.nachtragen(passend)
     except Exception:
         pass
-    zeilen = ["| Kennung | Titel | Verfasser | Jahr |",
-              "|---|---|---|---|"]
+    # Die Bandnummer der Schriftenreihe nur zeigen, wenn es sie hier gibt -
+    # bei Normen und Pruefungsunterlagen bliebe die Spalte sonst leer
+    # (Emrach 15.09.: "die stehen doch auf dem Cover").
+    daten = [(n, bestand.angaben(n)) for n in passend]
+    mit_band = any((a or {}).get("band") for _n, a in daten)
+    if mit_band:
+        zeilen = ["| Kennung | Band | Titel | Verfasser | Jahr |",
+                  "|---|---|---|---|---|"]
+    else:
+        zeilen = ["| Kennung | Titel | Verfasser | Jahr |",
+                  "|---|---|---|---|"]
     ohne_titel = 0
-    for n in passend:
-        a = bestand.angaben(n)
+    for n, a in daten:
         # Auf den GESCHRIEBENEN Namen verweisen - _pdf_schluessel() im
         # Proxy findet die Datei auch, wenn sie ein Leerzeichen
         # im Namen traegt.
         verweis = "[%s](/pdf/%s)" % (_zelle(n), quote(n, safe=""))
+        spalten = [verweis]
+        if mit_band:
+            spalten.append(_zelle((a or {}).get("band") or "—"))
         if a and a["titel"]:
             marke = "°" if a.get("quelle") == "modell" else ""
-            zeilen.append("| %s | %s%s | %s | %s |"
-                          % (verweis, _zelle(a["titel"]), marke,
-                             _zelle(a["verfasser"]), _zelle(a["jahr"])))
+            spalten += [_zelle(a["titel"]) + marke,
+                        _zelle(a["verfasser"]), _zelle(a["jahr"])]
         else:
             ohne_titel += 1
-            zeilen.append("| %s | *kein Katalogeintrag* |  |  |" % verweis)
+            spalten += ["*kein Katalogeintrag*", "", ""]
+        zeilen.append("| " + " | ".join(spalten) + " |")
 
     fuss = ("\n\n*Titel aus dem hinterlegten Katalog; mit ° markierte hat das "
             "kleine Modell aus dem Deckblatt gelesen.*")
+    if mit_band:
+        fuss += ("\n\n*Die Bandnummer stammt aus dem Impressum der Arbeit "
+                 "(Schriftenreihe).*")
     if ohne_titel:
         fuss += ("\n\n*Zu %d Arbeit(en) liegt kein Katalogeintrag vor.*"
                  % ohne_titel)
@@ -1382,7 +1396,12 @@ def _liste(titel, zusatz=None):
     def _zelle(x):
         return (x or "").replace("|", "\\|").replace("\n", " ").strip()
 
-    zeilen = ["| Kennung | Titel | Verfasser | Jahr | Kategorie | Themen | Datei |", "|---|---|---|---|---|---|---|"]
+    # Bandnummer nur als Spalte, wenn im Bestand ueberhaupt eine vorkommt.
+    mit_band = any(a and a.get("band") for _t, a in angaben)
+    _kopf = ["Kennung"] + (["Band"] if mit_band else []) \
+        + ["Titel", "Verfasser", "Jahr", "Kategorie", "Themen", "Datei"]
+    zeilen = ["| " + " | ".join(_kopf) + " |",
+              "|" + "---|" * len(_kopf)]
     for t, a in angaben:
         verweis = "[%s](/pdf/%s)" % (_zelle(t), quote(t, safe=""))
         datei = zusatz.get(t) or ""
@@ -1390,13 +1409,17 @@ def _liste(titel, zusatz=None):
         if a and a.get("kategorie_quelle") == "mensch":
             kat += "*"
         them = ", ".join((a.get("themen") or [])[:5]) if a else ""
+        spalten = [verweis]
+        if mit_band:
+            spalten.append(_zelle((a or {}).get("band") or "—"))
         if a and a.get("titel"):
             marke = "°" if a.get("quelle") == "modell" else ""
-            zeilen.append("| %s | %s%s | %s | %s | %s | %s | %s |" % (
-                verweis, _zelle(a["titel"]), marke,
-                _zelle(a.get("verfasser")), _zelle(str(a.get("jahr") or "")), _zelle(kat), _zelle(them), _zelle(datei)))
+            spalten += [_zelle(a["titel"]) + marke, _zelle(a.get("verfasser")),
+                        _zelle(str(a.get("jahr") or ""))]
         else:
-            zeilen.append("| %s | — | — | — | %s | %s | %s |" % (verweis, _zelle(kat), _zelle(them), _zelle(datei)))
+            spalten += ["—", "—", "—"]
+        spalten += [_zelle(kat), _zelle(them), _zelle(datei)]
+        zeilen.append("| " + " | ".join(spalten) + " |")
     if any(a and a.get("quelle") == "modell" for _, a in angaben):
         zeilen.append("")
         zeilen.append("*Titel, Verfasser und Jahr mit ° hat die Anlage selbst vom Deckblatt gelesen. Ein — heißt: noch nicht gelesen, wird in den nächsten Minuten ergänzt. Eine Kategorie mit \\* wurde von Hand festgelegt.*")

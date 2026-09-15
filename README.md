@@ -13,7 +13,7 @@ keine Antwort verlässt das Gebäude.
 - Fachfragen beantworten — mit Zitat, Seite und Link ins Original
 - Ganze Dokumente zusammenfassen oder aufbereiten (Präsentation, Handout, Stichpunkte)
 - Abbildungen und Diagramme aus den Dokumenten zeigen
-- Den Bestand als Tabelle auflisten: Titel, Verfasser, Jahr, Kategorie, Themen
+- Den Bestand als Tabelle auflisten: Titel, Verfasser, Jahr, Kategorie, Themen — bei Schriftenreihen auch die Bandnummer
 - Prüfungsfragen aus hinterlegten Fragenkatalogen stellen und die Antwort bewerten
 - Störfälle: Anlage, Fehlercode, Symptom → Ursache, Maßnahme, Quelle
 
@@ -71,6 +71,7 @@ von selbst; fertig aufgenommene Dateien wandern nach `dokumente/<bereich>/archiv
 | eine Abbildung sehen | „Zeig mir Bild 2.1", „Zeig mir ein Diagramm aus der Arbeit" |
 | bei einem Dokument bleiben | Einmal das Dokument nennen (Kennung, Verfasser oder Titelwörter). Danach beziehen sich „daraus", „die Arbeit", „gesamte Zusammenfassung" auf genau dieses Dokument — im ganzen Gesprächsfaden. Alles durchsuchen: Frage mit „im ganzen Bestand:" beginnen. |
 | wissen, was da ist | „Was haben wir im Bestand?", „Welche Normen haben wir?", „Was habt ihr zum Thema Laminieren?" |
+| eine Arbeit über ihre Bandnummer finden | „Welche Dissertation hat Band 407?" — die Nummer der Schriftenreihe steht in der Bestandsliste, sofern die Arbeiten eine tragen |
 | abgefragt werden | „Stell mir eine Prüfungsfrage", danach „b" oder „Antwort: c", dann „weiter", „warum?" — die Fragen kommen wörtlich aus dem hinterlegten Katalog, die Bewertung ebenso |
 | einen Störfall klären | „An der SGM-3 kommt E42, die Düse tropft" — Tabelle mit Ursache, Maßnahme, Quelle; gibt es keinen Beleg, nennt die Anlage den Ansprechpartner |
 | etwas melden | Daumen runter unter der Antwort (mit kurzem Grund) — oder im Chat „Falsche Quelle: …" / „Feedback: …" |

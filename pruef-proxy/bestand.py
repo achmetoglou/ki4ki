@@ -143,6 +143,7 @@ def angaben(name):
     angabe["titel"] = e.get("titel") or ""
     angabe["verfasser"] = e.get("verfasser") or ""
     angabe["jahr"] = e.get("jahr") or ""
+    angabe["band"] = e.get("band") or ""
     angabe["art"] = art_von(stamm) or e.get("gruppe") or ""
     angabe.setdefault("schlagworte", [])
     return angabe
@@ -319,6 +320,40 @@ def _themen_uebersetzen(worte):
     return None
 
 
+# Bandnummer einer Schriftenreihe. Steht bei den IKV-Berichten im Impressum
+# ("Band: 400"), bei anderen Reihen auf dem Deckblatt ("BAND 400"). Gelesen
+# wird OHNE Modell - der Wert steht wortwoertlich da (Fund 15.09.: "Welche
+# Dissertation hat Band 420?" lief ins Leere, obwohl jede Arbeit ihre Nummer
+# auf Seite 3 traegt).
+#
+# Eng gefasst, damit "Bandsaege", "Heizband" und "Streuband" nicht zaehlen:
+# entweder mit Doppelpunkt (Impressum) oder in Grossbuchstaben (Deckblatt),
+# und nur im Vorspann.
+_BAND_IMPRESSUM = re.compile(r"\bBand\s*[:.]\s*(\d{1,4})\b")
+_BAND_DECKBLATT = re.compile(r"\bBAND\s+(\d{1,4})\b")
+_BAND_REIHE = re.compile(r"\b(?:Band|Vol\.?|Volume)\s+(\d{1,4})\b"
+                         r"(?=[\s,;]*(?:der|of|in)?\s*(?:Reihe|Schriftenreihe|series)?)")
+
+
+def band_aus_text(text, zeichen=9000):
+    """Die Bandnummer aus dem Vorspann - '' wenn keine dasteht. Wirft nie."""
+    try:
+        kopf = str(text or "")[:zeichen]
+        for muster in (_BAND_IMPRESSUM, _BAND_DECKBLATT):
+            m = muster.search(kopf)
+            if m:
+                return m.group(1)
+        # Letzte Stufe nur, wenn das Wort "Reihe"/"Berichte" in der Naehe steht -
+        # sonst faengt sie Fliesstext wie "Band 3 zeigt den Verlauf".
+        if re.search(r"Berichte|Schriftenreihe|Reihe|series", kopf, re.I):
+            m = _BAND_REIHE.search(kopf)
+            if m:
+                return m.group(1)
+    except Exception:
+        pass
+    return ""
+
+
 def _deckblatt_lesen(text):
     """Fragt das kleine Modell. Gibt dict oder None - wirft NIE."""
     try:
@@ -448,6 +483,11 @@ def _einen_nachtragen(name):
         except Exception:
             ist_katalog = False
         angabe.update(kategorie_bestimmen(name, text, alt, ist_katalog=ist_katalog))
+        # Bandnummer der Schriftenreihe - ohne Modell, direkt aus dem Vorspann.
+        # Ein einmal gefundener Wert bleibt: die Nummer aendert sich nie.
+        _band = alt.get("band") or band_aus_text(text)
+        if _band:
+            angabe["band"] = _band
         eintragen(name, angabe, quelle=quelle)
         return True
     finally:
@@ -470,6 +510,49 @@ def kategorie_setzen(name, kategorie_name):
     return alt
 
 
+def _band_nachruesten(namen, hoechstens=40):
+    """Bandnummer in bestehende Eintraege nachtragen - OHNE Modell.
+
+    Eintraege, die vor dieser Funktion entstanden sind, kennen das Feld nicht.
+    Sie ueber nachtragen() neu lesen zu lassen waere teuer (Modellaufruf je
+    Arbeit) und unnoetig: Die Nummer steht wortwoertlich im Vorspann. Das Feld
+    `band_gesucht` sorgt dafuer, dass jede Datei genau einmal angesehen wird -
+    auch die ohne Bandnummer (Normen), die sonst bei jeder Bestandsfrage
+    erneut geoeffnet wuerden.
+    """
+    getan = 0
+    for n in namen or []:
+        if getan >= hoechstens:
+            break
+        try:
+            a = angaben(n)
+            if not a or not a.get("titel") or a.get("band_gesucht"):
+                continue
+            # Unter dem Schluessel schreiben, unter dem der Eintrag WIRKLICH
+            # steht: Der Katalog fuehrt "DS-23-004", gefragt wird oft
+            # "DS-23-004.md". Mit dem uebergebenen Namen entstuende ein
+            # zweiter Eintrag, und der alte behielte seine fehlende Nummer.
+            stamm = str(n)
+            if stamm.lower().endswith((".pdf", ".md")):
+                stamm = stamm.rsplit(".", 1)[0]
+            d = laden() or {}
+            treffer = (d.get("nach_grund") or {}).get(_grund(stamm))
+            schluessel = treffer[0] if treffer else stamm
+            text = _volltext_anfang(n, zeichen=9000)
+            if not text.strip():
+                continue
+            # angaben() reicht den ganzen Eintrag durch und legt "art" oben
+            # drauf (die kommt aus dem Namen, nicht aus dem Katalog).
+            neu = {k: v for k, v in a.items() if k != "art"}
+            neu["band"] = band_aus_text(text)
+            neu["band_gesucht"] = 1
+            eintragen(schluessel, neu, quelle=a.get("quelle") or "modell")
+            getan += 1
+        except Exception:
+            continue
+    return getan
+
+
 def nachtragen(namen, hoechstens=5):
     """Fehlende Katalogeintraege vom Deckblatt lesen lassen.
 
@@ -477,6 +560,10 @@ def nachtragen(namen, hoechstens=5):
     Bestandsfrage darf nicht minutenlang haengen, nur weil 500 Arbeiten
     noch keinen Eintrag haben. Beim naechsten Aufruf sind mehr da.
     Liefert die Zahl der sofort nachgetragenen."""
+    try:
+        _band_nachruesten(namen)      # billig, ohne Modell, je Datei genau einmal
+    except Exception:
+        pass
     offen = []
     for n in namen or []:
         a = angaben(n)
