@@ -172,8 +172,12 @@ def system_text(faden_dok=None, dokumente=None, kontakt="", rolle="", allgemeinw
         "6. Bilder: erst abbildungen_auflisten, dann die passende Nummer mit abbildung_zeigen holen und den "
         "Platzhalter in die Antwort setzen; sag in einem Satz, warum diese. 'Weitere' = abbildungen_auflisten mit 'ab'.\n"
         "7. Ist die Eingabe wirklich unklar, stell EINE kurze Rueckfrage mit 2-3 Optionen - statt zu raten.\n"
-        "8. Fragen zu dir selbst (was du kannst, welches Dokument du nutzt, warum eine Antwort so aussah) "
-        "beantwortest du direkt aus dem Gespraechszustand - ohne Werkzeuge. 'Unlesbare Stellen' heisst: "
+        "8. Fragen zum GESPRAECH selbst (welches Dokument du gerade nutzt, warum eine Antwort so "
+        "aussah, was du zuletzt gesagt hast) beantwortest du direkt aus dem Gespraechszustand - "
+        "ohne Werkzeuge. NICHT hierher gehoeren Fragen zur BEDIENUNG, Installation oder zum "
+        "Betrieb der Anlage ('wie lade ich Dokumente hoch?', 'wie loesche ich etwas?', 'welcher "
+        "Schalter...?'): das steht in den Dokumenten, dort wird IMMER erst gesucht. Behaupte nie "
+        "aus eigenem Wissen, was die Anlage kann oder nicht kann. 'Unlesbare Stellen' heisst: "
         "Formeln oder Tabellen im PDF-Text sind zerlegt - der Rest des Dokuments ist lesbar.\n"
         "8b. Meinungs- und Diskussionsfragen ('ist 0,6 nicht sehr konservativ?') beantwortest du "
         "sachlich aus dem, was die Dokumente hergeben, und sagst offen, wo die Einschaetzung endet.\n"
@@ -362,8 +366,67 @@ def waechter_belege(text, aufrufe, faden_dok=None, frage="", tool_texte=None, ve
     return None
 
 
+# Fragen, die wirklich nur den Gespraechsverlauf betreffen - dort ist eine
+# Antwort ohne Werkzeug richtig. Alles andere wird nachgeschlagen.
+_VERLAUFSFRAGE = re.compile(
+    r"^\s*(wie\s+meinst\s+du|was\s+meinst\s+du\s+damit|welches\s+dokument\s+"
+    r"(nutzt|benutzt|hast)\s+du|woher\s+(hast|weisst)\s+du|warum\s+(sagst|"
+    r"antwortest|schreibst)\s+du|was\s+hast\s+du\s+(gerade|zuletzt)\s+gesagt|"
+    r"wiederhol|nochmal\s+bitte|erklaer\s+das\s+nochmal)", re.I)
+
+
+def waechter_ohne_suche(text, aufrufe, faden_dok=None, frage="", tool_texte=None,
+                        verlauf_texte=None, kennungen=None):
+    """Hat das Modell geantwortet, OHNE ein einziges Werkzeug zu rufen?
+
+    Gemessen 15.09. (Faden b3c1a804): "wie lade ich dokumente hoch?" ->
+    "Das Hochladen von Dokumenten ist nicht Teil der Funktionen dieser
+    Schnittstelle", in 2,9 s, ohne Werkzeug, ohne Beleg - frei erfunden. Die
+    Antwort steht woertlich in KI4KI-Haeufige-Fragen. Das Modell hielt die
+    Frage fuer eine Frage ueber SICH (Regel 8) und beschrieb seine
+    Chat-Schnittstelle statt der Anlage.
+
+    Ueber 328 Stufe-2-Antworten: 96 ohne Beleg, davon 27 unter 6 s ohne jede
+    Fundstelle. Eine Wissensdatenbank mit Belegpflicht darf nicht behaupten,
+    ohne nachgesehen zu haben - also wird einmal gesucht und neu geantwortet.
+    """
+    if aufrufe:                       # Vorwissen zaehlt mit: dann lag Material vor
+        return None
+    if not (text or "").strip():
+        return None
+    if _VERLAUFSFRAGE.match(frage or ""):
+        return None
+    begriffe = _suchbegriffe(frage)
+    if not begriffe:
+        return None
+    return {"werkzeug": "bestand_durchsuchen", "args": {"begriffe": begriffe},
+            "hinweis": ("Du hast geantwortet, ohne ein einziges Werkzeug zu rufen - die "
+                        "Antwort stammt also aus dir selbst, nicht aus den Dokumenten. "
+                        "Oben stehen jetzt die Fundstellen aus dem Bestand. Antworte neu "
+                        "und stuetze dich NUR darauf. Steht die Antwort wirklich nicht "
+                        "darin, sag genau das - erfinde nichts ueber die Anlage.")}
+
+
+# Fuellwoerter raus: die Suche will Begriffe, keine Satzteile.
+_FUELL = frozenset((
+    "wie", "was", "wo", "wer", "wann", "warum", "wieso", "welche", "welcher",
+    "welches", "ich", "du", "mir", "mich", "dir", "man", "hier", "das", "der",
+    "die", "den", "dem", "ein", "eine", "einen", "einem", "einer", "und",
+    "oder", "aber", "denn", "ist", "sind", "war", "kann", "kannst", "koennen",
+    "muss", "soll", "will", "wird", "werden", "hat", "habe", "haben", "es",
+    "in", "im", "an", "am", "auf", "aus", "bei", "mit", "von", "vom", "zu",
+    "zum", "zur", "fuer", "ueber", "nach", "vor", "denn", "nicht", "kein",
+    "keine", "auch", "noch", "schon", "mal", "bitte", "eigentlich", "denn"))
+
+
+def _suchbegriffe(frage):
+    woerter = re.findall(r"[\wäöüÄÖÜß-]{3,}", frage or "")
+    behalten = [w for w in woerter if w.lower() not in _FUELL]
+    return " ".join(behalten[:8]) or " ".join(woerter[:8])
+
+
 def waechter(text, aufrufe, faden_dok=None, frage="", tool_texte=None, verlauf_texte=None, kennungen=None):
-    for w in (waechter_bilder, waechter_belege):
+    for w in (waechter_bilder, waechter_belege, waechter_ohne_suche):
         a = w(text, aufrufe, faden_dok, frage, tool_texte, verlauf_texte, kennungen)
         if a:
             return a

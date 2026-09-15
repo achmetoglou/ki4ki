@@ -1322,6 +1322,53 @@ def szenario_40_selbstauskunft():
            "die Abbildungs-Leermeldung nennt den Weg zurueck in den Text")
 
 
+def szenario_41_nie_ohne_nachsehen():
+    print("\n[41] Keine Antwort ohne ein einziges Werkzeug - der dritte Waechter")
+    import gespraech as g
+
+    # Der gemessene Fall vom 15.09. (Faden b3c1a804): 2,9 s, kein Werkzeug,
+    # kein Beleg, frei erfunden - "Du kannst keine Dokumente hochladen."
+    # Die Antwort steht woertlich in KI4KI-Haeufige-Fragen.
+    falsch = "Das Hochladen von Dokumenten ist nicht Teil der Funktionen dieser Schnittstelle."
+    for f in ("wie lade ich dokumente hoch?",
+              "Wie lade ich den Dokumente hier hoch?",
+              "Wie loesche ich ein Dokument?",
+              "Welcher Schalter steuert die Aufnahme?"):
+        a = g.waechter_ohne_suche(falsch, [], frage=f)
+        pruefe(a is not None and a["werkzeug"] == "bestand_durchsuchen",
+               "ohne Werkzeug wird nachgeschlagen: %r" % f[:44])
+        pruefe(a and a["args"].get("begriffe"),
+               "und es gibt Suchbegriffe dafuer: %r" % f[:44])
+
+    # ⚠ Fragen zum Gespraechsverlauf duerfen weiter ohne Werkzeug beantwortet
+    #   werden - sonst sucht die Anlage bei "wie meinst du das?" im Bestand.
+    for f in ("wie meinst du das?", "Welches Dokument nutzt du gerade?",
+              "Woher hast du das?", "Warum sagst du das?"):
+        pruefe(g.waechter_ohne_suche(falsch, [], frage=f) is None,
+               "Verlaufsfrage bleibt ohne Werkzeug: %r" % f[:44])
+
+    # Lief schon ein Werkzeug (auch Vorwissen zaehlt), greift der Waechter nicht.
+    pruefe(g.waechter_ohne_suche(falsch, [("bestand_durchsuchen", {}, 12)],
+                                 frage="wie lade ich dokumente hoch?") is None,
+           "nach einer echten Suche greift der Waechter nicht mehr")
+    pruefe(g.waechter_ohne_suche("", [], frage="wie lade ich hoch?") is None,
+           "ohne Antworttext greift er nicht")
+
+    # Er haengt in der Kette - sonst wird er nie aufgerufen (Lehre f3f081c).
+    _g = open(os.path.join(HIER, "gespraech.py"), encoding="utf-8").read()
+    pruefe("waechter_bilder, waechter_belege, waechter_ohne_suche" in _g,
+           "der Waechter haengt in waechter() - ein Fix an der falschen Stelle wirkt nicht")
+
+    # Regel 8 darf Bedienfragen nicht mehr als "Frage ueber dich selbst" gelten
+    # lassen - genau daran hing die erfundene Antwort.
+    pruefe("Fragen zum GESPRAECH selbst" in _g,
+           "Regel 8 spricht vom Gespraech, nicht mehr allgemein von 'dir selbst'")
+    pruefe("BEDIENUNG" in _g and "dort wird IMMER erst gesucht" in _g,
+           "Regel 8 nimmt Bedienfragen ausdruecklich aus")
+    pruefe("Behaupte nie" in _g and "was die Anlage kann oder nicht kann" in _g,
+           "und verbietet Aussagen ueber die Anlage aus eigenem Wissen")
+
+
 def szenario_27_wegabgleich_und_bildarten():
     print("\n[27] A2 Rechtepruefung je Ausgabeweg (wegabgleich) · Bildarten · Kategorie-Vorgabe per Unterordner")
     import wegabgleich
@@ -1367,7 +1414,8 @@ if __name__ == "__main__":
               szenario_37_neue_fassung_meldung,
               szenario_38_katalog_endung,
               szenario_39_kurzform_verlinken,
-              szenario_40_selbstauskunft):
+              szenario_40_selbstauskunft,
+              szenario_41_nie_ohne_nachsehen):
         try:
             s()
         except Exception as e:
