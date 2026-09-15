@@ -3167,6 +3167,42 @@ def _nachtrag_alle():
         return {}
 
 
+# Der Nachtrag haelt die Antworten, die der Proxy selbst gegeben hat - AnythingLLM
+# kennt sie nicht. Loescht jemand in der Oberflaeche einen Faden, raeumt AnythingLLM
+# nur seine eigene Haelfte: Ohne das Folgende blieben unsere Eintraege liegen und
+# der geloeschte Verlauf erschien beim naechsten Oeffnen wieder (Fund 15.09.).
+FADEN_LOESCHEN = re.compile(
+    r"^/api/(?:v1/)?workspace/([^/]+)/thread/([^/]+)/?$")
+FAEDEN_LOESCHEN = re.compile(
+    r"^/api/(?:v1/)?workspace/([^/]+)/thread-bulk-delete/?$")
+
+
+def _nachtrag_vergessen(schluessel):
+    """Eintraege eines Fadens verwerfen. Wirft nie; meldet, wie viele es waren."""
+    weg = 0
+    try:
+        with _nachtrag_sperre:
+            alle = _nachtrag_alle()
+            for s in list(schluessel):
+                if s in alle:
+                    weg += len(alle.pop(s) or [])
+            if weg:
+                tmp = NACHTRAG_DATEI + ".tmp"
+                with open(tmp, "w", encoding="utf-8") as fh:
+                    json.dump(alle, fh, ensure_ascii=False)
+                os.replace(tmp, NACHTRAG_DATEI)
+    except Exception as e:
+        print("[Nachtrag] Vergessen fehlgeschlagen: %s" % str(e)[:90],
+              file=sys.stderr, flush=True)
+    return weg
+
+
+def _nachtrag_bereich_vergessen(bereich):
+    """Alle Faeden eines Bereichs verwerfen - beim Loeschen des Bereichs."""
+    return _nachtrag_vergessen(
+        [s for s in _nachtrag_alle() if s.split("|")[0] == bereich])
+
+
 ARBEITET_DATEI = (os.environ.get("KI4KI_THREAD_ARBEITET")
                   or os.path.join(os.path.dirname(os.path.abspath(__file__)),
                                   ".thread-arbeitet.json"))
@@ -9609,10 +9645,44 @@ class Griff(BaseHTTPRequestHandler):
             except Exception:
                 traceback.print_exc(file=sys.stderr)
             return
+        # Einzelnen Faden loeschen: erst AnythingLLM, dann unsere Haelfte.
+        _fl = FADEN_LOESCHEN.match((self.path or "").split("?")[0])
+        if _fl:
+            self._weiterleiten("DELETE")
+            try:
+                _weg = _nachtrag_vergessen(["%s|%s" % (_fl.group(1), _fl.group(2))])
+                if _weg:
+                    print("[Nachtrag] Faden geloescht: %d eigene Antworten verworfen"
+                          % _weg, file=sys.stderr, flush=True)
+            except Exception:
+                traceback.print_exc(file=sys.stderr)
+            return
+        # Mehrere Faeden auf einmal (Oberflaeche: Auswahl loeschen).
+        _fm = FAEDEN_LOESCHEN.match((self.path or "").split("?")[0])
+        if _fm:
+            koerper = self._koerper()
+            try:
+                _slugs = (json.loads(koerper or b"{}") or {}).get("slugs") or []
+            except Exception:
+                _slugs = []
+            self._weiterleiten("DELETE", koerper=koerper)
+            try:
+                _weg = _nachtrag_vergessen(
+                    ["%s|%s" % (_fm.group(1), s) for s in _slugs])
+                if _weg:
+                    print("[Nachtrag] %d Faeden geloescht: %d eigene Antworten verworfen"
+                          % (len(_slugs), _weg), file=sys.stderr, flush=True)
+            except Exception:
+                traceback.print_exc(file=sys.stderr)
+            return
         _wl = BEREICH_LOESCHEN.match((self.path or "").split("?")[0])
         if _wl:
             self._weiterleiten("DELETE")
             try:
+                _weg = _nachtrag_bereich_vergessen(_wl.group(1))
+                if _weg:
+                    print("[Nachtrag] Bereich geloescht: %d eigene Antworten verworfen"
+                          % _weg, file=sys.stderr, flush=True)
                 # Kurz warten, bis AnythingLLM den Bereich wirklich entfernt hat,
                 # dann den Ordner pruefen - leer weg, sonst melden.
                 threading.Timer(3.0, bereich_ordner_aufraeumen, args=(_wl.group(1),)).start()

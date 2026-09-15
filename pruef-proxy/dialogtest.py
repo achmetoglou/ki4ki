@@ -913,6 +913,60 @@ def szenario_33_quellen_heilen():
            "Hook-Wege (Vergleich, Zusammenfassung, Allgemein) nutzen das Bereichs-Modell und nennen es ehrlich in der Fusszeile")
 
 
+
+def szenario_34_nachtrag_loeschen():
+    print("\n[34] Geloeschter Faden nimmt die eigenen Antworten mit")
+    import json as _j
+    import tempfile
+    _q = open(os.path.join(HIER, "pruef_proxy.py"), encoding="utf-8").read()
+
+    _a = _q.index("FADEN_LOESCHEN = re.compile")
+    _e = _q.index("def _nachtrag_bereich_vergessen", _a)
+    _e = _q.index("\n\n", _q.index("return _nachtrag_vergessen", _e))
+    _ns = {"re": __import__("re"), "json": _j, "os": os, "sys": sys,
+           "threading": __import__("threading")}
+    _ns["_nachtrag_sperre"] = _ns["threading"].Lock()
+    datei = os.path.join(tempfile.mkdtemp(), "nachtrag.json")
+    _ns["NACHTRAG_DATEI"] = datei
+    _ns["_nachtrag_alle"] = lambda: _j.load(open(datei, encoding="utf-8")) \
+        if os.path.exists(datei) else {}
+    exec(_q[_a:_e], _ns)
+
+    FADEN = _ns["FADEN_LOESCHEN"]
+    FAEDEN = _ns["FAEDEN_LOESCHEN"]
+    pruefe(bool(FADEN.match("/api/workspace/faq/thread/065c0111-abc"))
+           and bool(FADEN.match("/api/v1/workspace/faq/thread/065c0111-abc")),
+           "Faden-Loeschweg der Oberflaeche wird erkannt (mit und ohne v1)")
+    pruefe(not FADEN.match("/api/workspace/faq")
+           and not FADEN.match("/api/workspace/faq/thread/abc/chat"),
+           "Bereichs-Loeschung und Chat-Weg loesen das Vergessen NICHT aus")
+    pruefe(bool(FAEDEN.match("/api/workspace/faq/thread-bulk-delete")),
+           "Sammel-Loeschung mehrerer Faeden wird erkannt")
+
+    stand = {"faq|abc": [{"prompt": "a"}, {"prompt": "b"}],
+             "faq|default": [{"prompt": "c"}],
+             "auw|abc": [{"prompt": "d"}]}
+    _j.dump(stand, open(datei, "w", encoding="utf-8"))
+    weg = _ns["_nachtrag_vergessen"](["faq|abc"])
+    rest = _j.load(open(datei, encoding="utf-8"))
+    pruefe(weg == 2 and "faq|abc" not in rest,
+           "geloeschter Faden: eigene Antworten verschwinden aus dem Nachtrag")
+    pruefe("faq|default" in rest and "auw|abc" in rest,
+           "andere Faeden und andere Bereiche bleiben unberuehrt")
+
+    weg2 = _ns["_nachtrag_bereich_vergessen"]("faq")
+    rest2 = _j.load(open(datei, encoding="utf-8"))
+    pruefe(weg2 == 1 and not [k for k in rest2 if k.startswith("faq|")],
+           "geloeschter Bereich nimmt alle seine Faeden mit")
+    pruefe("auw|abc" in rest2, "fremder Bereich mit gleichem Faden-Namen bleibt")
+    pruefe(_ns["_nachtrag_vergessen"](["gibt|es|nicht"]) == 0,
+           "unbekannter Schluessel: kein Fehler, nichts veraendert")
+
+    pruefe(_q.index("_fl = FADEN_LOESCHEN.match") < _q.index("_wl = BEREICH_LOESCHEN.match"),
+           "Faden-Weg wird VOR dem Bereichs-Weg geprueft")
+    pruefe("_nachtrag_bereich_vergessen(_wl.group(1))" in _q,
+           "auch beim Loeschen eines Bereichs bleibt nichts liegen")
+
 def szenario_27_wegabgleich_und_bildarten():
     print("\n[27] A2 Rechtepruefung je Ausgabeweg (wegabgleich) · Bildarten · Kategorie-Vorgabe per Unterordner")
     import wegabgleich
@@ -951,7 +1005,8 @@ if __name__ == "__main__":
               szenario_29_bereich_isolation,
               szenario_30_leerer_bereich,
               szenario_31_bereich_ordner_aufraeumen,
-              szenario_32_bestand_thema, szenario_33_quellen_heilen):
+              szenario_32_bestand_thema, szenario_33_quellen_heilen,
+              szenario_34_nachtrag_loeschen):
         try:
             s()
         except Exception as e:
