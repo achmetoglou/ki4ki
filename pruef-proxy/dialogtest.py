@@ -1116,6 +1116,55 @@ def szenario_36_eckige_belege():
     pruefe(umbau("Zwei: [DS-24-006, S. 12] und [DS-24-006, S. 35]").count("(DS-24-006, S.") == 2,
            "mehrere Belege in einer Zeile werden alle umgebaut")
 
+
+def szenario_37_neue_fassung_meldung():
+    print("\n[37] Gleicher Name, anderer Inhalt: Meldung nennt den Weg")
+    import tempfile as _tf
+    _q = open(os.path.join(HIER, "pruef_proxy.py"), encoding="utf-8").read()
+
+    # _fassung_vergleichen isoliert nachspielen (haengt nur an os/hashlib).
+    _a = _q.index("def _fassung_vergleichen")
+    _e = _q.index("def _inhaltsgleich")
+    _ns = {"os": os, "hashlib": __import__("hashlib"),
+           "_loesch_grund": lambda n: __import__("re").sub(r"[^a-z0-9]", "", str(n).lower())}
+    exec(_q[_a:_e], _ns)
+    vergleiche = _ns["_fassung_vergleichen"]
+
+    wurzel = _tf.mkdtemp()
+    for unter in ("archiv", "input", "parkplatz"):
+        os.makedirs(os.path.join(wurzel, unter), exist_ok=True)
+    with open(os.path.join(wurzel, "archiv", "Handbuch.pdf"), "wb") as fh:
+        fh.write(b"alte Fassung")
+
+    pruefe(vergleiche(wurzel, "Handbuch.pdf", b"alte Fassung") == "gleich",
+           "byte-gleiche Datei -> 'gleich' (echte Dublette)")
+    pruefe(vergleiche(wurzel, "Handbuch.pdf", b"NEUE Fassung, laenger") == "anders",
+           "gleicher Name, anderer Inhalt -> 'anders' (neue Fassung)")
+    pruefe(vergleiche(wurzel, "Handbuch.pdf", b"alte Fassunx") == "anders",
+           "gleiche Laenge, anderer Inhalt -> 'anders' (Hash entscheidet, nicht die Groesse)")
+    pruefe(vergleiche(wurzel, "Ganz-Anderes.pdf", b"x") is None,
+           "unbekannter Name -> None")
+    pruefe(vergleiche(wurzel, "handbuch.PDF", b"NEU") == "anders",
+           "Namensvergleich ignoriert Gross-/Kleinschreibung und Endung")
+    pruefe(vergleiche("/gibt/es/nicht", "x.pdf", b"y") is None,
+           "fehlender Ordner wirft nicht")
+
+    pruefe("neue_fassung.append((sicher, schon))" in _q
+           and '_fassung_vergleichen(wurzel, sicher, inhalt) == "anders"' in _q,
+           "Upload trennt neue Fassung von echter Dublette")
+    pruefe("Das ist also eine neue Fassung" in _q
+           and "der Hochladen-Knopf ersetzt nichts" in _q,
+           "Meldung sagt, dass die Korrektur NICHT angekommen ist")
+    # Im Quelltext stehen die Sonderzeichen als Escape-Sequenz und der Satz
+    # bricht ueber zwei Zeilen um - deshalb stueckweise pruefen.
+    pruefe("unter Zahnrad \\u2192 " in _q and "Dokumente l\\u00f6schen" in _q
+           and "per SFTP nach dokumente/%s/input/" in _q,
+           "Meldung nennt beide Wege, den Ordner mit echtem Namen")
+    pruefe("_ordnername(bereich)" in _q.split("per SFTP nach dokumente")[1][:400],
+           "genannt wird der ECHTE Ordnername, nicht der Bereichs-Slug")
+    pruefe("(doppelt or neue_fassung or in_arbeit) and not namen" in _q,
+           "die Meldung erscheint auch, wenn NUR neue Fassungen dabei waren")
+
 def szenario_27_wegabgleich_und_bildarten():
     print("\n[27] A2 Rechtepruefung je Ausgabeweg (wegabgleich) · Bildarten · Kategorie-Vorgabe per Unterordner")
     import wegabgleich
@@ -1157,7 +1206,8 @@ if __name__ == "__main__":
               szenario_32_bestand_thema, szenario_33_quellen_heilen,
               szenario_34_nachtrag_loeschen,
               szenario_35_bandnummer,
-              szenario_36_eckige_belege):
+              szenario_36_eckige_belege,
+              szenario_37_neue_fassung_meldung):
         try:
             s()
         except Exception as e:

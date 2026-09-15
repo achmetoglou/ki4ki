@@ -1204,6 +1204,44 @@ def _ordnername(bereich):
     return sauber or "sonstiges"
 
 
+def _fassung_vergleichen(wurzel, dateiname, inhalt):
+    """Liegt unter diesem NAMEN schon etwas - und ist es dasselbe?
+
+    Gibt "gleich" (byte-identisch), "anders" (gleicher Name, anderer Inhalt =
+    neue Fassung) oder None (nichts gefunden) zurueck. Wirft nie.
+
+    Wird nur fuer die MELDUNG gebraucht: Der Hochladen-Knopf weist eine
+    gleichnamige Datei ohnehin ab. Ohne diese Unterscheidung las der Nutzer
+    "liegt bereits vor" und wusste nicht, dass seine korrigierte Fassung
+    verworfen wurde (Emrach 15.09.).
+    """
+    try:
+        stamm = _loesch_grund(os.path.splitext(dateiname)[0])
+        for unter in ("archiv", "input", "parkplatz"):
+            ordner = os.path.join(wurzel, unter)
+            try:
+                eintraege = sorted(os.listdir(ordner))
+            except OSError:
+                continue
+            for name in eintraege:
+                pfad = os.path.join(ordner, name)
+                if not os.path.isfile(pfad):
+                    continue
+                if _loesch_grund(os.path.splitext(name)[0]) != stamm:
+                    continue
+                if os.path.getsize(pfad) != len(inhalt):
+                    return "anders"
+                h = hashlib.sha256()
+                with open(pfad, "rb") as fh:
+                    for stueck in iter(lambda: fh.read(1 << 20), b""):
+                        h.update(stueck)
+                return ("gleich" if h.hexdigest() == hashlib.sha256(inhalt).hexdigest()
+                        else "anders")
+    except Exception:
+        pass
+    return None
+
+
 def _inhaltsgleich(wurzel, inhalt):
     """Liegt dieselbe Datei (byte-gleich) schon in diesem Bereich?
 
@@ -9115,6 +9153,7 @@ class Griff(BaseHTTPRequestHandler):
 
         namen = []
         doppelt = []
+        neue_fassung = []
         in_arbeit = []
         geaendert = []
         for name, inhalt in dateien:
@@ -9135,7 +9174,14 @@ class Griff(BaseHTTPRequestHandler):
             schon = bekannt.get(
                 pdfstelle._wie_anythingllm(os.path.splitext(sicher)[0]))
             if schon:
-                doppelt.append((sicher, schon))
+                # Gleicher Name, aber anderer Inhalt: Das ist eine neue Fassung,
+                # keine Dublette. Der Knopf ersetzt nichts - der Nutzer muss
+                # wissen, wie er sie einspielt, sonst haelt er seine Korrektur
+                # fuer angekommen.
+                if _fassung_vergleichen(wurzel, sicher, inhalt) == "anders":
+                    neue_fassung.append((sicher, schon))
+                else:
+                    doppelt.append((sicher, schon))
                 continue
             # ⭐ INHALTS-DUBLETTE, byteweise. Genau so entstanden auf einer
             #   frischen Anlage drei Fassungen desselben Dokuments
@@ -9193,7 +9239,7 @@ class Griff(BaseHTTPRequestHandler):
                       file=sys.stderr, flush=True)
 
         # Alles waren Dubletten: nichts abgelegt - und das wird gesagt.
-        if (doppelt or in_arbeit) and not namen:
+        if (doppelt or neue_fassung or in_arbeit) and not namen:
             saetze = []
             if len(doppelt) == 1:
                 saetze.append(
@@ -9206,6 +9252,31 @@ class Griff(BaseHTTPRequestHandler):
                     "Diese %d Dateien liegen bereits in diesem Arbeitsbereich: "
                     "%s." % (len(doppelt),
                              ", ".join(d[0] for d in doppelt[:8])))
+            # Gleicher Name, anderer Inhalt = eine neue Fassung. Hier NICHT bei
+            # "liegt bereits vor" stehen bleiben: Der Nutzer hat gerade eine
+            # Korrektur hochgeladen und muss erfahren, dass sie verworfen wurde
+            # UND wie er sie einspielt. Beide Wege nennen, der zweite braucht
+            # keinen Handgriff in der Oberflaeche.
+            if neue_fassung:
+                if len(neue_fassung) == 1:
+                    saetze.append(
+                        "\u201e%s\u201c liegt bereits in diesem Arbeitsbereich \u2014 "
+                        "aber mit anderem Inhalt. Das ist also eine neue Fassung, "
+                        "und der Hochladen-Knopf ersetzt nichts."
+                        % neue_fassung[0][0])
+                else:
+                    saetze.append(
+                        "Diese %d Dateien liegen bereits in diesem Arbeitsbereich, "
+                        "aber mit anderem Inhalt \u2014 es sind also neue Fassungen, "
+                        "und der Hochladen-Knopf ersetzt nichts: %s."
+                        % (len(neue_fassung),
+                           ", ".join(d[0] for d in neue_fassung[:8])))
+                saetze.append(
+                    "Zwei Wege: Entweder die alte Fassung unter Zahnrad \u2192 "
+                    "Dokumente l\u00f6schen und danach erneut hochladen \u2014 oder "
+                    "die Datei per SFTP nach dokumente/%s/input/ legen; dort "
+                    "erkennt die Anlage die neue Fassung und ersetzt die alte "
+                    "von selbst." % _ordnername(bereich))
             if len(in_arbeit) == 1:
                 saetze.append(
                     "\u201e%s\u201c wurde bereits hochgeladen und wird gerade "
@@ -9219,8 +9290,10 @@ class Griff(BaseHTTPRequestHandler):
                                     ", ".join(d[0] for d in in_arbeit[:8])))
             saetze.append("Es wurde nichts hochgeladen.")
             text = " ".join(saetze)
-            print("[Upload] abgewiesen, Dublette: %s"
-                  % ", ".join(d[0] for d in (doppelt + in_arbeit)[:8]),
+            print("[Upload] abgewiesen (%s): %s"
+                  % ("neue Fassung" if neue_fassung else "Dublette",
+                     ", ".join(d[0] for d in
+                               (doppelt + neue_fassung + in_arbeit)[:8])),
                   file=sys.stderr, flush=True)
             # ⚠ 409, NICHT 200. Die Oberflaeche entscheidet am HTTP-Status,
             #   nicht am Inhalt. Mit 200 sieht der Nutzer ein gruenes Haken und liest den Text

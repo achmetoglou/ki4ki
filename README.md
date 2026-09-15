@@ -111,7 +111,9 @@ lassen sich in der `.env` freigeben (siehe Betriebshandbuch).
 ## 5 · Dokumente ersetzen und löschen
 
 - **Ersetzen:** neue Fassung unter demselben Dateinamen nach `input/` legen — die
-  alte wird entfernt, die neue aufgenommen.
+  alte wird entfernt, die neue aufgenommen. **Der Hochladen-Knopf kann das nicht:**
+  Er weist eine gleichnamige Datei ab (und sagt, wie es stattdessen geht). Wer ohne
+  SFTP arbeitet, löscht die alte Fassung zuerst in der Oberfläche.
 - **Löschen:** in der Oberfläche (Zahnrad → Dokumente → Papierkorb) oder die Datei
   nach `dokumente/<bereich>/loeschen/` legen. Die Anlage entfernt das Dokument
   vollständig; jeder Schritt steht in `loeschen.log`.
