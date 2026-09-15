@@ -7002,7 +7002,24 @@ class Griff(BaseHTTPRequestHandler):
         # weder geprueft noch verlinkt (gemessen 27.08.). Laengste Kennung zuerst.
         _kenn = sorted({assistent._titel_saubern(n) for n in namen if n}, key=len, reverse=True)
         if _kenn:
-            text = re.sub(r"(?<![\(\[\w])(%s)\s*,\s*S\.?\s*(\d{1,4})(?![\w)])" % "|".join(re.escape(k) for k in _kenn),
+            _k_muster = "|".join(re.escape(k) for k in _kenn)
+            # ⭐ Belege in ECKIGEN Klammern ("[X, S. 5]") auf die runde Form
+            # bringen. Das Modell schwankt zwischen beiden Schreibweisen; die
+            # Einklammerung unten fasst wegen ihres Lookbehind nur die runde,
+            # die andere Haelfte blieb Klartext: weder geprueft noch verlinkt.
+            # Gemessen 15.09. ueber alle gespeicherten Antworten: 65 eckige
+            # gegen 65 runde - also genau die Haelfte ging verloren. Emrachs
+            # Beobachtung: "manchmal verlinkt er sachen und manchmal nicht".
+            #
+            # Zwei Dinge bleiben bewusst unangetastet:
+            #   - ein fertiger Markdown-Link "[X, S. 5](/stelle...)"  -> (?!\()
+            #   - Literaturverweise des Originaltextes wie "[12, S. 45]" oder
+            #     "[Ehr06, S. 7]": Der Name muss ein Dokument DIESES Bestands
+            #     sein, sonst entstuende ein Link auf eine fremde Quelle.
+            text = re.sub(r"\[(%s)\s*,\s*S\.?\s*(\d{1,4})\](?!\()" % _k_muster,
+                          r"(\1, S. \2)", text)
+            # Belege OHNE jede Klammer einklammern (s. o.).
+            text = re.sub(r"(?<![\(\[\w])(%s)\s*,\s*S\.?\s*(\d{1,4})(?![\w)])" % _k_muster,
                           r"(\1, S. \2)", text)
         # Doppelte Zeilen (das Modell wiederholt "Bild 4.11 - ..., Seite 51" neben dem Block)
         _gesehen, _zeilen = set(), []

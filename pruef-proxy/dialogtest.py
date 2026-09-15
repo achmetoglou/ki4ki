@@ -1078,6 +1078,44 @@ def szenario_35_bandnummer():
         _il.reload(_il.import_module("bestand"))
 
 
+
+def szenario_36_eckige_belege():
+    print("\n[36] Belege in eckigen Klammern werden geprueft und verlinkt")
+    import re as _re
+    _q = open(os.path.join(HIER, "pruef_proxy.py"), encoding="utf-8").read()
+    pruefe('text = re.sub(r"\\[(%s)\\s*,\\s*S\\.?\\s*(\\d{1,4})\\](?!\\()" % _k_muster,' in _q,
+           "eckige Belege werden vor der Pruefung auf die runde Form gebracht")
+    pruefe(_q.index('\\[(%s)\\s*,\\s*S') < _q.index('(?<![\\(\\[\\w])(%s)\\s*,\\s*S'),
+           "Umbau laeuft VOR der Einklammerung - sonst greift deren Lookbehind wieder nicht")
+
+    # Die beiden Ersetzungen isoliert nachspielen (wie im Proxy, gleiche Muster).
+    _kenn = ["KI4KI-Bedienung", "DS-24-006"]
+    _k = "|".join(_re.escape(k) for k in _kenn)
+    def umbau(text):
+        text = _re.sub(r"\[(%s)\s*,\s*S\.?\s*(\d{1,4})\](?!\()" % _k, r"(\1, S. \2)", text)
+        return _re.sub(r"(?<![\(\[\w])(%s)\s*,\s*S\.?\s*(\d{1,4})(?![\w)])" % _k,
+                       r"(\1, S. \2)", text)
+
+    pruefe(umbau("Die Anlage liest PDF. [KI4KI-Bedienung, S. 2]")
+           == "Die Anlage liest PDF. (KI4KI-Bedienung, S. 2)",
+           "[Dok, S. 2] -> (Dok, S. 2), damit Pruefung und Link greifen")
+    pruefe(umbau("Steht so drin (KI4KI-Bedienung, S. 2).")
+           == "Steht so drin (KI4KI-Bedienung, S. 2).",
+           "runde Klammern bleiben unveraendert")
+    _link = "Siehe [KI4KI-Bedienung, S. 2](/stelle?dok=x&seite=2) hier"
+    pruefe(umbau(_link) == _link,
+           "fertiger Markdown-Link wird NICHT angefasst (sonst zerbricht der Link)")
+    pruefe(umbau("Ohne Klammer KI4KI-Bedienung, S. 3 im Text")
+           == "Ohne Klammer (KI4KI-Bedienung, S. 3) im Text",
+           "Beleg ganz ohne Klammer wird weiterhin eingeklammert")
+    for fremd in ("Literaturverweis [12, S. 45] aus dem Original",
+                  "Verweis [Ehr06, S. 7] im Fliesstext",
+                  "Quelle [Schmitz2019, S. 3] der Arbeit"):
+        pruefe(umbau(fremd) == fremd,
+               "fremder Literaturverweis bleibt: %s" % fremd[14:32])
+    pruefe(umbau("Zwei: [DS-24-006, S. 12] und [DS-24-006, S. 35]").count("(DS-24-006, S.") == 2,
+           "mehrere Belege in einer Zeile werden alle umgebaut")
+
 def szenario_27_wegabgleich_und_bildarten():
     print("\n[27] A2 Rechtepruefung je Ausgabeweg (wegabgleich) · Bildarten · Kategorie-Vorgabe per Unterordner")
     import wegabgleich
@@ -1118,7 +1156,8 @@ if __name__ == "__main__":
               szenario_31_bereich_ordner_aufraeumen,
               szenario_32_bestand_thema, szenario_33_quellen_heilen,
               szenario_34_nachtrag_loeschen,
-              szenario_35_bandnummer):
+              szenario_35_bandnummer,
+              szenario_36_eckige_belege):
         try:
             s()
         except Exception as e:
