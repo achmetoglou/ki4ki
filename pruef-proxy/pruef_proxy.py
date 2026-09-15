@@ -192,7 +192,29 @@ def modell_fuer_bereich(slug):
     return None
 
 
-_ADMINS = {"wann": 0.0, "namen": set()}
+_ADMINS = {"wann": 0.0, "namen": set(), "pflegend": set(), "geladen": False}
+# Rollen, die in AnythingLLM Dokumente hochladen und entfernen duerfen -
+# dort steht an /workspace/:slug/upload: flexUserRoleValid([admin, manager]).
+PFLEGE_ROLLEN = ("admin", "manager")
+
+
+def _rollen_holen():
+    """Kontenliste auffrischen (alle 5 min, nach Fehlschlag nach 60 s)."""
+    if not API_SCHLUESSEL:
+        return
+    if time.time() - _ADMINS["wann"] <= (300 if _ADMINS["geladen"] else 60):
+        return
+    try:
+        d = _api("GET", "/api/v1/admin/users", timeout=15) or {}
+        leute = d.get("users") or []
+        _ADMINS["namen"] = {str(u.get("username")) for u in leute
+                            if u.get("role") == "admin"}
+        _ADMINS["pflegend"] = {str(u.get("username")) for u in leute
+                               if u.get("role") in PFLEGE_ROLLEN}
+        _ADMINS["geladen"] = True
+    except Exception:
+        pass
+    _ADMINS["wann"] = time.time()
 
 
 def _ist_admin(kopfzeilen):
@@ -200,14 +222,32 @@ def _ist_admin(kopfzeilen):
     ueber den Anlagen-Schluessel; ohne Schluessel: nein.)"""
     if not API_SCHLUESSEL:
         return False
-    if time.time() - _ADMINS["wann"] > (300 if _ADMINS["namen"] else 60):
-        try:
-            d = _api("GET", "/api/v1/admin/users", timeout=15) or {}
-            _ADMINS["namen"] = {str(u.get("username")) for u in (d.get("users") or []) if u.get("role") == "admin"}
-        except Exception:
-            pass
-        _ADMINS["wann"] = time.time()
+    _rollen_holen()
     return konto_aus_anfrage(kopfzeilen) in _ADMINS["namen"]
+
+
+def _darf_pflegen(kopfzeilen):
+    """Darf dieses Konto Dokumente hochladen? -> (ja, grund)
+
+    ⚠ AnythingLLM prueft das an seiner Upload-Route mit
+      flexUserRoleValid([admin, manager]) - aber der Pruef-Proxy faengt den
+      Hochladen-Knopf ab und legt die Datei SELBST nach input/. Die Anfrage
+      erreicht AnythingLLM nie, also lief dessen Rollenpruefung nie mit
+      (gefunden 15.09.). Praktisch war die Luecke nur mit einem selbst
+      gebauten Aufruf erreichbar - die Oberflaeche blendet den Knopf fuer
+      Standard-Konten aus -, aber eine Anlage mit Belegpflicht darf sich
+      nicht darauf verlassen, dass niemand am Knopf vorbeigeht: ein
+      eingeschleustes Dokument ist ein gefaelschter Beleg.
+
+    Laesst sich die Kontenliste nicht laden, wird ABGELEHNT. Lieber ein
+    Betreiber, der einen Hinweis liest, als eine offene Tuer.
+    """
+    if not API_SCHLUESSEL:
+        return False, "kein_schluessel"
+    _rollen_holen()
+    if not _ADMINS["geladen"]:
+        return False, "unbekannt"
+    return konto_aus_anfrage(kopfzeilen) in _ADMINS["pflegend"], "rolle"
 
 
 def _darf_einsehen(kopfzeilen):
@@ -9129,6 +9169,23 @@ class Griff(BaseHTTPRequestHandler):
         # verraet, dass der Bereich existiert.
         if not bereich_sichtbar("/api/workspace/%s" % bereich, self.headers):
             self._json({"error": "Workspace does not exist."}, code=404)
+            return
+        # KI4KI-TOR-UPLOAD-ROLLE: dieselbe Grenze wie in AnythingLLM.
+        _darf, _grund = _darf_pflegen(self.headers)
+        if not _darf:
+            if _grund == "rolle":
+                _text = ("Zum Hochladen braucht es die Rolle **Administrator** "
+                         "oder **Manager**. Dieses Konto hat sie nicht — ein "
+                         "Administrator vergibt sie unter Einstellungen → "
+                         "Benutzer.")
+            else:
+                _text = ("Die Rollen lassen sich gerade nicht prüfen "
+                         "(Anlagen-Schlüssel oder Verbindung zur Oberfläche). "
+                         "Bitte in einer Minute erneut versuchen; hält es an, "
+                         "steht der Grund im Protokoll des Prüf-Proxys.")
+            self._json({"success": False, "error": _text}, code=403)
+            print("[Upload] abgelehnt (%s): Konto ohne Pflegerecht in %r"
+                  % (_grund, bereich), file=sys.stderr, flush=True)
             return
         try:
             laenge = int(self.headers.get("Content-Length") or 0)

@@ -293,6 +293,18 @@ wieder die Paketfassung.
   Standard-Benutzer sieht nur die Bereiche, die ihm ein Administrator zuweist
   („erst freigeben, dann sichtbar"); Administratoren sehen alle Bereiche, ohne dass
   sie in der Mitgliederliste eines Bereichs stehen.
+
+  | Rolle | sieht | fragt | lädt hoch, löscht Dokumente |
+  |---|---|---|---|
+  | Administrator | alle Bereiche | ja | ja |
+  | Manager | die zugewiesenen | ja | ja |
+  | Standard | die zugewiesenen | ja | **nein** |
+
+  Wer Dokumente einlegen soll, ohne die ganze Anlage verwalten zu dürfen, bekommt
+  **Manager**. Die Oberfläche blendet den Hochladen-Knopf für Standard-Konten aus;
+  der Prüf-Proxy weist einen Versuch zusätzlich mit HTTP 403 ab — sonst könnte ein
+  Konto an der Oberfläche vorbei Dokumente einschleusen, und ein eingeschleustes
+  Dokument ist in dieser Anlage ein gefälschter Beleg.
 - **Bereichsgrenze:** Jede Anfrage antwortet nur aus den Dokumenten des Bereichs, in dem
   sie gestellt wird — nie aus anderen Bereichen, auch wenn das Konto sie sehen dürfte.
   Ein leerer Bereich bleibt leer (Chat-Modus: Allgemeinwissen; Abfrage-Modus: „nicht gefunden").

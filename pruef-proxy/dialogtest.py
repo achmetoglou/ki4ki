@@ -1454,6 +1454,59 @@ def szenario_42_rolle_ueberlebt_update():
            "eine LEERE eigene Datei zaehlt nicht - sonst kein Kern-Prompt mehr")
 
 
+def szenario_43_hochladen_nur_mit_rolle():
+    print("\n[43] Hochladen nur fuer Administrator und Manager - wie in AnythingLLM")
+    _q = open(os.path.join(HIER, "pruef_proxy.py"), encoding="utf-8").read()
+
+    # ⚠ Der Pruef-Proxy faengt den Hochladen-Knopf ab und schreibt die Datei
+    #   SELBST nach input/. AnythingLLMs Pruefung
+    #   flexUserRoleValid([admin, manager]) lief deshalb nie mit - ein
+    #   eingeschleustes Dokument ist in dieser Anlage ein gefaelschter Beleg.
+    pruefe('PFLEGE_ROLLEN = ("admin", "manager")' in _q,
+           "die Pflegerollen sind dieselben wie in AnythingLLM")
+    pruefe("def _darf_pflegen(kopfzeilen):" in _q,
+           "es gibt eine eigene Pruefung fuers Hochladen")
+
+    # Reihenfolge im Upload: erst pruefen, dann schreiben. Die Stellen im
+    # ganzen Quelltext vergleichen - der Rumpf ist laenger als er aussieht.
+    _u = _q.index("def _upload(self, bereich):")
+    _rumpf = _q[_u:_u + 2500]
+    _schreiben = _q.index('with open(os.path.join(ziel, kandidat), "wb")', _u)
+    _rolle_ab = _q.index("_darf, _grund = _darf_pflegen(self.headers)", _u)
+    _angemeldet = _q.index("angemeldet(self.headers)", _u)
+    _sichtbar = _q.index("bereich_sichtbar(", _u)
+    pruefe("_darf, _grund = _darf_pflegen(self.headers)" in _rumpf,
+           "_upload() fragt die Rolle ab")
+    pruefe(_rolle_ab < _schreiben,
+           "und zwar VOR dem Schreiben der Datei")
+    pruefe(_angemeldet < _sichtbar < _rolle_ab,
+           "die drei Tore in der Reihenfolge angemeldet -> Bereich -> Rolle")
+
+    # Laesst sich die Liste nicht laden, wird ABGELEHNT - keine offene Tuer.
+    _p = _q.index("def _darf_pflegen")
+    _pf = _q[_p:_p + 1800]
+    pruefe('return False, "kein_schluessel"' in _pf
+           and 'if not _ADMINS["geladen"]:' in _pf
+           and 'return False, "unbekannt"' in _pf,
+           "ohne ladbare Kontenliste wird abgelehnt, nicht durchgelassen")
+    pruefe('_ADMINS["pflegend"]' in _pf,
+           "geprueft wird gegen die Liste der pflegenden Konten")
+
+    # Die Meldung muss sagen, was zu tun ist.
+    _absage = _q[_rolle_ab:_rolle_ab + 1200]
+    pruefe("Administrator" in _absage and "Manager" in _absage
+           and "Einstellungen" in _absage,
+           "die Absage nennt die noetige Rolle und wo sie vergeben wird")
+    pruefe("code=403" in _absage, "und antwortet mit 403, nicht mit 404")
+
+    # ⭐ Das LOESCHEN ueber die Oberflaeche war nie offen: dort leitet der
+    #   Proxy an AnythingLLM weiter und raeumt erst nach dessen Entscheidung.
+    #   Diese Reihenfolge muss so bleiben.
+    _d = _q.index("_nach_ui_loeschung(vorher)")
+    pruefe(_q.rindex('self._weiterleiten("DELETE", koerper=koerper)', 0, _d) > _d - 600,
+           "beim Loeschen entscheidet weiterhin AnythingLLM, dann raeumt der Proxy nach")
+
+
 def szenario_27_wegabgleich_und_bildarten():
     print("\n[27] A2 Rechtepruefung je Ausgabeweg (wegabgleich) · Bildarten · Kategorie-Vorgabe per Unterordner")
     import wegabgleich
@@ -1501,7 +1554,8 @@ if __name__ == "__main__":
               szenario_39_kurzform_verlinken,
               szenario_40_selbstauskunft,
               szenario_41_nie_ohne_nachsehen,
-              szenario_42_rolle_ueberlebt_update):
+              szenario_42_rolle_ueberlebt_update,
+              szenario_43_hochladen_nur_mit_rolle):
         try:
             s()
         except Exception as e:

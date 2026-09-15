@@ -115,7 +115,8 @@ reiner Modell-Chat ohne Bezug auf Unterlagen.
 
 **Benutzer** legt ein Administrator unter Einstellungen → Benutzer an. Ein
 Benutzer sieht nur die Bereiche, die ihm zugewiesen wurden; Administratoren sehen
-alle. Die Kennzahlen-Seite (`/kpi`) sehen alle Administratoren; weitere Konten
+alle. **Dokumente hochladen und löschen dürfen nur Administrator und Manager** —
+wer Unterlagen einpflegen soll, ohne die Anlage zu verwalten, bekommt „Manager". Die Kennzahlen-Seite (`/kpi`) sehen alle Administratoren; weitere Konten
 lassen sich in der `.env` freigeben (siehe Betriebshandbuch).
 
 ---
