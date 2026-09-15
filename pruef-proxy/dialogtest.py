@@ -1271,9 +1271,23 @@ def szenario_40_selbstauskunft():
     pruefe("_kann_frage" in raum, "_kann_frage() steht im Quelltext")
     kann = raum.get("_kann_frage", lambda f: False)
 
-    # Der echte Fall vom 15.09.: zwei Saetze, Subjekt statt "du".
-    pruefe(kann("Was kann diese Anlage hier? und ist alles korrekt eingestellt?"),
-           "der gemessene Fall aus dem FAQ-Bereich wird erkannt")
+    # ⚠ Der Hook muss VOR Stufe 2 stehen. Stand er dahinter, wurde er nie
+    #   erreicht - der Gespraechsmodus beantwortet praktisch jede Frage selbst
+    #   (gemessen 15.09., Faden 436db3f2: Muster passte, Hook lief trotzdem
+    #   nicht). Ein richtiges Muster an der falschen Stelle wirkt gar nicht.
+    pruefe(_q.index("if self._meta_antwort(frage):")
+           < _q.index("if gespraechsmodus.AN and not assistent.export_frage(frage):"),
+           "die Selbstauskunft steht VOR dem Gespraechsmodus")
+    pruefe(_q.count("if self._meta_antwort(frage):") == 1,
+           "und wird genau einmal aufgerufen")
+
+    # Die vier echten Fragen aus den beiden Faeden vom 15.09.
+    for f in ("Was kann diese Anlage hier? und ist alles korrekt eingestellt?",
+              "Was kann diese Anlage hier und wie nutze ich das?",
+              "Was kann diese Anlage",
+              "wieso willst du mir staendig bilder zeigen? "
+              "Was kann diese Anlage hier im Workspace?"):
+        pruefe(kann(f), "gemessener Fall wird erkannt: %r" % f[:52])
     for f in ("Was kannst du?", "Was kannst du alles?", "was koennt ihr?",
               "Was kann das System?", "Was kann KI4KI?", "Wer bist du?",
               "Wozu bist du da?", "Welche Funktionen hast du?",
@@ -1284,6 +1298,8 @@ def szenario_40_selbstauskunft():
     #   Fragen ist eine Fachfrage und gehoert in den Bestand.
     for f in ("Was kannst du zu DVS 2213 sagen?",
               "Was kann die Anlage SGM-3 bei Fehlercode E42?",
+              "Was kann die Anlage SGM-3 und wie repariere ich sie?",
+              "Wie lade ich Dokumente hoch?",
               "Was kann man gegen Lunker im Spritzguss tun?",
               "Welche Funktionen hat die Schnecke im Extruder?",
               "Was kannst du mir ueber die Dissertation von Becker erzaehlen?",

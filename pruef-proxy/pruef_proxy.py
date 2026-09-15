@@ -1120,7 +1120,9 @@ _META_KANN = re.compile(
     r"was\s+k(oe|\u00f6)nnt\s+ihr(\s+alles)?|"
     r"was\s+kann\s+(diese[rs]?|das|die|dein[e]?)\s+"
     r"(anlage|system|programm|werkzeug|tool|ding|datenbank|"
-    r"wissensdatenbank|anwendung|ki)(\s+hier)?|"
+    r"wissensdatenbank|anwendung|ki)"
+    r"(\s+hier)?(\s+(im|in)\s+(diesem\s+)?"
+    r"(workspace|arbeitsbereich|bereich))?|"
     r"was\s+kann\s+(ki4ki|das\s+hier)|"
     r"was\s+(sind|ist)\s+deine\s+funktion(en)?|"
     r"welche\s+funktionen\s+(hast|habt|gibt\s+es)(\s+(du|ihr|hier))?|"
@@ -1129,8 +1131,12 @@ _META_KANN = re.compile(
     r"wie\s+funktionierst\s+du|wobei\s+(kannst|hilfst)\s+du(\s+mir)?|"
     r"wozu\s+bist\s+du\s+da|"
     r"was\s+machst\s+du)[\s,.!?]*$", re.I)
-# Satzgrenzen fuer die Selbstauskunft: . ! ? und Zeilenumbruch trennen.
-_SATZ_TEILER = re.compile(r"[.!?\n]+")
+# Satzgrenzen fuer die Selbstauskunft: . ! ? Zeilenumbruch - und " und ",
+# denn angehaengt wird meist so: "Was kann diese Anlage hier und wie nutze
+# ich das?" (gemessen 15.09.). Der End-Anker je Teil bleibt streng, deshalb
+# bleibt "Was kann die Anlage SGM-3 und wie repariere ich sie?" eine
+# Fachfrage - nach "Anlage" steht dort noch die Kennung.
+_SATZ_TEILER = re.compile(r"[.!?\n]+|\s+und\s+")
 
 
 def _kann_frage(f):
@@ -4730,6 +4736,18 @@ class Griff(BaseHTTPRequestHandler):
                 return
         except Exception:
             traceback.print_exc(file=sys.stderr)
+        # ⭐ KI4KI-META: Begruessung und Selbstauskunft ("Was kannst du?").
+        #   ⚠ STAND FRUEHER HINTER STUFE 2 - und wurde damit nie erreicht, denn
+        #     der Gespraechsmodus beantwortet praktisch jede Frage selbst.
+        #     Gemessen 15.09. (Faden 436db3f2): "Was kann diese Anlage" lief in
+        #     den Werkzeug-Lauf, das Modell griff ins Bilder-Werkzeug und
+        #     fragte zurueck, welches Dokument gemeint sei. Die Selbstauskunft
+        #     braucht kein Modell - sie gehoert zu den festen Hooks hierher.
+        try:
+            if self._meta_antwort(frage):
+                return
+        except Exception:
+            traceback.print_exc(file=sys.stderr)
         # ⭐ PRUEFUNGSKATALOG (26.08.): exakte Fragen aus der Datei, Antwort gegen
         #   den Katalog - deterministisch, ohne Modell. Emrach: "er sollte doch
         #   exakte Fragen aus der Datei mir nennen ... pruefst du anhand des
@@ -4770,12 +4788,6 @@ class Griff(BaseHTTPRequestHandler):
                     except Exception:
                         pass
                     return
-        # KI4KI-META: Begruessung / "Was kannst du?" freundlich beantworten
-        try:
-            if self._meta_antwort(frage):
-                return
-        except Exception:
-            traceback.print_exc(file=sys.stderr)
         # KI4KI-BILD: "Zeig mir Bild 2.1" direkt aus dem Dokument
         try:
             if self._bild_antwort(frage):
