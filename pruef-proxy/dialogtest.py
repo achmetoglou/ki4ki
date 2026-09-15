@@ -1209,6 +1209,51 @@ def szenario_38_katalog_endung():
             os.environ["KI4KI_BESTANDSINDEX"] = _merk
         _il.reload(_il.import_module("bestand"))
 
+
+def szenario_39_kurzform_verlinken():
+    print("\n[39] Kurzform ', S. n' wird verlinkt - auch mehrere je Klammer")
+    import re as _re
+    _q = open(os.path.join(HIER, "pruef_proxy.py"), encoding="utf-8").read()
+
+    pruefe(r',\s*(?:Seite|S\.)\s*(\d+)(?:-\d+)?' in _q,
+           "mit_verweisen() sucht beide Schreibweisen (Seite UND S.)")
+    pruefe('verlinkt = [(t.start(), t.end())' in _q
+           and "if any(a <= m.start() < b for a, b in verlinkt):" in _q,
+           "schon fertige Verweise werden ausgespart (sonst Zeichensalat)")
+    pruefe(_q.index("verlinkt = [(t.start()") < _q.index(r',\s*(?:Seite|S\.)\s*(\d+)'),
+           "die Sperrliste steht VOR der Schleife")
+
+    # Endungs-Ersetzung mit dem ECHTEN Ausdruck aus dem Quelltext pruefen -
+    # abgeschrieben wuerde er beim naechsten Aendern still veralten.
+    _m = _re.search(r'text = re\.sub\(r"(\([^"]+)",\n\s*r"(\\1\\2)", text\)', _q)
+    pruefe(_m is not None, "Endungs-Ersetzung im Quelltext gefunden")
+    _muster = _m.group(1) if _m else r"(?!x)x"
+    def ohne_endung(text):
+        return _re.sub(_muster, r"\1\2", text)
+    pruefe(ohne_endung("(KI4KI-Bedienung.md, S. 1)") == "(KI4KI-Bedienung, S. 1)",
+           "Endung faellt beim ersten Dokument der Klammer")
+    pruefe(ohne_endung("(A.md, S. 1; B.md, S. 3)") == "(A, S. 1; B, S. 3)",
+           "auch beim ZWEITEN Dokument derselben Klammer (war der Fund vom 15.09.)")
+    pruefe(ohne_endung("(KI4KI-Betriebshandbuch.md, S. 1; KI4KI-Bedienung.md, S. 1)")
+           == "(KI4KI-Betriebshandbuch, S. 1; KI4KI-Bedienung, S. 1)",
+           "der echte Fall aus dem FAQ-Bereich")
+    pruefe(ohne_endung("Siehe DS-24-006.md, Seite 12 dort") == "Siehe DS-24-006, Seite 12 dort",
+           "Langform wird ebenfalls bereinigt")
+    pruefe(ohne_endung("Die Datei handbuch.md liegt im Ordner")
+           == "Die Datei handbuch.md liegt im Ordner",
+           "ein Dateiname OHNE Seitenangabe bleibt unangetastet")
+    pruefe(ohne_endung("start.sh und mk_md.py sind Skripte")
+           == "start.sh und mk_md.py sind Skripte",
+           "andere Dateinamen werden nicht angefasst")
+
+    # Sperrliste isoliert nachspielen: ein fertiger Link darf nicht erneut greifen
+    text = "Vorher [DS-24-005, S. 1](/stelle?dok=DS-24-005&seite=1) und roh DS-24-006, S. 7 hier"
+    verlinkt = [(t.start(), t.end()) for t in _re.finditer(r"\[[^\]\n]*\]\([^)\n]*\)", text)]
+    treffer = [m for m in _re.finditer(r",\s*(?:Seite|S\.)\s*(\d+)(?:-\d+)?", text)
+               if not any(a <= m.start() < b for a, b in verlinkt)]
+    pruefe(len(treffer) == 1 and treffer[0].group(1) == "7",
+           "im fertigen Link wird NICHT erneut verlinkt, die rohe Stelle schon")
+
 def szenario_27_wegabgleich_und_bildarten():
     print("\n[27] A2 Rechtepruefung je Ausgabeweg (wegabgleich) · Bildarten · Kategorie-Vorgabe per Unterordner")
     import wegabgleich
@@ -1252,7 +1297,8 @@ if __name__ == "__main__":
               szenario_35_bandnummer,
               szenario_36_eckige_belege,
               szenario_37_neue_fassung_meldung,
-              szenario_38_katalog_endung):
+              szenario_38_katalog_endung,
+              szenario_39_kurzform_verlinken):
         try:
             s()
         except Exception as e:

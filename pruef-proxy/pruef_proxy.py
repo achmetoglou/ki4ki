@@ -3737,7 +3737,21 @@ def mit_verweisen(text, pruefungen=None, quellen=None):
     # keinen laengeren zerschneidet.
     ergebnis = []
     bis = 0
-    for m in re.finditer(r", Seite (\d+)(?:-\d+)?", text):
+    # ⭐ Beide Schreibweisen der Seitenangabe. Bis zum 15.09. stand hier nur
+    # ", Seite N" - die KURZFORM ", S. N" wurde zwar geprueft, aber nie
+    # verlinkt. Genau die schreibt das Modell, wenn es mehrere Belege in eine
+    # Klammer packt ("(X, S. 1; Y, S. 3)"), und im FAQ-Bereich schrieb es
+    # ausschliesslich so: 25 Quellen, 0 Links, kein Sprung auf die Seite.
+    # ⛔ Schon fertige Verweise aussparen. Ihr sichtbarer Text traegt dieselbe
+    # Kurzform ("[DS-24-005, S. 1](/stelle?...)") - ohne diese Sperre wuerde
+    # sie ein zweites Mal verlinkt, und aus dem Link wuerde Zeichensalat.
+    # Solange nur die Langform gesucht wurde, konnte das nicht passieren.
+    verlinkt = [(t.start(), t.end())
+                for t in re.finditer(r"\[[^\]\n]*\]\([^)\n]*\)", text)]
+
+    for m in re.finditer(r",\s*(?:Seite|S\.)\s*(\d+)(?:-\d+)?", text):
+        if any(a <= m.start() < b for a, b in verlinkt):
+            continue
         davor = text[:m.start()]
         name = None
         for kandidat in PDFS:
@@ -7035,7 +7049,15 @@ class Griff(BaseHTTPRequestHandler):
                     text += "\n\n*„Zeig mir Bild %s“ holt eine davon.*" % echte[0][0]
         # Kennungen mit Endung ("(X.md, S. 32)") auf die nackte Kennung bringen -
         # sonst greifen Belegpruefung und Verlinkung nicht (gemessen 27.08.).
-        text = re.sub(r"\(\s*([^(),\n]{2,90}?)\.(?:md|pdf)\s*,\s*S\.", r"(\1, S.", text)
+        #
+        # ⚠ NICHT nur nach der oeffnenden Klammer: Nennt das Modell mehrere
+        # Dokumente in EINER Klammer ("(X.md, S. 1; Y.md, S. 1)"), stand das
+        # zweite nie am Klammeranfang - seine Endung blieb stehen und damit
+        # blieb es unverlinkt (gemessen 15.09. im FAQ-Bereich). Die Endung
+        # wird deshalb ueberall vor einer Seitenangabe entfernt; ausserhalb
+        # dieses Zusammenhangs bleibt ein Dateiname unangetastet.
+        text = re.sub(r"([^\s(;,\n][^(),;\n]{0,89}?)\.(?:md|pdf)(\s*,\s*S(?:eite)?\.?\s*\d)",
+                      r"\1\2", text)
         # Belege OHNE Klammern ("... Testfragen DVS 2290, S. 1.") einklammern - sonst
         # weder geprueft noch verlinkt (gemessen 27.08.). Laengste Kennung zuerst.
         _kenn = sorted({assistent._titel_saubern(n) for n in namen if n}, key=len, reverse=True)
