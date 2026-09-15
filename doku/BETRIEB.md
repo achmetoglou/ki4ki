@@ -64,7 +64,57 @@ Dienste, jeder mit Status `Up`.
 | Arbeitsbereich fehlt | `./arbeitsbereich_anlegen.sh <API-Schlüssel> <Name> <Fachgebiet> <Wer fragt> <Besonderes>` (Schlüssel aus `.secrets.env`, Zeile `KI4KI_API_KEY`) |
 | Nicht alle Workflows aktiviert | In n8n die drei Dateien aus `n8n-workflows/` importieren und **alle drei** aktivieren — auch die zwei Unter-Abläufe. Inaktive Unter-Abläufe führen dazu, dass jedes Dokument ohne Fehlermeldung mit leerem Text aussortiert wird. |
 
-### 2.4 Fertig-Prüfung
+### 2.4 Eigener Name statt IP-Adresse (Reverse-Proxy)
+
+Die meisten Betreiber wollen `https://ki4ki.firma.de` statt `http://<server-ip>:3001`.
+Dafür setzt man einen Reverse-Proxy (Caddy, nginx, Traefik) davor.
+
+**In der Anlage ist dafür nichts einzustellen.** Sie baut ausschließlich *relative*
+Adressen — Beleglinks (`/stelle?dok=…`), Kennzahlen (`/kpi`), Dokumentaufrufe. Sie
+funktionieren unter jedem Namen und jedem Pfad, ohne Änderung, ohne Neustart.
+
+**Drei Einstellungen im Reverse-Proxy entscheiden aber, ob alles heil ankommt.**
+Mit den Standardwerten der meisten Server geht zweimal etwas kaputt:
+
+| Einstellung | Warum | Wert |
+|---|---|---|
+| **Größe des Uploads** | Voreinstellung bei nginx ist **1 MB** — jede Dissertation scheitert dann mit „413“, ohne dass die Anlage etwas davon mitbekommt. Die Anlage selbst erlaubt 200 MB (`KI4KI_MAX_UPLOAD`). | `client_max_body_size 200m;` |
+| **Geduld bei langen Antworten** | Eine gründliche Antwort darf bis zu **300 s** dauern (`KI4KI_GESPRAECH_BUDGET`). nginx bricht nach 60 s mit „504“ ab — der Nutzer sieht einen Fehler, obwohl die Anlage noch arbeitet. | `proxy_read_timeout 360s;` (auch `proxy_send_timeout`) |
+| **WebSocket durchlassen** | Der Agentenmodus eines Bereichs läuft über WebSocket. Ohne die Upgrade-Kopfzeilen bleibt er stumm. | `Upgrade`/`Connection`-Kopfzeilen weiterreichen |
+
+**nginx — das Nötigste:**
+
+```nginx
+server {
+  server_name ki4ki.firma.de;
+  client_max_body_size 200m;
+  location / {
+    proxy_pass http://127.0.0.1:3001;
+    proxy_read_timeout 360s;
+    proxy_send_timeout 360s;
+    proxy_set_header Host $host;
+    proxy_set_header X-Forwarded-Proto $scheme;
+    proxy_set_header Upgrade $http_upgrade;
+    proxy_set_header Connection "upgrade";
+  }
+}
+```
+
+**Caddy** bringt TLS, WebSocket und großzügige Zeitgrenzen von selbst mit:
+
+```
+ki4ki.firma.de {
+  reverse_proxy 127.0.0.1:3001
+}
+```
+
+**Danach prüfen** (drei Handgriffe, die genau die drei Fallen treffen):
+
+- [ ] Ein großes PDF (> 10 MB) über die Oberfläche hochladen — kommt es an?
+- [ ] Eine Frage stellen, die lange braucht (z. B. „Fasse Dokument X vollständig zusammen") — kommt die Antwort, oder bricht es nach einer Minute ab?
+- [ ] Einen Beleg in einer Antwort anklicken — öffnet sich die Seite im Original mit gelber Markierung?
+
+### 2.5 Fertig-Prüfung
 
 - [ ] Anmeldung an der Oberfläche funktioniert
 - [ ] `curl -s http://localhost:3001/pruef-status` antwortet (z. B. `{"bestand": 0, "pdfs": 0}`)
@@ -282,10 +332,20 @@ und Bestandslisten stimmen. Ampel-Bericht unter `http://<server>:3001/selbstchec
 - Das Protokoll ist eine Hash-Kette (fälschungssicher, pseudonymisierte Konten),
   Aufbewahrung `KI4KI_PROTOKOLL_TAGE` (90).
 
+> **„Nicht gefunden" auf `/kpi`? Das ist kein Fehler.** Diese Seiten verstecken sich
+> absichtlich vor Konten ohne Einsichtsrecht — sonst verrät schon die Fehlermeldung,
+> dass es sie gibt. Einsicht haben: alle Konten in `KI4KI_PROTOKOLL_EINSICHT` (Standard
+> `admin`) **und** jeder AnythingLLM-Administrator (abschaltbar mit
+> `KI4KI_EINSICHT_ADMINS=0`). Wer als gewöhnlicher Benutzer angemeldet ist — auch als
+> Vorführ- oder Gastkonto — bekommt „Nicht gefunden". Abhilfe: mit einem Admin-Konto
+> anmelden, nicht das Vorführkonto berechtigen. Der Proxy schreibt jede Abweisung mit
+> dem Grund ins Protokoll (`docker logs ki4ki-pruef-proxy | grep Einsicht`).
+
 ## 12 · Sicherheit
 
 1. **HTTPS davor:** ein Reverse-Proxy (Caddy/nginx) mit TLS vor Port 3001 — sonst
-   laufen Passwörter und Antworten im Klartext übers Netz.
+   laufen Passwörter und Antworten im Klartext übers Netz. Einrichtung und die
+   drei kritischen Einstellungen: Abschnitt 2.4.
 2. **Ports begrenzen:** 3001 (Nutzer) und 5678 (n8n) nur im LAN/VPN. n8n ist eine
    zweite Admin-Tür mit Dateizugriff und dem API-Schlüssel — stärker absichern.
 3. **Kein Datenabfluss:** Nach dem ersten Start braucht kein Dienst Internet;

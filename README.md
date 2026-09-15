@@ -35,6 +35,9 @@ fertig. Danach:
 - **Oberfläche:** `http://<server-ip>:3001` · Benutzer `admin` + das gewählte Passwort
 - **`.secrets.env` sichern** (liegt im Projektordner). Ohne diese Datei kommt
   niemand mehr an die Anlage.
+- **Eigener Name statt IP?** Ein Reverse-Proxy davor genügt — in der Anlage ist dafür
+  nichts einzustellen. Drei Einstellungen im Reverse-Proxy sind aber wichtig (Upload-Größe,
+  Zeitgrenze, WebSocket): [`doku/BETRIEB.md`](doku/BETRIEB.md), Abschnitt 2.4.
 
 Details zur Installation stehen in [`doku/BETRIEB.md`](doku/BETRIEB.md), Abschnitt 2.
 
