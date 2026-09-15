@@ -99,11 +99,31 @@ def laden(pfad=VERZEICHNIS):
                 d = json.load(f)
         except Exception:
             return None
-        # Nachschlagen ueber eine Grundform, damit Schreibvarianten treffen
+        # Nachschlagen ueber eine Grundform, damit Schreibvarianten treffen.
+        #
+        # ⛔ Die Endung gehoert NICHT in die Grundform. Gefragt wird mit
+        # "X.md" oder "X.pdf", und angaben() schneidet die Endung ab - stand
+        # der Schluessel im Katalog MIT Endung, traf die Suche nie
+        # ("ki4kibetriebshandbuchmd" gegen "ki4kibetriebshandbuch"). Solche
+        # Eintraege waren unerreichbar: nicht lesbar, nicht loeschbar, und
+        # beim Loeschen des Dokuments blieben sie als Leichen zurueck
+        # (gefunden 15.09. im FAQ-Bereich, zwei von fuenf).
+        #
+        # Beide Formen werden indiziert, die endungslose zuerst: Gibt es
+        # einen sauberen Eintrag, hat er Vorrang vor der Altlast.
         _GELADEN = {"roh": d, "nach_grund": {}}
-        for name, e in d.items():
-            _GELADEN["nach_grund"].setdefault(_grund(name), (name, e))
+        for mit_endung in (False, True):
+            for name, e in d.items():
+                if str(name).lower().endswith((".pdf", ".md")) != mit_endung:
+                    continue
+                _GELADEN["nach_grund"].setdefault(_grund(_ohne_endung(name)), (name, e))
         return _GELADEN
+
+
+def _ohne_endung(n):
+    """'X.md' / 'X.pdf' -> 'X'. Alles andere bleibt, wie es ist."""
+    s = str(n)
+    return s.rsplit(".", 1)[0] if s.lower().endswith((".pdf", ".md")) else s
 
 
 def _grund(n):
@@ -428,7 +448,13 @@ def eintragen(name, angabe, quelle="modell", pfad=VERZEICHNIS):
             d = {}
         eintrag = dict(angabe)
         eintrag["quelle"] = quelle
-        d[str(name)] = eintrag
+        # Immer OHNE Endung ablegen - so entstehen keine neuen unerreichbaren
+        # Eintraege. Eine schon vorhandene Altlast mit Endung wird dabei
+        # abgeraeumt, sonst stuenden zwei Eintraege fuer dasselbe Dokument da.
+        schluessel = _ohne_endung(name)
+        for k in [x for x in d if x != schluessel and _grund(_ohne_endung(x)) == _grund(schluessel)]:
+            d.pop(k, None)
+        d[schluessel] = eintrag
         try:
             os.makedirs(os.path.dirname(pfad) or ".", exist_ok=True)
             tmp = pfad + ".neu"
@@ -445,14 +471,16 @@ def entfernen(name, pfad=VERZEICHNIS):
     """Katalogeintrag eines geloeschten Dokuments entfernen (alle
     Schreibvarianten des Namens). Liefert die Zahl der entfernten."""
     global _GELADEN
-    ziel = _grund(str(name).rsplit(".", 1)[0] if str(name).lower().endswith((".pdf", ".md")) else name)
+    ziel = _grund(_ohne_endung(name))
     with _SPERRE:
         try:
             with open(pfad, encoding="utf-8") as f:
                 d = json.load(f)
         except Exception:
             return 0
-        weg = [k for k in d if _grund(k) == ziel]
+        # Auch Schluessel MIT Endung treffen - sonst bleibt der Eintrag als
+        # Leiche im Katalog zurueck, waehrend das Dokument laengst weg ist.
+        weg = [k for k in d if _grund(_ohne_endung(k)) == ziel]
         for k in weg:
             d.pop(k, None)
         if weg:

@@ -116,7 +116,13 @@ lassen sich in der `.env` freigeben (siehe Betriebshandbuch).
   SFTP arbeitet, löscht die alte Fassung zuerst in der Oberfläche.
 - **Löschen:** in der Oberfläche (Zahnrad → Dokumente → Papierkorb) oder die Datei
   nach `dokumente/<bereich>/loeschen/` legen. Die Anlage entfernt das Dokument
-  vollständig; jeder Schritt steht in `loeschen.log`.
+  vollständig — Textfassung, Vektoren, Archiv-PDF und Katalogeintrag.
+
+| **Wann ist wirklich alles weg?** | |
+|---|---|
+| Papierkorb in der Oberfläche | **sofort.** Wenn der Dialog schließt, ist auch die eigene Seite aufgeräumt — danach kann dieselbe Datei direkt wieder hochgeladen werden. |
+| Datei nach `loeschen/` gelegt | **binnen einer Minute** — so oft sieht die Wache dort nach. |
+| Nachweis | `dokumente/<bereich>/loeschen.log` — je Dokument eine Zeile mit Zeitstempel und dem, was entfernt wurde. |
 
 ---
 

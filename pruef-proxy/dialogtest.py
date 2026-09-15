@@ -1165,6 +1165,50 @@ def szenario_37_neue_fassung_meldung():
     pruefe("(doppelt or neue_fassung or in_arbeit) and not namen" in _q,
            "die Meldung erscheint auch, wenn NUR neue Fassungen dabei waren")
 
+
+def szenario_38_katalog_endung():
+    print("\n[38] Katalogeintraege mit Dateiendung: lesbar und loeschbar")
+    import json as _j, tempfile as _tf, sys as _sy, importlib as _il
+    _kat = os.path.join(_tf.mkdtemp(), "bestandsindex.json")
+    # So sah der Katalog auf der A40 aus: gemischte Schluessel. Die mit Endung
+    # waren unerreichbar - weder lesbar noch loeschbar (Fund 15.09.).
+    _j.dump({"DS-23-004": {"titel": "Sauber ohne Endung", "quelle": "modell"},
+             "KI4KI-Betriebshandbuch.md": {"titel": "Altlast mit Endung", "quelle": "modell"},
+             "KI4KI-Innenansicht.md": {"titel": "Zweite Altlast", "quelle": "modell"}},
+            open(_kat, "w", encoding="utf-8"))
+    _sy.path.insert(0, HIER)
+    _merk = os.environ.get("KI4KI_BESTANDSINDEX")
+    os.environ["KI4KI_BESTANDSINDEX"] = _kat
+    try:
+        _bm = _il.reload(_il.import_module("bestand"))
+        a = _bm.angaben("KI4KI-Betriebshandbuch.md")
+        pruefe(a is not None and a.get("titel") == "Altlast mit Endung",
+               "Eintrag mit Endung ist wieder lesbar (war vorher unerreichbar)")
+        pruefe((_bm.angaben("KI4KI-Betriebshandbuch.pdf") or {}).get("titel") == "Altlast mit Endung",
+               "auch ueber eine ANDERE Endung gefragt wird er gefunden")
+        pruefe((_bm.angaben("DS-23-004.md") or {}).get("titel") == "Sauber ohne Endung",
+               "der normale Fall ohne Endung funktioniert unveraendert")
+
+        pruefe(_bm.entfernen("KI4KI-Betriebshandbuch.pdf") == 1,
+               "Eintrag mit Endung laesst sich loeschen (blieb vorher als Leiche)")
+        _bm._GELADEN = None
+        pruefe("KI4KI-Betriebshandbuch.md" not in _j.load(open(_kat, encoding="utf-8")),
+               "er ist danach wirklich aus dem Katalog verschwunden")
+
+        _bm.eintragen("KI4KI-Innenansicht.md", {"titel": "Neu geschrieben"})
+        _bm._GELADEN = None
+        _stand = _j.load(open(_kat, encoding="utf-8"))
+        pruefe("KI4KI-Innenansicht" in _stand and "KI4KI-Innenansicht.md" not in _stand,
+               "neu abgelegt wird OHNE Endung - die Altlast wird dabei abgeraeumt")
+        pruefe(sum(1 for k in _stand if k.lower().startswith("ki4ki-innenansicht")) == 1,
+               "kein Doppeleintrag fuer dasselbe Dokument")
+    finally:
+        if _merk is None:
+            os.environ.pop("KI4KI_BESTANDSINDEX", None)
+        else:
+            os.environ["KI4KI_BESTANDSINDEX"] = _merk
+        _il.reload(_il.import_module("bestand"))
+
 def szenario_27_wegabgleich_und_bildarten():
     print("\n[27] A2 Rechtepruefung je Ausgabeweg (wegabgleich) · Bildarten · Kategorie-Vorgabe per Unterordner")
     import wegabgleich
@@ -1207,7 +1251,8 @@ if __name__ == "__main__":
               szenario_34_nachtrag_loeschen,
               szenario_35_bandnummer,
               szenario_36_eckige_belege,
-              szenario_37_neue_fassung_meldung):
+              szenario_37_neue_fassung_meldung,
+              szenario_38_katalog_endung):
         try:
             s()
         except Exception as e:
