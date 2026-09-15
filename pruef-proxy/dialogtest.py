@@ -1254,6 +1254,58 @@ def szenario_39_kurzform_verlinken():
     pruefe(len(treffer) == 1 and treffer[0].group(1) == "7",
            "im fertigen Link wird NICHT erneut verlinkt, die rohe Stelle schon")
 
+def szenario_40_selbstauskunft():
+    print("\n[40] 'Was kann diese Anlage hier?' erreicht die Selbstauskunft - nicht den Bilder-Zweig")
+    import ast as _ast, re as _re
+    _q = open(os.path.join(HIER, "pruef_proxy.py"), encoding="utf-8").read()
+
+    # Muster und Pruefroutine AUS DEM QUELLTEXT holen. Abgeschrieben wuerden
+    # sie beim naechsten Aendern still veralten (Lehre vom 15.09.).
+    raum = {"re": _re}
+    for knoten in _ast.parse(_q).body:
+        if isinstance(knoten, _ast.Assign) and \
+                getattr(knoten.targets[0], "id", "") in ("_META_KANN", "_SATZ_TEILER"):
+            exec(compile(_ast.Module([knoten], []), "<q>", "exec"), raum)
+        if isinstance(knoten, _ast.FunctionDef) and knoten.name == "_kann_frage":
+            exec(compile(_ast.Module([knoten], []), "<q>", "exec"), raum)
+    pruefe("_kann_frage" in raum, "_kann_frage() steht im Quelltext")
+    kann = raum.get("_kann_frage", lambda f: False)
+
+    # Der echte Fall vom 15.09.: zwei Saetze, Subjekt statt "du".
+    pruefe(kann("Was kann diese Anlage hier? und ist alles korrekt eingestellt?"),
+           "der gemessene Fall aus dem FAQ-Bereich wird erkannt")
+    for f in ("Was kannst du?", "Was kannst du alles?", "was koennt ihr?",
+              "Was kann das System?", "Was kann KI4KI?", "Wer bist du?",
+              "Wozu bist du da?", "Welche Funktionen hast du?",
+              "Was kann man hier alles fragen?", "Hallo. Was kannst du?"):
+        pruefe(kann(f), "Selbstauskunft erkannt: %r" % f)
+
+    # ⚠ Der wichtigere Teil: es darf NICHT zu viel fangen. Jede dieser
+    #   Fragen ist eine Fachfrage und gehoert in den Bestand.
+    for f in ("Was kannst du zu DVS 2213 sagen?",
+              "Was kann die Anlage SGM-3 bei Fehlercode E42?",
+              "Was kann man gegen Lunker im Spritzguss tun?",
+              "Welche Funktionen hat die Schnecke im Extruder?",
+              "Was kannst du mir ueber die Dissertation von Becker erzaehlen?",
+              "Danke und jetzt Bild 1.1?",
+              "Fasse das Betriebshandbuch zusammen"):
+        pruefe(not kann(f), "Fachfrage bleibt Fachfrage: %r" % f)
+
+    # Leermeldungen der Nebenwerkzeuge muessen zurueckverweisen. Vorher wurde
+    # "Keine Abbildung ..." woertlich zur ganzen Antwort (gemessen 15.09.,
+    # Vorgang 570: bestand_durchsuchen hatte vier Dokumente gefunden).
+    # Die Saetze stehen im Quelltext ueber mehrere Literale verteilt -
+    # benachbarte Zeichenketten erst zusammenkleben, sonst sucht der Test
+    # nach etwas, das so nie in einer Zeile steht.
+    _flach = _re.sub(r'"\s*\n\s*"', "", _q)
+    pruefe(_flach.count("Das ist KEINE Antwort auf die Frage") >= 3,
+           "alle drei Leermeldungen sagen dem Modell, dass sie keine Antwort sind")
+    _ab = _q.index("Keine Abbildung mit nummerierter Unterschrift")
+    pruefe("KEINE Antwort auf die Frage des Nutzers" in _q[_ab:_ab + 700]
+           and "bestand_durchsuchen" in _q[_ab:_ab + 700],
+           "die Abbildungs-Leermeldung nennt den Weg zurueck in den Text")
+
+
 def szenario_27_wegabgleich_und_bildarten():
     print("\n[27] A2 Rechtepruefung je Ausgabeweg (wegabgleich) · Bildarten · Kategorie-Vorgabe per Unterordner")
     import wegabgleich
@@ -1298,7 +1350,8 @@ if __name__ == "__main__":
               szenario_36_eckige_belege,
               szenario_37_neue_fassung_meldung,
               szenario_38_katalog_endung,
-              szenario_39_kurzform_verlinken):
+              szenario_39_kurzform_verlinken,
+              szenario_40_selbstauskunft):
         try:
             s()
         except Exception as e:

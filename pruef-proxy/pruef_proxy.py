@@ -1106,11 +1106,39 @@ _META_GRUSS = re.compile(
     r"^\s*(hallo|hi|hey|moin|servus|na|danke(\s+dir)?|"
     r"guten\s+(tag|morgen|abend)|wie\s+geht'?s?(\s+dir|\s+ihnen)?|"
     r"wie\s+l(ae|\u00e4)uft'?s?)[\s,.!?]*$", re.I)
+# ⭐ Die haeufigste erste Frage ueberhaupt - und sie kommt selten woertlich
+#   als "Was kannst du?". Gemessen 15.09.: "Was kann diese Anlage hier? und
+#   ist alles korrekt eingestellt?" fiel durch (zweiter Satz -> $ scheitert,
+#   "diese Anlage" statt "du") und landete im Werkzeug-Lauf. Das Modell griff
+#   dort ins Bilder-Werkzeug, fand erwartungsgemaess nichts und machte die
+#   Leermeldung zur ganzen Antwort. Deshalb: Subjekt zugelassen (Anlage,
+#   System, ...) und SATZWEISE geprueft (siehe _meta_antwort).
+#   ⚠ Der Anker $ bleibt je Satz: "Was kannst du zu DVS 2213 sagen?" ist eine
+#     Fachfrage und darf hier NICHT haengenbleiben.
 _META_KANN = re.compile(
-    r"^\s*(was\s+kannst\s+du|was\s+(sind|ist)\s+deine\s+"
-    r"funktion(en)?|wer\s+bist\s+du|was\s+bist\s+du|"
+    r"^\s*(was\s+kannst\s+du(\s+(alles|so|hier|denn))?|"
+    r"was\s+k(oe|\u00f6)nnt\s+ihr(\s+alles)?|"
+    r"was\s+kann\s+(diese[rs]?|das|die|dein[e]?)\s+"
+    r"(anlage|system|programm|werkzeug|tool|ding|datenbank|"
+    r"wissensdatenbank|anwendung|ki)(\s+hier)?|"
+    r"was\s+kann\s+(ki4ki|das\s+hier)|"
+    r"was\s+(sind|ist)\s+deine\s+funktion(en)?|"
+    r"welche\s+funktionen\s+(hast|habt|gibt\s+es)(\s+(du|ihr|hier))?|"
+    r"was\s+kann\s+(ich|man)\s+(dich|euch|hier)\s+(alles\s+)?fragen|"
+    r"wer\s+bist\s+du|was\s+bist\s+du|"
     r"wie\s+funktionierst\s+du|wobei\s+(kannst|hilfst)\s+du(\s+mir)?|"
+    r"wozu\s+bist\s+du\s+da|"
     r"was\s+machst\s+du)[\s,.!?]*$", re.I)
+# Satzgrenzen fuer die Selbstauskunft: . ! ? und Zeilenumbruch trennen.
+_SATZ_TEILER = re.compile(r"[.!?\n]+")
+
+
+def _kann_frage(f):
+    """Steht in der Eingabe (als ganzer Satz) eine Selbstauskunfts-Frage?"""
+    if _META_KANN.match(f):
+        return True
+    teile = [t.strip() for t in _SATZ_TEILER.split(f)]
+    return any(t and _META_KANN.match(t) for t in teile[:3])
 META_TEXT_KANN = (
     "Ich bin die **Wissensdatenbank** dieser Anlage. Ich beantworte deine "
     "**Fachfragen zu den hinterlegten Dokumenten** \u2013 und belege **jede "
@@ -1133,6 +1161,10 @@ META_TEXT_KANN = (
     "- **Export:** \u201eals CSV\u201c / \u201eals BibTeX\u201c.\n"
     "- **Korrigieren:** \u201edas ist falsch\u201c oder \u201esicher?\u201c \u2013 ich "
     "pr\u00fcfe die letzte Antwort Satz f\u00fcr Satz am Original.\n"
+    "- **Abfragen:** \u201eStell mir eine Pr\u00fcfungsfrage\u201c \u2013 die Fragen kommen "
+    "w\u00f6rtlich aus dem hinterlegten Katalog, die Bewertung ebenso.\n"
+    "- **St\u00f6rf\u00e4lle:** \u201eAn der SGM-3 kommt E42, die D\u00fcse tropft\u201c \u2192 Ursache, "
+    "Ma\u00dfnahme, Quelle.\n"
     "- **Alles durchsuchen:** Frage mit \u201eim ganzen Bestand:\u201c beginnen."
     "\n\nStell mir einfach eine Frage zu deinen Dokumenten!")
 META_TEXT_GRUSS = (
@@ -6731,14 +6763,18 @@ class Griff(BaseHTTPRequestHandler):
             return "Dieses Dokument liegt nicht vor."
         if not schluessel and name in ("abbildungen_auflisten", "abbildung_zeigen", "seite_zeigen"):
             return ("%s liegt nicht als PDF vor (Excel/Word/Text) - es gibt keine Seitenbilder oder "
-                    "Abbildungen dazu. Lies stattdessen mit seiten_lesen." % assistent._titel_saubern(dok))
+                    "Abbildungen dazu. Lies stattdessen mit seiten_lesen. Das ist KEINE Antwort "
+                    "auf die Frage - beantworte sie aus dem Text."
+                    % assistent._titel_saubern(dok))
         if name == "seiten_lesen":
             _sch, seiten = _seitentexte_von(dok)
             such = str(args.get("frage") or "")
             nummern, terme = fadenfrage.seiten_waehlen(such, seiten)
             if not nummern:
                 return ("Zu '%s' keine passende Seite in %s gefunden (gesucht: %s). Andere Begriffe "
-                        "probieren oder zusammenfassen nutzen." % (such, assistent._titel_saubern(dok), ", ".join(terme) or "-"))
+                        "probieren oder zusammenfassen nutzen. Das ist KEINE Antwort auf die "
+                        "Frage des Nutzers."
+                        % (such, assistent._titel_saubern(dok), ", ".join(terme) or "-"))
             zustand["seiten"].setdefault(dok, []).extend(n for n in nummern if n not in zustand["seiten"].get(dok, []))
             return "\n\n".join("=== %s, Seite %d ===\n%s" % (assistent._titel_saubern(dok), n, (seiten[n - 1] or "")[:3500])
                                  for n in nummern if 0 < n <= len(seiten))
@@ -6748,7 +6784,16 @@ class Griff(BaseHTTPRequestHandler):
             ab = int(args.get("ab") or 0)
             teil = liste[ab:ab + 80]
             if not liste:
-                return "Keine Abbildung mit nummerierter Unterschrift in %s." % assistent._titel_saubern(dok)
+                # ⭐ 15.09.: Diese Zeile wurde woertlich zur ganzen Antwort
+                #   ("... kann ich keine passenden Bilder zeigen"), obwohl
+                #   bestand_durchsuchen vier Dokumente gefunden hatte. Die
+                #   reinen Text-PDFs des FAQ-Bereichs treffen das immer.
+                return ("Keine Abbildung mit nummerierter Unterschrift in %s. "
+                        "Das ist KEINE Antwort auf die Frage des Nutzers - "
+                        "beantworte sie aus dem Text (bestand_durchsuchen, "
+                        "seiten_lesen); die fehlenden Abbildungen hoechstens "
+                        "am Rande erwaehnen."
+                        % assistent._titel_saubern(dok))
             aus = "%d Abbildungen in %s. Die Zahl %d ist die einzige gueltige Anzahl. Tabelle (Markdown, unveraendert uebernehmen):\n\n" % (
                 len(liste), assistent._titel_saubern(dok), len(liste))
             arten = self._abbildungen_arten(dok)
@@ -9581,7 +9626,7 @@ class Griff(BaseHTTPRequestHandler):
         f = (frage or "").strip()
         if not META_ANTWORT or not f:
             return False
-        if _META_KANN.match(f):
+        if _kann_frage(f):
             text = META_TEXT_KANN
         elif _META_GRUSS.match(f):
             text = META_TEXT_GRUSS
