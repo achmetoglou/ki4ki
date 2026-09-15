@@ -6775,17 +6775,14 @@ class Griff(BaseHTTPRequestHandler):
             return "Dieses Dokument liegt nicht vor."
         if not schluessel and name in ("abbildungen_auflisten", "abbildung_zeigen", "seite_zeigen"):
             return ("%s liegt nicht als PDF vor (Excel/Word/Text) - es gibt keine Seitenbilder oder "
-                    "Abbildungen dazu. Lies stattdessen mit seiten_lesen. Das ist KEINE Antwort "
-                    "auf die Frage - beantworte sie aus dem Text."
-                    % assistent._titel_saubern(dok))
+                    "Abbildungen dazu. Lies stattdessen mit seiten_lesen." % assistent._titel_saubern(dok))
         if name == "seiten_lesen":
             _sch, seiten = _seitentexte_von(dok)
             such = str(args.get("frage") or "")
             nummern, terme = fadenfrage.seiten_waehlen(such, seiten)
             if not nummern:
                 return ("Zu '%s' keine passende Seite in %s gefunden (gesucht: %s). Andere Begriffe "
-                        "probieren oder zusammenfassen nutzen. Das ist KEINE Antwort auf die "
-                        "Frage des Nutzers."
+                        "probieren oder zusammenfassen nutzen."
                         % (such, assistent._titel_saubern(dok), ", ".join(terme) or "-"))
             zustand["seiten"].setdefault(dok, []).extend(n for n in nummern if n not in zustand["seiten"].get(dok, []))
             return "\n\n".join("=== %s, Seite %d ===\n%s" % (assistent._titel_saubern(dok), n, (seiten[n - 1] or "")[:3500])
@@ -6796,16 +6793,13 @@ class Griff(BaseHTTPRequestHandler):
             ab = int(args.get("ab") or 0)
             teil = liste[ab:ab + 80]
             if not liste:
-                # ⭐ 15.09.: Diese Zeile wurde woertlich zur ganzen Antwort
-                #   ("... kann ich keine passenden Bilder zeigen"), obwohl
-                #   bestand_durchsuchen vier Dokumente gefunden hatte. Die
-                #   reinen Text-PDFs des FAQ-Bereichs treffen das immer.
-                return ("Keine Abbildung mit nummerierter Unterschrift in %s. "
-                        "Das ist KEINE Antwort auf die Frage des Nutzers - "
-                        "beantworte sie aus dem Text (bestand_durchsuchen, "
-                        "seiten_lesen); die fehlenden Abbildungen hoechstens "
-                        "am Rande erwaehnen."
-                        % assistent._titel_saubern(dok))
+                # ⚠ HIER STAND EINE ANWEISUNG AN DAS MODELL (f3f081c) - wieder
+                #   entfernt. Gemessen 15.09. mit Qwen: das Modell beantwortete
+                #   die Anweisung statt die Frage ("Ich habe in meiner Antwort
+                #   keine Abbildungsnummern genannt ...") - drei Antworten in
+                #   Folge bestanden NUR daraus. Ein Werkzeugergebnis ist Material,
+                #   keine Regie; die Lenkung steht jetzt im Systemprompt (Regel 6b).
+                return "Keine Abbildung mit nummerierter Unterschrift in %s." % assistent._titel_saubern(dok)
             aus = "%d Abbildungen in %s. Die Zahl %d ist die einzige gueltige Anzahl. Tabelle (Markdown, unveraendert uebernehmen):\n\n" % (
                 len(liste), assistent._titel_saubern(dok), len(liste))
             arten = self._abbildungen_arten(dok)

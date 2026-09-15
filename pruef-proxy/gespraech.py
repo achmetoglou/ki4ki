@@ -170,7 +170,9 @@ def system_text(faden_dok=None, dokumente=None, kontakt="", rolle="", allgemeinw
         "5. 'die Arbeit', 'das Dokument', 'daraus', 'andere Grafiken' beziehen sich auf das Faden-Dokument. "
         "Ein neuer Verfasser oder eine Kennung wechselt das Dokument (dokument_finden, wenn unklar).\n"
         "6. Bilder: erst abbildungen_auflisten, dann die passende Nummer mit abbildung_zeigen holen und den "
-        "Platzhalter in die Antwort setzen; sag in einem Satz, warum diese. 'Weitere' = abbildungen_auflisten mit 'ab'.\n"
+        "Platzhalter in die Antwort setzen; sag in einem Satz, warum diese. 'Weitere' = abbildungen_auflisten mit 'ab'.\n"        "6b. Ein Werkzeug, das nichts findet, ist KEIN Thema fuer die Antwort. Beantworte dann die "
+        "gestellte Frage aus dem Text. Erwaehne fehlende Abbildungen oder Seiten nur, wenn "
+        "ausdruecklich danach gefragt wurde - sonst kein Wort darueber.\n"
         "7. Ist die Eingabe wirklich unklar, stell EINE kurze Rueckfrage mit 2-3 Optionen - statt zu raten.\n"
         "8. Fragen zum GESPRAECH selbst (welches Dokument du gerade nutzt, warum eine Antwort so "
         "aussah, was du zuletzt gesagt hast) beantwortest du direkt aus dem Gespraechszustand - "
@@ -183,7 +185,11 @@ def system_text(faden_dok=None, dokumente=None, kontakt="", rolle="", allgemeinw
         "sachlich aus dem, was die Dokumente hergeben, und sagst offen, wo die Einschaetzung endet.\n"
         "9. Zahlen: Wert, Einheit, Messbedingung, Seite - fehlt die Bedingung, schreib 'Bedingung fehlt'.\n"
         "10. Keine Meta-Saetze wie 'Basierend auf den Werkzeugen'. Schreibe NIE Zeilen wie 'Gespraech mit "
-        "Werkzeugen: ...' - das fuegt die Anlage selbst an.\n"
+        "Werkzeugen: ...' - das fuegt die Anlage selbst an. Sprich auch NIE ueber deine eigenen "
+        "Zwischenschritte, ueber Hinweise der Anlage an dich oder darueber, dass du dich korrigierst "
+        "('Danke, ich habe die Fundstellen gelesen', 'meine vorherige Antwort war falsch', 'ich habe "
+        "keine Abbildungsnummern genannt'). Der Leser sieht nur DIESE eine Antwort und kennt nichts "
+        "davon - schreib sie so, als waere es deine erste.\n"
         "11. Liefert ein Werkzeug eine Markdown-Tabelle oder eine Liste (Bestand, Abbildungen), uebernimm "
         "sie UNVERAENDERT und vollstaendig - keine Kuerzung, keine Umformung in Fliesstext, keine "
         "eigenen Seitenzahlen. Fehlt dir eine Seitenzahl, lass sie weg.\n"
@@ -313,6 +319,14 @@ def _dokument_im_text(text, faden_dok, kennungen=None):
     return faden_dok or None
 
 
+# ⭐ Jede Waechter-Rueckmeldung endet damit. Gemessen 15.09. mit Qwen: das
+#   Modell antwortete der Rueckmeldung statt dem Nutzer ("Danke - ich habe die
+#   Fundstellen gelesen", "meine vorherige Antwort war falsch"). Der Leser
+#   sieht nur EINE Antwort und kennt die Zwischenschritte nicht.
+REGIE = ("Schreibe die VOLLSTAENDIGE Antwort auf die urspruengliche Frage neu, als "
+         "waere es deine erste - und erwaehne diese Rueckmeldung mit keinem Wort.")
+
+
 def waechter_bilder(text, aufrufe, faden_dok=None, frage="", tool_texte=None, verlauf_texte=None, kennungen=None):
     """Nennt das Modell Abbildungsnummern, ohne die Liste geholt zu haben?
     Gemessen 26.08.: bei 'andere Grafiken' erfand es zehn Nummern samt
@@ -329,8 +343,9 @@ def waechter_bilder(text, aufrufe, faden_dok=None, frage="", tool_texte=None, ve
         return None
     return {"werkzeug": "abbildungen_auflisten", "args": {"dokument": dok},
             "hinweis": ("Die eben genannten Abbildungsnummern stammen aus keinem Werkzeug. "
-                        "Oben steht die ECHTE Liste. Antworte neu und nenne NUR Nummern "
-                        "und Seiten aus dieser Liste; zeige passende Bilder mit abbildung_zeigen.")}
+                        "Oben steht die ECHTE Liste. Nenne NUR Nummern "
+                        "und Seiten aus dieser Liste; zeige passende Bilder mit abbildung_zeigen. "
+                        + REGIE)}
 
 
 def waechter_belege(text, aufrufe, faden_dok=None, frage="", tool_texte=None, verlauf_texte=None, kennungen=None):
@@ -360,9 +375,9 @@ def waechter_belege(text, aufrufe, faden_dok=None, frage="", tool_texte=None, ve
             continue
         return {"werkzeug": "seiten_lesen", "args": {"dokument": kennung, "frage": frage},
                 "hinweis": ("Deine Antwort nennt (%s, S. %s), aber diese Seite hat kein Werkzeug "
-                            "geliefert. Oben stehen jetzt die passenden Seiten. Antworte neu und "
-                            "stuetze dich NUR auf gelesene Seiten; was dort nicht steht, sagst du."
-                            % (kennung, seite))}
+                            "geliefert. Oben stehen jetzt die passenden Seiten. Stuetze dich NUR "
+                            "auf gelesene Seiten; was dort nicht steht, sagst du. %s"
+                            % (kennung, seite, REGIE))}
     return None
 
 
@@ -400,11 +415,9 @@ def waechter_ohne_suche(text, aufrufe, faden_dok=None, frage="", tool_texte=None
     if not begriffe:
         return None
     return {"werkzeug": "bestand_durchsuchen", "args": {"begriffe": begriffe},
-            "hinweis": ("Du hast geantwortet, ohne ein einziges Werkzeug zu rufen - die "
-                        "Antwort stammt also aus dir selbst, nicht aus den Dokumenten. "
-                        "Oben stehen jetzt die Fundstellen aus dem Bestand. Antworte neu "
-                        "und stuetze dich NUR darauf. Steht die Antwort wirklich nicht "
-                        "darin, sag genau das - erfinde nichts ueber die Anlage.")}
+            "hinweis": ("Oben stehen die Fundstellen aus dem Bestand. Stuetze dich NUR "
+                        "darauf. Steht die Antwort wirklich nicht darin, sag genau das - "
+                        "erfinde nichts ueber die Anlage. " + REGIE)}
 
 
 # Fuellwoerter raus: die Suche will Begriffe, keine Satzteile.

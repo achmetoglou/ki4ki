@@ -1307,22 +1307,27 @@ def szenario_40_selbstauskunft():
               "Fasse das Betriebshandbuch zusammen"):
         pruefe(not kann(f), "Fachfrage bleibt Fachfrage: %r" % f)
 
-    # Leermeldungen der Nebenwerkzeuge muessen zurueckverweisen. Vorher wurde
-    # "Keine Abbildung ..." woertlich zur ganzen Antwort (gemessen 15.09.,
-    # Vorgang 570: bestand_durchsuchen hatte vier Dokumente gefunden).
-    # Die Saetze stehen im Quelltext ueber mehrere Literale verteilt -
-    # benachbarte Zeichenketten erst zusammenkleben, sonst sucht der Test
-    # nach etwas, das so nie in einer Zeile steht.
+    # ⛔ Werkzeugergebnisse sind Material, KEINE Regie. f3f081c hatte dort
+    #   Anweisungen hineingeschrieben ("Das ist KEINE Antwort auf die Frage");
+    #   gemessen 15.09. mit Qwen beantwortete das Modell daraufhin die
+    #   Anweisung statt die Frage - drei Antworten in Folge bestanden NUR
+    #   daraus. Die Lenkung steht jetzt im Systemprompt (Regel 6b).
     _flach = _re.sub(r'"\s*\n\s*"', "", _q)
-    pruefe(_flach.count("Das ist KEINE Antwort auf die Frage") >= 3,
-           "alle drei Leermeldungen sagen dem Modell, dass sie keine Antwort sind")
+    pruefe("Das ist KEINE Antwort auf die Frage" not in _flach,
+           "keine Anweisung an das Modell in den Werkzeug-Rueckgaben")
     _ab = _q.index("Keine Abbildung mit nummerierter Unterschrift")
-    pruefe("KEINE Antwort auf die Frage des Nutzers" in _q[_ab:_ab + 700]
-           and "bestand_durchsuchen" in _q[_ab:_ab + 700],
-           "die Abbildungs-Leermeldung nennt den Weg zurueck in den Text")
+    pruefe("beantworte" not in _q[_ab:_ab + 300].lower(),
+           "die Abbildungs-Leermeldung nennt nur den Befund")
+    _g = open(os.path.join(HIER, "gespraech.py"), encoding="utf-8").read()
+    _gf = _re.sub(r'"\s*\n\s*"', "", _g)
+    pruefe("6b. Ein Werkzeug, das nichts findet, ist KEIN Thema fuer die Antwort" in _gf,
+           "die Lenkung steht als Regel 6b im Systemprompt")
+    pruefe("Erwaehne fehlende Abbildungen oder Seiten nur, wenn ausdruecklich danach gefragt" in _gf,
+           "und verbietet das Ausbreiten fehlender Abbildungen")
 
 
 def szenario_41_nie_ohne_nachsehen():
+    import re as _re_
     print("\n[41] Keine Antwort ohne ein einziges Werkzeug - der dritte Waechter")
     import gespraech as g
 
@@ -1354,6 +1359,18 @@ def szenario_41_nie_ohne_nachsehen():
     pruefe(g.waechter_ohne_suche("", [], frage="wie lade ich hoch?") is None,
            "ohne Antworttext greift er nicht")
 
+    # ⭐ Jede Waechter-Rueckmeldung muss sagen, dass sie NICHT erwaehnt wird.
+    #   Gemessen 15.09. mit Qwen: "Danke - ich habe die Fundstellen gelesen"
+    #   und "meine vorherige Antwort war falsch" standen in der Nutzerantwort.
+    for w, args in ((g.waechter_ohne_suche, {"frage": "wie lade ich hoch?"}),):
+        a = w("irgendein Text", [], **args)
+        pruefe(a and a["hinweis"].endswith("mit keinem Wort."),
+               "die Rueckmeldung endet mit der Regie-Anweisung")
+    pruefe(g.REGIE and "erwaehne diese Rueckmeldung mit keinem Wort" in g.REGIE,
+           "REGIE verbietet das Erwaehnen der Korrektur")
+    pruefe("VOLLSTAENDIGE Antwort" in g.REGIE,
+           "und verlangt eine vollstaendige neue Antwort")
+
     # Er haengt in der Kette - sonst wird er nie aufgerufen (Lehre f3f081c).
     _g = open(os.path.join(HIER, "gespraech.py"), encoding="utf-8").read()
     pruefe("waechter_bilder, waechter_belege, waechter_ohne_suche" in _g,
@@ -1367,6 +1384,11 @@ def szenario_41_nie_ohne_nachsehen():
            "Regel 8 nimmt Bedienfragen ausdruecklich aus")
     pruefe("Behaupte nie" in _g and "was die Anlage kann oder nicht kann" in _g,
            "und verbietet Aussagen ueber die Anlage aus eigenem Wissen")
+    _gf2 = _re_.sub(r'"\s*\n\s*"', "", _g)
+    pruefe("Sprich auch NIE ueber deine eigenen Zwischenschritte" in _gf2,
+           "Regel 10 verbietet das Reden ueber die eigenen Zwischenschritte")
+    pruefe("meine vorherige Antwort war falsch" in _gf2,
+           "und nennt die gemessenen Beispielsaetze beim Namen")
 
 
 def szenario_27_wegabgleich_und_bildarten():
