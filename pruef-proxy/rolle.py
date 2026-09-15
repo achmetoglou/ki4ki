@@ -100,12 +100,33 @@ def fuer_prompt(rolle):
     return re.sub(r"\n{3,}", "\n\n", t).strip()
 
 
+# ⭐ Steht noch keine Rolle in der Datei, kommt trotzdem die MARKE in den
+#   Prompt - mit dieser Einladung darunter.
+#
+#   ⚠ VORHER FEHLTE SIE, und das war eine Falle mit Ansage (gemessen 15.09.):
+#     Ohne Marke findet aus_prompt() nichts, also wandert nichts aus der
+#     Oberflaeche zurueck in prompt.md, also gewinnt beim naechsten Start die
+#     Datei - und die Arbeit in der Oberflaeche ist weg. Stillschweigend. Wer
+#     einen frischen Bereich brav ueber die Oberflaeche einrichtet, verliert
+#     sie beim ersten aktualisiere.sh. Mit der Marke ab Tag eins gibt es den
+#     Weg zurueck, und der Text sagt selbst, wo er hingehoert.
+#
+#   Die Einladung traegt PLATZHALTER_MARKE: ist_eingerichtet() bleibt damit
+#   False, solange niemand sie ersetzt hat - sie schreibt sich also nicht
+#   selbst als Rolle in die Datei.
+EINLADUNG = (PLATZHALTER_MARKE + "\n"
+             "Diese Zeilen ersetzen: Wofuer ist dieser Bereich da, wer fragt hier,\n"
+             "worauf ist zu achten? Was UNTER dieser Ueberschrift steht, speichert die\n"
+             "Anlage in dokumente/<bereich>/prompt.md - es ueberlebt jedes Update.\n"
+             "Was DARUEBER steht, wird bei jedem Start neu gesetzt; Aenderungen dort\n"
+             "gehen verloren.")
+
+
 def zusammensetzen(kern, rolle):
-    """Der Prompt, der in AnythingLLM landet: Kern + Rolle (wenn eingerichtet)."""
+    """Der Prompt, der in AnythingLLM landet: Kern + Rolle (oder Einladung)."""
     kern = (kern or "").rstrip()
-    if not ist_eingerichtet(rolle):
-        return kern
-    return kern + "\n\n" + MARKE_ABSCHNITT + "\n\n" + fuer_prompt(rolle) + "\n"
+    teil = fuer_prompt(rolle) if ist_eingerichtet(rolle) else EINLADUNG
+    return kern + "\n\n" + MARKE_ABSCHNITT + "\n\n" + teil + "\n"
 
 
 def fuer_gespraech(rolle, hoechstens=2400):

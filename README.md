@@ -93,6 +93,18 @@ Bereichs. Dazu die Wahl des Modus:
 Der Ordner `dokumente/<bereich>/` entsteht automatisch. Ändern lässt sich die Rolle
 später in den Chat-Einstellungen des Bereichs.
 
+Im Prompt-Feld dort stehen zwei Teile, getrennt durch die Zeile
+`## Rolle dieses Bereichs`:
+
+| Teil | Woher | Beim Aktualisieren |
+|---|---|---|
+| **über** der Zeile | der Kern der Anlage (Belegpflicht, Zitierform) | wird bei jedem Start neu gesetzt — Änderungen dort gehen verloren |
+| **unter** der Zeile | die Rolle dieses Bereichs | wird in `dokumente/<bereich>/prompt.md` gespeichert und **bleibt** |
+
+Wer den Kern anpassen muss, legt `dokumente/systemprompt.eigen.txt` an — diese
+Datei hat Vorrang und wird von `aktualisiere.sh` nicht angefasst. Sie trägt
+allerdings die Belegpflicht: [`doku/BETRIEB.md`](doku/BETRIEB.md), Abschnitt 6.
+
 In den Chat-Einstellungen eines Bereichs lässt sich auch das **Sprachmodell** wählen —
 es gilt dann für die Antworten dieses Bereichs (z. B. ein Testbereich auf einem neuen
 Modell, alle anderen auf dem Standard). Unter der Antwort steht, welches Modell sie gab.

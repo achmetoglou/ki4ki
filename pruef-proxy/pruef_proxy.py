@@ -72,6 +72,14 @@ BEREICH_HEILEN = (os.environ.get("KI4KI_BEREICH_HEILEN", "1") != "0")
 ROLLE_GLAETTEN = (os.environ.get("KI4KI_ROLLE_GLAETTEN", "1") != "0")   # Rolle vom Modell formulieren lassen
 SYSTEMPROMPT_DATEI = (os.environ.get("KI4KI_SYSTEMPROMPT")
                       or "/systemprompt.txt")
+# ⭐ Eigene Fassung des Kern-Prompts, die ein Update NICHT anfasst.
+#   systemprompt.txt liegt im Repo - wer sie auf dem Server aendert, verliert
+#   die Aenderung beim naechsten git pull (oder aktualisiere.sh bricht ab).
+#   Diese Datei liegt dagegen im Datenordner neben den Bereichen und hat
+#   Vorrang. Gibt es sie nicht, aendert sich nichts.
+#   ⚠ Der Kern traegt die Belegpflicht und die Zitierform. Wer ihn umschreibt,
+#     kann die Fundstellen still kaputtmachen - siehe doku/BETRIEB.md.
+SYSTEMPROMPT_EIGEN = "systemprompt.eigen.txt"
 # Muss mit arbeitsbereich_anlegen.sh uebereinstimmen - die eine Wahrheit
 # fuer einen frisch angelegten Bereich.
 GEPRUEFT_WERTE = {
@@ -88,15 +96,32 @@ def _systemprompt_lesen():
     jetzt = time.time()
     if _SYSTEMPROMPT["text"] is not None and jetzt - _SYSTEMPROMPT["wann"] < 300:
         return _SYSTEMPROMPT["text"]
-    try:
-        with open(SYSTEMPROMPT_DATEI, encoding="utf-8") as fh:
-            _SYSTEMPROMPT["text"] = fh.read()
-    except Exception as e:
-        print("[Bereich] systemprompt nicht lesbar (%s): %s"
-              % (SYSTEMPROMPT_DATEI, str(e)[:120]), file=sys.stderr, flush=True)
-        _SYSTEMPROMPT["text"] = None
+    # Eigene Fassung zuerst - sie liegt im Datenordner und ueberlebt Updates.
+    eigen = os.path.join(EINGANG_ORDNER, SYSTEMPROMPT_EIGEN)
+    for pfad, eigene in ((eigen, True), (SYSTEMPROMPT_DATEI, False)):
+        try:
+            with open(pfad, encoding="utf-8") as fh:
+                text = fh.read()
+        except OSError:
+            continue
+        except Exception as e:
+            print("[Bereich] systemprompt nicht lesbar (%s): %s"
+                  % (pfad, str(e)[:120]), file=sys.stderr, flush=True)
+            continue
+        if eigene and not text.strip():
+            continue        # leere Datei ist keine Anweisung - Repo-Fassung gilt
+        _SYSTEMPROMPT["text"] = text
+        _SYSTEMPROMPT["wann"] = jetzt
+        if eigene:
+            print("[Bereich] eigener Kern-Prompt aus %s (%d Zeichen) - die "
+                  "Fassung aus dem Paket wird nicht verwendet."
+                  % (SYSTEMPROMPT_EIGEN, len(text)), file=sys.stderr, flush=True)
+        return text
+    print("[Bereich] systemprompt nicht lesbar (%s)" % SYSTEMPROMPT_DATEI,
+          file=sys.stderr, flush=True)
+    _SYSTEMPROMPT["text"] = None
     _SYSTEMPROMPT["wann"] = jetzt
-    return _SYSTEMPROMPT["text"]
+    return None
 
 
 _ROLLEN_STAND = {}      # slug -> (mtime_ns, size) der eingespielten prompt.md
@@ -262,6 +287,11 @@ def _rolle_aus_oberflaeche(slug, prompt):
     Abgleich die Oberflaeche NICHT zurueck ueberschreibt."""
     text = rolle.aus_prompt(prompt)
     if not text.strip():
+        return False
+    # ⚠ Unter der Marke steht bei einem frischen Bereich die EINLADUNG. Die ist
+    #   keine Rolle - sonst schriebe sich der Hinweistext selbst in prompt.md
+    #   und der Bereich gaelte als eingerichtet, ohne dass jemand etwas tat.
+    if not rolle.ist_eingerichtet(text):
         return False
     alt = _rolle_lesen(slug)
     if alt.strip() == text.strip():

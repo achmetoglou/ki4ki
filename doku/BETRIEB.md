@@ -158,6 +158,14 @@ dokumente/<bereich>/
   bilder-nachholen.txt  Dokumente, deren Bildbeschreibungen später nachgereicht werden
 ```
 
+Eine Ebene darüber, neben den Bereichsordnern:
+
+```
+dokumente/
+  systemprompt.eigen.txt   optional: eigener Kern-Prompt statt der Paketfassung
+                           (siehe Abschnitt 6 — Updates fassen ihn nicht an)
+```
+
 Ein neuer Bereich in der Oberfläche legt den Ordner automatisch an; fehlende Ordner
 bestehender Bereiche ergänzt die Anlage alle 5 Minuten. Beim Löschen eines Bereichs
 verschwindet sein Ordner nur, wenn er leer ist — sonst wird er unter
@@ -222,6 +230,33 @@ Weitere Schalter (`AUFFANGNETZ`, `E2B_ANTWORT`, `MODELL_ANZEIGE`, `NENNUNG_TILGE
 **Ohne Neustart änderbar:** `pruef-proxy/wortlisten.txt` (Auslöser-Wörter für
 Bestandsfragen, Kennungen), die Rolle je Bereich (Oberfläche oder `prompt.md`,
 wirkt binnen 5 Minuten), `kategorien.txt`, `metadaten.json`.
+
+### Was ein Update überschreibt — und was nicht
+
+Der Prompt eines Bereichs besteht aus zwei Teilen, getrennt durch die Zeile
+`## Rolle dieses Bereichs`. Wer das im Prompt-Feld der Oberfläche nicht beachtet,
+verliert Arbeit:
+
+| Geändert wird … | Überlebt `aktualisiere.sh`? |
+|---|---|
+| in der Oberfläche **unter** `## Rolle dieses Bereichs` | **ja** — beim Speichern nach `dokumente/<bereich>/prompt.md` geschrieben, ein Datenordner |
+| `dokumente/<bereich>/prompt.md` direkt (Editor, SFTP) | **ja** |
+| in der Oberfläche **über** der Zeile (der Kern) | **nein** — bei jedem Start aus `systemprompt.txt` neu gesetzt |
+| `systemprompt.txt` im Projektordner | **nein** — die Datei gehört zum Paket, `git pull` setzt sie zurück |
+| `dokumente/systemprompt.eigen.txt` | **ja** — siehe unten |
+
+**Eigener Kern-Prompt:** Legt man `dokumente/systemprompt.eigen.txt` an, gilt
+diese Datei statt der Fassung aus dem Paket. Sie liegt im Datenordner, also fasst
+sie kein Update an. Beim Start steht dann im Protokoll `[Bereich] eigener
+Kern-Prompt aus systemprompt.eigen.txt`. Ist die Datei leer oder fehlt sie, gilt
+wieder die Paketfassung.
+
+> ⚠ Der Kern trägt die **Belegpflicht und die Zitierform** — die Regeln, aus denen
+> die Fundstellen entstehen. Wer ihn umschreibt, kann die Belege still
+> unbrauchbar machen: Die Anlage antwortet weiter, nur ohne nachschlagbare
+> Quelle. Für das, was ein Bereich fachlich tun soll, ist die **Rolle** der
+> richtige Ort, nicht der Kern. Nach einer Änderung `pruef-proxy/dialogtest.py`
+> laufen lassen und ein paar echte Fragen mit Beleg gegenprüfen.
 
 ## 7 · Rechte
 

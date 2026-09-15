@@ -628,8 +628,17 @@ def szenario_25_rolle():
     pruefe(rolle.ist_eingerichtet(v) and not rolle.ist_eingerichtet(rolle.platzhalter("auw")) and not rolle.ist_eingerichtet(""), "eingerichtet vs Platzhalter")
     k = "KERN: Belege Pflicht."
     zk = rolle.zusammensetzen(k, v)
-    pruefe(rolle.zusammensetzen(k, rolle.platzhalter("auw")) == k and zk.startswith(k + "\n\n## Rolle dieses Bereichs\n\n**Fachgebiet:**")
-           and "# Rolle des Bereichs" not in zk and "Diese Datei" not in zk, "Kern + Rolle nur wenn eingerichtet; ohne Datei-Kopf und Datei-Hinweis")
+    # ⭐ 15.09. geaendert: Die Marke kommt jetzt IMMER in den Prompt - bei
+    #   leerer Rolle mit der Einladung darunter (siehe Szenario 42). Vorher
+    #   stand dort nur der Kern, und damit gab es keinen Weg aus der
+    #   Oberflaeche zurueck in prompt.md.
+    zp = rolle.zusammensetzen(k, rolle.platzhalter("auw"))
+    pruefe(zp.startswith(k + "\n\n## Rolle dieses Bereichs")
+           and rolle.PLATZHALTER_MARKE in zp,
+           "leere Rolle: Kern + Marke + Einladung (mit Platzhalter-Marke)")
+    pruefe(zk.startswith(k + "\n\n## Rolle dieses Bereichs\n\n**Fachgebiet:**")
+           and "# Rolle des Bereichs" not in zk and "Diese Datei" not in zk,
+           "eingerichtete Rolle: Kern + Rolle, ohne Datei-Kopf und Datei-Hinweis")
     g = rolle.fuer_gespraech(v)
     pruefe("Fachgebiet" in g and "# Rolle" not in g and "Diese Datei" not in g, "Kurzfassung fuer Stufe 2 ohne Kopf und Fussnote")
     pruefe("ROLLE DIESES BEREICHS" in gespraech.system_text(rolle=g) and "ROLLE DIESES BEREICHS" not in gespraech.system_text(), "Rolle im Systemtext des Gespraechsmodus")
@@ -1391,6 +1400,60 @@ def szenario_41_nie_ohne_nachsehen():
            "und nennt die gemessenen Beispielsaetze beim Namen")
 
 
+def szenario_42_rolle_ueberlebt_update():
+    print("\n[42] Rolle aus der Oberflaeche ueberlebt aktualisiere.sh · eigener Kern-Prompt")
+    import rolle as R
+
+    kern = "# Aufgabe\nBelegpflicht und Zitierform."
+    leer = R.PLATZHALTER_MARKE + "\n# Rolle des Bereichs\nNoch nicht eingerichtet."
+    echt = "# Rolle des Bereichs\n\n**Fachgebiet**\nSchweisstechnik und DVS-Regelwerk im Labor."
+
+    # ⚠ DER KERN DER SACHE: die Marke muss AUCH bei leerer Rolle in den Prompt.
+    #   Ohne sie findet aus_prompt() nichts, nichts wandert zurueck in prompt.md,
+    #   und beim naechsten Start gewinnt die Datei - die Arbeit in der
+    #   Oberflaeche ist stillschweigend weg (gemessen 15.09. am FAQ-Bereich).
+    pruefe(R.MARKE_ABSCHNITT in R.zusammensetzen(kern, leer),
+           "die Marke steht auch im Prompt eines NICHT eingerichteten Bereichs")
+    pruefe(R.MARKE_ABSCHNITT in R.zusammensetzen(kern, echt),
+           "und erst recht bei eingerichteter Rolle")
+    pruefe(R.zusammensetzen(kern, leer).startswith(kern),
+           "der Kern steht vorn, die Rolle darunter")
+
+    # Die Einladung darf sich NICHT selbst als Rolle in die Datei schreiben.
+    p_leer = R.zusammensetzen(kern, leer)
+    pruefe(not R.ist_eingerichtet(R.aus_prompt(p_leer)),
+           "die Einladung gilt nicht als eingerichtete Rolle")
+    pruefe(R.PLATZHALTER_MARKE in R.EINLADUNG,
+           "deshalb traegt sie die Platzhalter-Marke")
+    pruefe("ueberlebt jedes Update" in R.EINLADUNG
+           and "gehen verloren" in R.EINLADUNG,
+           "und sagt selbst, welcher Teil bleibt und welcher nicht")
+
+    # Der Weg, um den es geht: Mensch ersetzt die Einladung in der Oberflaeche.
+    bearbeitet = p_leer.replace(R.EINLADUNG,
+                                "**Fachgebiet**\nSchweisstechnik, DVS-Regelwerk.\n\n"
+                                "**Wer fragt**\nPruefer im Labor.")
+    uebernommen = R.aus_prompt(bearbeitet)
+    pruefe(R.ist_eingerichtet(uebernommen),
+           "was der Mensch darunter schreibt, gilt als Rolle")
+    pruefe("Schweisstechnik" in uebernommen and "Pruefer im Labor" in uebernommen,
+           "und landet vollstaendig in prompt.md - damit ueberlebt es das Update")
+    pruefe("Belegpflicht" not in uebernommen,
+           "der Kern wandert NICHT in die Rollendatei")
+
+    # Der eigene Kern-Prompt: Datenordner schlaegt Paket.
+    _q = open(os.path.join(HIER, "pruef_proxy.py"), encoding="utf-8").read()
+    pruefe('SYSTEMPROMPT_EIGEN = "systemprompt.eigen.txt"' in _q,
+           "es gibt eine eigene Kern-Fassung im Datenordner")
+    _i = _q.index("def _systemprompt_lesen")
+    _rumpf = _q[_i:_i + 1500]
+    pruefe("SYSTEMPROMPT_EIGEN" in _rumpf and
+           _rumpf.index("SYSTEMPROMPT_EIGEN") < _rumpf.index("SYSTEMPROMPT_DATEI"),
+           "sie wird VOR der Fassung aus dem Paket gelesen")
+    pruefe("if eigene and not text.strip():" in _rumpf,
+           "eine LEERE eigene Datei zaehlt nicht - sonst kein Kern-Prompt mehr")
+
+
 def szenario_27_wegabgleich_und_bildarten():
     print("\n[27] A2 Rechtepruefung je Ausgabeweg (wegabgleich) · Bildarten · Kategorie-Vorgabe per Unterordner")
     import wegabgleich
@@ -1437,7 +1500,8 @@ if __name__ == "__main__":
               szenario_38_katalog_endung,
               szenario_39_kurzform_verlinken,
               szenario_40_selbstauskunft,
-              szenario_41_nie_ohne_nachsehen):
+              szenario_41_nie_ohne_nachsehen,
+              szenario_42_rolle_ueberlebt_update):
         try:
             s()
         except Exception as e:
