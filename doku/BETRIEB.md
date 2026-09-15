@@ -233,7 +233,36 @@ wirkt binnen 5 Minuten), `kategorien.txt`, `metadaten.json`.
 
 ### Was ein Update überschreibt — und was nicht
 
-Der Prompt eines Bereichs besteht aus zwei Teilen, getrennt durch die Zeile
+`aktualisiere.sh` holt die neue Fassung, baut drei Container neu und startet alles
+wieder. Es fasst **kein Volume** an: alles, was in der Oberfläche eingestellt wurde,
+bleibt. Ersetzt wird, was zum Paket gehört.
+
+**Bleibt (liegt im Volume `anythingllm-daten` oder in `dokumente/`):**
+
+| | |
+|---|---|
+| Logo und Icon der Oberfläche | Datei in `storage/assets/` |
+| Admin-Adresse, SMTP, Anzeigename der Anlage | `anythingllm.db` |
+| Benutzer, Rollen, Zuweisungen | `anythingllm.db` |
+| Bereiche mit Modus, **Sprachmodell**, Temperatur, topN | `anythingllm.db` |
+| Gesprächsfäden und ihre Antworten | `anythingllm.db` |
+| Dokumente, Archiv-PDFs, Katalog, `prompt.md`, `kategorien.txt` | `dokumente/`, `pruefdaten` |
+
+**Wird ersetzt (gehört zum Paket):**
+
+| | |
+|---|---|
+| **Die drei n8n-Ablaufpläne** | werden aus `n8n-workflows/*.json` neu importiert und aktiviert. ⚠ Wer einen Ablaufplan in n8n ändert, verliert die Änderung — sie gehört in die Datei im Projektordner. |
+| Der Kern-Prompt | kommt bei jedem Start aus `systemprompt.txt` (siehe unten) |
+| Alle Dateien im Projektordner, die im Paket liegen | `git pull --ff-only`; lokale Änderungen lassen das Update abbrechen |
+
+> Der Neustart von n8n bricht einen **laufenden Durchgang** ab. Das ist gewollt (sonst
+> bliebe seine Sperre bis zu zwei Stunden verwaist), führt aber zu einer Fehlermeldung
+> am abgebrochenen Baustein — etwa „The DNS server returned an error" bei
+> `Bestand abfragen`. Kein Defekt: Der nächste Durchgang holt die Dateien nach.
+> Wer es vermeiden will, aktualisiert bei leerem `input/`.
+
+**Der Prompt eines Bereichs** besteht aus zwei Teilen, getrennt durch die Zeile
 `## Rolle dieses Bereichs`. Wer das im Prompt-Feld der Oberfläche nicht beachtet,
 verliert Arbeit:
 
