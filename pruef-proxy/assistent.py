@@ -1174,7 +1174,7 @@ def _liste_nach_art(frage, namen, bereich=None, zusatz=None):
     daten = [(n, bestand.angaben(n)) for n in passend]
     mit_band = any((a or {}).get("band") for _n, a in daten)
     if mit_band:
-        zeilen = ["| Kennung | Band | Titel | Verfasser | Jahr |",
+        zeilen = ["| Kennung | Reihe | Titel | Verfasser | Jahr |",
                   "|---|---|---|---|---|"]
     else:
         zeilen = ["| Kennung | Titel | Verfasser | Jahr |",
@@ -1200,8 +1200,8 @@ def _liste_nach_art(frage, namen, bereich=None, zusatz=None):
     fuss = ("\n\n*Titel aus dem hinterlegten Katalog; mit ° markierte hat das "
             "kleine Modell aus dem Deckblatt gelesen.*")
     if mit_band:
-        fuss += ("\n\n*Die Bandnummer stammt aus dem Impressum der Arbeit "
-                 "(Schriftenreihe).*")
+        fuss += ("\n\n*Die Reihenangabe (Band, Heft, Nummer) stammt vom Deckblatt "
+                 "oder aus dem Impressum.*")
     if ohne_titel:
         fuss += ("\n\n*Zu %d Arbeit(en) liegt kein Katalogeintrag vor.*"
                  % ohne_titel)
@@ -1398,7 +1398,7 @@ def _liste(titel, zusatz=None):
 
     # Bandnummer nur als Spalte, wenn im Bestand ueberhaupt eine vorkommt.
     mit_band = any(a and a.get("band") for _t, a in angaben)
-    _kopf = ["Kennung"] + (["Band"] if mit_band else []) \
+    _kopf = ["Kennung"] + (["Reihe"] if mit_band else []) \
         + ["Titel", "Verfasser", "Jahr", "Kategorie", "Themen", "Datei"]
     zeilen = ["| " + " | ".join(_kopf) + " |",
               "|" + "---|" * len(_kopf)]

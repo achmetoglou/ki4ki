@@ -329,26 +329,69 @@ def _themen_uebersetzen(worte):
 # Eng gefasst, damit "Bandsaege", "Heizband" und "Streuband" nicht zaehlen:
 # entweder mit Doppelpunkt (Impressum) oder in Grossbuchstaben (Deckblatt),
 # und nur im Vorspann.
-_BAND_IMPRESSUM = re.compile(r"\bBand\s*[:.]\s*(\d{1,4})\b")
-_BAND_DECKBLATT = re.compile(r"\bBAND\s+(\d{1,4})\b")
-_BAND_REIHE = re.compile(r"\b(?:Band|Vol\.?|Volume)\s+(\d{1,4})\b"
-                         r"(?=[\s,;]*(?:der|of|in)?\s*(?:Reihe|Schriftenreihe|series)?)")
+# Reihenangaben, wie sie auf Deckblatt und im Impressum stehen. Gespeichert wird
+# der WORTLAUT ("Band 400", "Reihe 20, Nr. 456", "Heft 23") - nicht nur die Zahl:
+# In einer Bibliothek heisst dasselbe je nach Verlag anders, und die Anzeige soll
+# sagen, was wirklich dasteht.
+#
+# ⛔ Gemessen am echten Bestand (15.09.): Ein weit gefasstes Muster fuer
+# "Band|Heft|Nr|Vol|No|Teil" liefert VIEL mehr Muell als Treffer - "No." fing
+# "noch" (19x) und "November", "Vol." fing "vollstaendig" (9x), "Teil" fing
+# "Teilchen". Deshalb: jedes Wort ausgeschrieben mit Wortgrenze, Abkuerzungen nur
+# MIT Punkt, und die unsicheren Formen nur, wenn eine Reihe ausdruecklich genannt
+# ist. "Teil" gehoert NICHT dazu: "DVS 2213-1 Teil 2" ist ein Normteil, kein Band.
+_REIHE_NAH = re.compile(
+    r"Schriftenreihe|Fortschritt|Berichte\s+aus|[Bb]erichtsreihe|\bReihe\b"
+    r"|\bseries\b|\bISSN\b|Verlag|Dissertation|Habilitation"
+    r"|\bReports?\s+(?:of|on|from)\b|\bProceedings\b|\bJahrbuch\b", re.I)
+
+# 1a. Eindeutig, auch ohne Reihen-Kontext: Wort + Trennzeichen ("Band: 400",
+#     "Bd. 8") oder Grossschreibung auf dem Deckblatt ("BAND 400").
+#     ⚠ Das Trennzeichen ist PFLICHT - ohne es fing das Muster Fliesstext wie
+#     "Band 3 zeigt den Verlauf der Messwerte".
+_R_IMPRESSUM = re.compile(
+    r"\b(Band|Heft|Bd|Volume|Vol)\s*[:.]\s*(\d{1,4})\b", re.I)
+_R_DECKBLATT = re.compile(r"\b(BAND|HEFT|VOLUME)\s+(\d{1,4})\b")
+# 1b. Ohne Trennzeichen ("Heft 23", "Band 8") nur, wenn eine Reihe genannt ist.
+_R_LOCKER = re.compile(r"\b(Band|Heft|Volume)\s+(\d{1,4})\b", re.I)
+# 2. VDI-Fortschrittberichte und Verwandte: "Reihe 20, Nr. 456".
+_R_REIHE_NR = re.compile(
+    r"\bReihe\s*(\d{1,3})\s*[,;]?\s*(?:Nr\.|Nummer|No\.)\s*(\d{1,5})\b", re.I)
+# 3. Nur mit Reihen-Kontext: blosses "Nr. 456" / "Heft 12".
+_R_NUMMER = re.compile(r"\b(Nr\.|Nummer|No\.)\s*(\d{1,5})\b")
 
 
 def band_aus_text(text, zeichen=9000):
-    """Die Bandnummer aus dem Vorspann - '' wenn keine dasteht. Wirft nie."""
+    """Reihenangabe aus dem Vorspann im Wortlaut - '' wenn keine dasteht.
+
+    Beispiele: "Band 400" (IKV-Berichte), "Reihe 20, Nr. 456"
+    (VDI-Fortschrittberichte), "Heft 23". Wirft nie.
+    """
     try:
         kopf = str(text or "")[:zeichen]
-        for muster in (_BAND_IMPRESSUM, _BAND_DECKBLATT):
+        nah = bool(_REIHE_NAH.search(kopf))
+
+        m = _R_REIHE_NR.search(kopf)          # spezifischster Fall zuerst
+        if m:
+            return "Reihe %s, Nr. %s" % (m.group(1), m.group(2))
+
+        for muster in (_R_DECKBLATT, _R_IMPRESSUM):
             m = muster.search(kopf)
             if m:
-                return m.group(1)
-        # Letzte Stufe nur, wenn das Wort "Reihe"/"Berichte" in der Naehe steht -
-        # sonst faengt sie Fliesstext wie "Band 3 zeigt den Verlauf".
-        if re.search(r"Berichte|Schriftenreihe|Reihe|series", kopf, re.I):
-            m = _BAND_REIHE.search(kopf)
+                wort = m.group(1).rstrip(".:").title()
+                if wort.lower() in ("bd", "vol"):
+                    wort = "Band" if wort.lower() == "bd" else "Volume"
+                return "%s %s" % (wort, m.group(2))
+
+        # Lockere Formen nur, wenn eine Reihe ausdruecklich genannt ist - sonst
+        # faengt "Heft 12" Fliesstext und "Nr. 456" Norm- und Bestellnummern.
+        if nah:
+            m = _R_LOCKER.search(kopf)
             if m:
-                return m.group(1)
+                return "%s %s" % (m.group(1).title(), m.group(2))
+            m = _R_NUMMER.search(kopf)
+            if m:
+                return "Nr. %s" % m.group(2)
     except Exception:
         pass
     return ""
@@ -510,6 +553,12 @@ def kategorie_setzen(name, kategorie_name):
     return alt
 
 
+# Fassung der Reihen-Erkennung. Wird sie erweitert, sehen bestehende Eintraege
+# beim naechsten Bestandsaufruf erneut nach - sonst bliebe ein Dokument fuer
+# immer ohne Angabe, nur weil es unter einer aelteren Fassung geprueft wurde.
+BAND_FASSUNG = 2
+
+
 def _band_nachruesten(namen, hoechstens=40):
     """Bandnummer in bestehende Eintraege nachtragen - OHNE Modell.
 
@@ -526,7 +575,9 @@ def _band_nachruesten(namen, hoechstens=40):
             break
         try:
             a = angaben(n)
-            if not a or not a.get("titel") or a.get("band_gesucht"):
+            if not a or not a.get("titel"):
+                continue
+            if int(a.get("band_gesucht") or 0) >= BAND_FASSUNG:
                 continue
             # Unter dem Schluessel schreiben, unter dem der Eintrag WIRKLICH
             # steht: Der Katalog fuehrt "DS-23-004", gefragt wird oft
@@ -545,7 +596,7 @@ def _band_nachruesten(namen, hoechstens=40):
             # drauf (die kommt aus dem Namen, nicht aus dem Katalog).
             neu = {k: v for k, v in a.items() if k != "art"}
             neu["band"] = band_aus_text(text)
-            neu["band_gesucht"] = 1
+            neu["band_gesucht"] = BAND_FASSUNG
             eintragen(schluessel, neu, quelle=a.get("quelle") or "modell")
             getan += 1
         except Exception:

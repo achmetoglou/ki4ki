@@ -969,43 +969,66 @@ def szenario_34_nachtrag_loeschen():
 
 
 def szenario_35_bandnummer():
-    print("\n[35] Bandnummer der Schriftenreihe landet im Katalog")
+    print("\n[35] Reihenangabe (Band, Heft, Nr.) landet im Katalog")
     import re as _re
     _b = open(os.path.join(HIER, "bestand.py"), encoding="utf-8").read()
-    _a = _b.index("_BAND_IMPRESSUM = re.compile")
+    _a = _b.index("_REIHE_NAH = re.compile")
     _e = _b.index("def _deckblatt_lesen")
     _ns = {"re": _re}
     exec(_b[_a:_e], _ns)
     band = _ns["band_aus_text"]
 
+    # --- was wirklich auf Deckblaettern steht --------------------------------
     pruefe(band("[Seite 3] ## Impressum ## IKV-Berichte aus der Kunststoffverarbeitung "
-                "Band: 400 Jahr: 2023 Autor: Malte Schoen") == "400",
-           "Impressum 'Band: 400' wird gelesen (so steht es in den IKV-Arbeiten)")
-    pruefe(band("IKV-Berichte aus der Kunststoffverarbeitung BAND 407 Erik Wilms") == "407",
+                "Band: 400 Jahr: 2023 Autor: Malte Schoen") == "Band 400",
+           "Impressum 'Band: 400' -> Wortlaut 'Band 400'")
+    pruefe(band("IKV-Berichte aus der Kunststoffverarbeitung BAND 407 Erik Wilms") == "Band 407",
            "Deckblatt 'BAND 407' wird gelesen")
-    pruefe(band("Schriftenreihe des Instituts, Band 12 der Reihe, Aachen 2021") == "12",
-           "'Band 12 der Reihe' zaehlt, wenn eine Reihe genannt ist")
-    for falle in ("Die Segmente wurden mit einer Bandsaege in Scheiben zerlegt",
-                  "die per Heizband aufzupraegenden 210 Grad",
-                  "Das Streuband der mechanischen Eigenschaften",
-                  "Band 3 zeigt den Verlauf der Messwerte"):
-        pruefe(band(falle) == "",
-               "kein Falschtreffer: %s" % falle[:42])
+    pruefe(band("Fortschritt-Berichte VDI, Reihe 20, Nr. 456, Duesseldorf 2019")
+           == "Reihe 20, Nr. 456",
+           "VDI-Fortschrittberichte: 'Reihe 20, Nr. 456' bleibt vollstaendig")
+    pruefe(band("Schriftenreihe des Instituts Heft 23, Aachen") == "Heft 23",
+           "'Heft 23' einer Schriftenreihe")
+    pruefe(band("Schriftenreihe Bd. 8 · Verlag Mustermann") == "Band 8",
+           "Abkuerzung 'Bd. 8' wird zu 'Band 8' ausgeschrieben")
+    pruefe(band("Reports of the Institute, Volume 12, 2021") == "Volume 12",
+           "englische Reihe: 'Volume 12'")
+    pruefe(band("Schriftenreihe des Verlages, Nr. 456, ISSN 1234-5678") == "Nr. 456",
+           "blosse Nummer zaehlt, WENN eine Reihe genannt ist")
+
+    # --- Fehltreffer, die eine Messung am echten Bestand zutage foerderte ----
+    # Ein weit gefasstes Muster fing "noch" (19x), "vollstaendig" (9x),
+    # "November" und "Teilchen". Diese Faelle muessen leer bleiben.
+    for falle, warum in (
+            ("Die Segmente wurden mit einer Bandsaege in Scheiben zerlegt", "Bandsaege"),
+            ("die per Heizband aufzupraegenden 210 Grad", "Heizband"),
+            ("Das Streuband der mechanischen Eigenschaften", "Streuband"),
+            ("Band 3 zeigt den Verlauf der Messwerte", "Band im Fliesstext ohne Reihe"),
+            ("Das Ergebnis ist noch nicht vollstaendig ausgewertet", "'noch'/'vollstaendig'"),
+            ("Aachen, im November 2024", "November"),
+            ("Die Teilchen im Extrudat sind ungleich verteilt", "Teilchen"),
+            ("DVS 2213-1 Teil 2, Pruefung von Klebeverbindungen", "Normteil ist kein Band"),
+            ("Bestellnummer 21515 beim Verlag", "Bestellnummer ohne Reihenwort"),
+    ):
+        pruefe(band(falle) == "", "kein Falschtreffer: %s" % warum)
+
     pruefe(band("") == "" and band(None) == "",
-           "leerer Text und None ergeben keine Bandnummer")
+           "leerer Text und None ergeben keine Reihenangabe")
     pruefe(band("... " * 4000 + "Band: 999") == "",
            "nur der Vorspann zaehlt - Fliesstext weit hinten nicht")
+    pruefe(_b.count("BAND_FASSUNG = ") == 1 and "int(a.get(\"band_gesucht\") or 0) >= BAND_FASSUNG" in _b,
+           "erweitertes Muster sieht bestehende Eintraege erneut an (Fassungsnummer)")
 
     pruefe('_band = alt.get("band") or band_aus_text(text)' in _b,
-           "Nachtrag traegt die Bandnummer ein, ohne das Modell zu fragen")
+           "Nachtrag traegt die Reihenangabe ein, ohne das Modell zu fragen")
     pruefe('angabe["band"] = e.get("band") or ""' in _b,
-           "angaben() reicht die Bandnummer durch (sonst kommt sie nie in einer Liste an)")
+           "angaben() reicht die Reihenangabe durch (sonst kommt sie nie in einer Liste an)")
 
     _as = open(os.path.join(HIER, "assistent.py"), encoding="utf-8").read()
     pruefe(_as.count('mit_band = any(') >= 2,
-           "Bestandsliste UND Katalogtabelle blenden die Band-Spalte bedingt ein")
-    pruefe('["Band"] if mit_band else []' in _as,
-           "ohne Bandnummer im Bestand bleibt die Spalte weg (Normen, Pruefungsunterlagen)")
+           "Bestandsliste UND Katalogtabelle blenden die Reihen-Spalte bedingt ein")
+    pruefe('["Reihe"] if mit_band else []' in _as,
+           "ohne Reihenangabe im Bestand bleibt die Spalte weg (Normen, Pruefungsunterlagen)")
 
     # --- Nachruestung bestehender Eintraege -------------------------------
     # Das Modul bindet den Katalogpfad beim Import (laden(pfad=VERZEICHNIS)),
@@ -1028,13 +1051,14 @@ def szenario_35_bandnummer():
         pruefe(list(_gespeichert) == ["DS-23-004"],
                "kein Doppeleintrag: geschrieben wird unter dem Katalog-Schluessel ohne Endung")
         _neu = _gespeichert["DS-23-004"]
-        pruefe(_getan == 1 and _neu.get("band") == "400",
+        pruefe(_getan == 1 and _neu.get("band") == "Band 400",
                "bestehender Eintrag bekommt die Bandnummer nachtraeglich")
         pruefe(_neu.get("titel") == "Eine simulationsgestuetzte Methodik"
                and _neu.get("verfasser") == "Malte Schoen"
                and _neu.get("jahr") == "2023" and _neu.get("kategorie") == "Dissertation",
                "Titel, Verfasser, Jahr und Kategorie ueberleben die Nachruestung")
-        pruefe(_neu.get("band_gesucht") == 1, "Datei wird als geprueft markiert")
+        pruefe(_neu.get("band_gesucht") == _bm.BAND_FASSUNG,
+               "Datei wird mit der Fassung der Erkennung markiert")
         pruefe(_bm._band_nachruesten(["DS-23-004.md"]) == 0,
                "zweiter Lauf tut nichts mehr - kein Dauer-Oeffnen bei jeder Bestandsfrage")
         _bm._volltext_anfang = lambda n, zeichen=4000, ab_inhalt=False: "Eine Norm ohne Reihe."
@@ -1044,8 +1068,8 @@ def szenario_35_bandnummer():
         _bm._GELADEN = None
         _bm._band_nachruesten(["DIN-1234.md"])
         _norm = _j.load(open(_kat, encoding="utf-8"))["DIN-1234"]
-        pruefe(_norm.get("band") == "" and _norm.get("band_gesucht") == 1,
-               "Dokument ohne Bandnummer wird als geprueft vermerkt, nicht endlos neu geoeffnet")
+        pruefe(_norm.get("band") == "" and _norm.get("band_gesucht") == _bm.BAND_FASSUNG,
+               "Dokument ohne Reihenangabe wird als geprueft vermerkt, nicht endlos neu geoeffnet")
     finally:
         if _merk is None:
             os.environ.pop("KI4KI_BESTANDSINDEX", None)
