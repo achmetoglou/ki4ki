@@ -770,6 +770,55 @@ def bereich_ordner_anlegen(slug):
         return False
 
 
+def ablage_sicherstellen(slug):
+    """Die Ablage des Bereichs IM DOKUMENTENFENSTER anlegen, wenn sie fehlt.
+
+    bereich_ordner_anlegen() erzeugt seit fa65f50 den Ordnerbaum auf der
+    Platte - die zweite Haelfte fehlte: die Ablage in AnythingLLM. Folge:
+    Die Aufnahme laedt nach /v1/document/upload/<ablage>; ohne den Ordner
+    nimmt AnythingLLM die Datei nicht an - auch nicht ersatzweise in
+    custom-documents. Danach sucht die Aufnahme das Dokument im
+    Arbeitsbereich, findet nichts und sortiert mit "im Arbeitsbereich
+    nicht wiedergefunden - Aufnahme unvollstaendig" aus. Jede Minute
+    erneut, fuer jede Datei.
+
+    Gemessen 18.09.: 107 von 220 Dateien des ersten KAP-Ordners; der
+    Bereich bestand seit dem 27.08. ohne Ablage. Das trifft JEDEN
+    Bereich, den ein Partner nach der Erstinstallation anlegt - nur
+    'wissensdatenbank' bekommt ihre Ablage aus start.sh.
+
+    True = vorhanden oder angelegt.
+    """
+    if not slug or not API_SCHLUESSEL:
+        return False
+    try:
+        ablage = _ordnername(slug)
+        konf = os.path.join(EINGANG_ORDNER, ablage, "bereich.json")
+        if os.path.exists(konf):
+            try:
+                with open(konf, encoding="utf-8") as fh:
+                    ablage = (json.load(fh).get("ablage") or ablage)
+            except Exception:
+                pass
+        ziel = os.path.join(BESTAND_ORDNER, ablage)
+        if os.path.isdir(ziel):
+            return True
+        _api("POST", "/api/v1/document/create-folder", {"name": ablage})
+        # Nicht der Antwort glauben, sondern nachsehen: AnythingLLM meldet
+        # einen bereits vorhandenen Ordner ebenfalls als Misserfolg.
+        if os.path.isdir(ziel):
+            print("[Bereich] Ablage angelegt: %s" % ablage, file=sys.stderr, flush=True)
+            return True
+        print("[Bereich] Ablage %r fehlt und war nicht anzulegen - die Aufnahme "
+              "dieses Bereichs wird jede Datei als 'Aufnahme unvollstaendig' "
+              "aussortieren" % ablage, file=sys.stderr, flush=True)
+        return False
+    except Exception as e:
+        print("[Bereich] Ablage fuer %r nicht anlegbar: %s" % (slug, str(e)[:100]),
+              file=sys.stderr, flush=True)
+        return False
+
+
 _BEREICHE_ABGLEICH = [0.0]
 VERWAISTE_BEREICHE = []
 BEREICH_LOESCHEN = re.compile(r"^/api/(?:v1/)?workspace/([^/]+)/?$")
@@ -835,6 +884,7 @@ def _bereiche_abgleichen():
         for w in ws:
             if w.get("slug"):
                 bereich_ordner_anlegen(w["slug"])
+                ablage_sicherstellen(w["slug"])
                 slugs.add(_ordnername(w["slug"]))
                 try:
                     _rolle_einspielen(w["slug"])      # prompt.md geaendert -> Prompt nachziehen
@@ -9575,6 +9625,9 @@ class Griff(BaseHTTPRequestHandler):
                 w = w[0] if isinstance(w, list) else w
                 bereich_setzen((w or {}).get("slug"))
                 bereich_ordner_anlegen((w or {}).get("slug"))
+                # Ohne Ablage scheitert die Aufnahme dieses Bereichs
+                # vollstaendig - nicht erst beim Abgleich in fuenf Minuten.
+                ablage_sicherstellen((w or {}).get("slug"))
         except Exception:
             traceback.print_exc(file=sys.stderr)
 

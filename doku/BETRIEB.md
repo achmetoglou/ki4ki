@@ -184,6 +184,13 @@ verschwindet sein Ordner nur, wenn er leer ist — sonst wird er unter
    `mkmd` baut die Textfassung, sie wird in den Bereich eingebettet.
 5. Ablage: Original nach `archiv/`. Dateien, die schon im Bestand sind, räumt der
    Proxy nach einer Stunde ein (gleicher Inhalt → `aussortiert/`, PDF-Fassung → `archiv/`).
+
+   ⚠ **Jeder Bereich braucht eine Ablage in AnythingLLM** — den Ordner, den das
+   Dokumentenfenster beim Hochladen zeigt. Die Aufnahme lädt nach
+   `/v1/document/upload/<ablage>`; fehlt der Ordner, nimmt AnythingLLM die Datei nicht
+   an, und **jede** Datei des Bereichs wird als „Aufnahme unvollständig" aussortiert.
+   Die Anlage legt die Ablage selbst an — bis zum 18.09. tat sie das nur für
+   `wissensdatenbank` aus `start.sh`, alle später angelegten Bereiche waren betroffen.
 6. Was länger als 3 Stunden im Eingang liegt, wandert nach `aussortiert/` (`claim.log`).
 
 **Wichtig:** n8n zeigt einen Durchgang auch dann als „succeeded", wenn einzelne
@@ -399,6 +406,7 @@ unbrauchbar machen.
 | Alles plötzlich 10× langsamer | Grafikkarte: `curl -s localhost:3001/pruef-status` → `gpu.warnung`; im Log `[GPU] ⚠`. Der Proxy prüft alle 10 Minuten, ob die Modelle im Grafikspeicher liegen. |
 | Modell antwortet nicht | `docker compose logs -f ollama` und `nothink-proxy` |
 | Platte voll | `df -h`, `docker system df`. Die n8n-Ausführungshistorie wächst (jede Minute ein Lauf): `EXECUTIONS_DATA_PRUNE=true`, `EXECUTIONS_DATA_MAX_AGE=336`. |
+| **Jede Datei „im Arbeitsbereich nicht wiedergefunden — Aufnahme unvollständig"** | Dem Bereich fehlt seine **Ablage** im Dokumentenfenster. Die Anlage legt sie seit dem 18.09. selbst an (beim Anlegen und im Fünf-Minuten-Abgleich); bei älteren Ständen von Hand: Dokumentenverwaltung → neuer Ordner, Name genau wie `ablage` in `dokumente/<bereich>/bereich.json`. Die Dateien bleiben im Eingang und laufen danach von selbst durch. |
 | Aufnahme steht seit Stunden | Laufsperre `/files/json/.lauf.sperre` im n8n-Container; löst sich nach 120 Minuten selbst, `aktualisiere.sh` räumt sie nach dem Neustart weg |
 
 **Selbst-Check:** `docker exec ki4ki-pruef-proxy python3 /app/selbstcheck.py [<bereich> <anzahl>]`

@@ -1507,6 +1507,47 @@ def szenario_43_hochladen_nur_mit_rolle():
            "beim Loeschen entscheidet weiterhin AnythingLLM, dann raeumt der Proxy nach")
 
 
+def szenario_44_ablage_wird_angelegt():
+    print("\n[44] Jeder Bereich bekommt seine Ablage - sonst scheitert die ganze Aufnahme")
+    _q = open(os.path.join(HIER, "pruef_proxy.py"), encoding="utf-8").read()
+
+    # ⚠ fa65f50 legte den Ordnerbaum auf der PLATTE an, die Ablage in
+    #   AnythingLLM aber nie. Die Aufnahme laedt nach
+    #   /v1/document/upload/<ablage>; fehlt der Ordner, nimmt AnythingLLM
+    #   nichts an und jede Datei wird als "im Arbeitsbereich nicht
+    #   wiedergefunden - Aufnahme unvollstaendig" aussortiert. Gemessen
+    #   18.09.: 107 von 220 Dateien des ersten KAP-Ordners.
+    pruefe("def ablage_sicherstellen(slug):" in _q,
+           "es gibt eine Absicherung fuer die Ablage")
+    _a = _q.index("def ablage_sicherstellen(slug):")
+    _rumpf = _q[_a:_a + 2200]
+    pruefe('"/api/v1/document/create-folder"' in _rumpf,
+           "sie ruft den Weg, den AnythingLLM dafuer anbietet")
+    pruefe('{"name": ablage}' in _rumpf,
+           "und uebergibt den Namen so, wie die Schnittstelle ihn erwartet")
+
+    # Der Name kommt aus bereich.json ("ablage"), nicht aus dem Slug -
+    # sonst laedt die Aufnahme woandershin, als der Proxy nachsieht.
+    pruefe('json.load(fh).get("ablage")' in _rumpf,
+           "der Name kommt aus bereich.json, derselben Quelle wie bei der Aufnahme")
+
+    # Nicht der Antwort glauben: AnythingLLM meldet einen vorhandenen
+    # Ordner ebenfalls als Misserfolg. Was zaehlt, ist der Ordner.
+    pruefe(_rumpf.count("os.path.isdir(ziel)") >= 2,
+           "geprueft wird der Ordner selbst, vorher und nachher")
+    pruefe("Aufnahme unvollstaendig" in _rumpf or "aussortieren" in _rumpf,
+           "schlaegt das Anlegen fehl, sagt die Meldung die Folge")
+
+    # Beide Wege: beim Anlegen sofort, und alle fuenf Minuten nachziehend -
+    # sonst bleiben Bereiche aus der Zeit davor (kap seit 27.08.) kaputt.
+    _ab = _q.index("def _bereiche_abgleichen():")
+    pruefe("ablage_sicherstellen(w[\"slug\"])" in _q[_ab:_ab + 1600],
+           "der Fuenf-Minuten-Abgleich heilt bestehende Bereiche mit")
+    _neu = _q.index("bereich_setzen((w or {}).get(\"slug\"))")
+    pruefe("ablage_sicherstellen((w or {}).get(\"slug\"))" in _q[_neu:_neu + 600],
+           "ein neu angelegter Bereich bekommt sie sofort, nicht erst in fuenf Minuten")
+
+
 def szenario_27_wegabgleich_und_bildarten():
     print("\n[27] A2 Rechtepruefung je Ausgabeweg (wegabgleich) · Bildarten · Kategorie-Vorgabe per Unterordner")
     import wegabgleich
@@ -1555,7 +1596,8 @@ if __name__ == "__main__":
               szenario_40_selbstauskunft,
               szenario_41_nie_ohne_nachsehen,
               szenario_42_rolle_ueberlebt_update,
-              szenario_43_hochladen_nur_mit_rolle):
+              szenario_43_hochladen_nur_mit_rolle,
+              szenario_44_ablage_wird_angelegt):
         try:
             s()
         except Exception as e:
