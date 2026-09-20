@@ -173,6 +173,16 @@ verschwindet sein Ordner nur, wenn er leer ist — sonst wird er unter
 
 ## 5 · Wie die Aufnahme läuft
 
+> ⛔ **Stand 20.09.2026: Unterordner im Eingang sind derzeit nicht benutzbar.**
+> Zwei Fehler greifen, sobald Dokumente tiefer als direkt im Eingang liegen —
+> eine Endlosschleife in der 180-Minuten-Sicherung und eine Bereichserkennung,
+> die Dokumente in den falschen Arbeitsbereich legen kann. Dazu erkennt die
+> Anlage ein Dokument bisher nur an seinem **Dateinamen**: Bei gleichnamigen
+> Dateien überschreiben sich Dokumente gegenseitig, ohne Fehlermeldung.
+> Einzelheiten und Messzahlen in `doku/entwicklung/BUGS_UND_FIXES.md`,
+> Punkte 6 und 7. **Bis das behoben ist: Dateien flach in den Eingang legen und
+> auf eindeutige Dateinamen achten.**
+
 1. Jede Minute sieht n8n in `dokumente/*/input/` nach (auch in Unterordnern).
 2. Ein Durchgang nimmt bis zu 25 Dateien (`KI4KI_MENGE_JE_LAUF`) eines Bereichs; eine
    Laufsperre verhindert parallele Durchgänge. Liegen 6 oder mehr Dateien im Eingang
@@ -407,6 +417,7 @@ unbrauchbar machen.
 | Modell antwortet nicht | `docker compose logs -f ollama` und `nothink-proxy` |
 | Platte voll | `df -h`, `docker system df`. Die n8n-Ausführungshistorie wächst (jede Minute ein Lauf): `EXECUTIONS_DATA_PRUNE=true`, `EXECUTIONS_DATA_MAX_AGE=336`. |
 | **Jede Datei „im Arbeitsbereich nicht wiedergefunden — Aufnahme unvollständig"** | Dem Bereich fehlt seine **Ablage** im Dokumentenfenster. Die Anlage legt sie seit dem 18.09. selbst an (beim Anlegen und im Fünf-Minuten-Abgleich); bei älteren Ständen von Hand: Dokumentenverwaltung → neuer Ordner, Name genau wie `ablage` in `dokumente/<bereich>/bereich.json`. Die Dateien bleiben im Eingang und laufen danach von selbst durch. |
+| Dokumente verschwinden, oder im Archiv liegen Dateien ohne erkennbare Zuordnung | Gleichnamige Dateien. Die Anlage erkennt ein Dokument nur am Dateinamen — siehe `BUGS_UND_FIXES.md` Punkt 6. Prüfen mit `python3 bau/pfad-messung.py`: Abschnitt 2 zeigt, wie viele Dateien im eigenen Bestand betroffen sind. |
 | Aufnahme steht seit Stunden | Laufsperre `/files/json/.lauf.sperre` im n8n-Container; löst sich nach 120 Minuten selbst, `aktualisiere.sh` räumt sie nach dem Neustart weg |
 
 **Selbst-Check:** `docker exec ki4ki-pruef-proxy python3 /app/selbstcheck.py [<bereich> <anzahl>]`

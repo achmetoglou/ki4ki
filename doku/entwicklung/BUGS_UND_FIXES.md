@@ -97,6 +97,71 @@ nicht, deshalb die maschinelle Prüfung.
 
 ---
 
+## 6 · Ein Dokument wird nur ueber seinen Dateinamen erkannt (20.09.2026, OFFEN)
+
+**Symptom.** Ein Bestand aus Kundenakten (15 Kundenordner, Unterordner wie
+Angebot, Pruefbericht, Rechnung) wurde aufgenommen. Dabei: Dokumente
+verschwanden aus dem Bestand, andere landeten im Archiv, ohne je eingebettet
+worden zu sein, und die Zuordnung zum Kunden ging verloren — im Archiv lagen
+lose Dateien, die niemand mehr einem Kunden zuordnen konnte.
+
+**Ursache.** Die Anlage identifiziert ein Dokument **allein ueber seinen
+Dateinamen**. Bei Forschungsbestaenden mit eindeutigen Titeln traegt das. Bei
+Kundenakten heissen Dateien reihenweise gleich. Gemessen am echten Bestand
+(`bau/pfad-messung.py`, 4.315 Dateien in vier Bereichen):
+
+```
+423 Schluessel sind mehrfach vergeben · 1.587 Dateien betroffen
+groesste Gruppe: 99 gleichnamige Dateien
+=> 1.164 Dokumente wuerden sich bei der Aufnahme still gegenseitig ersetzen
+```
+
+Betroffen sind **sieben unabhaengige Verzeichnisse** und **acht**
+Normalisierungsfunktionen, die alle jedes Zeichen ausser `a-z0-9` wegwerfen:
+
+| Stelle | Folge bei gleichem Namen |
+|---|---|
+| Archiv (`archiv/<name>`, flach) | zwei Dateien passen nicht nebeneinander — Kundenzuordnung geht verloren |
+| „Neue Fassung" (`pruef_proxy.py:668`) | gleicher Name + anderer Inhalt → alte Fassung wird samt Vektoren geloescht |
+| Loeschweg (`pruef_proxy.py:557`) | ein Loeschvorgang erfasst **alle** Namensvettern in **allen** Bereichen |
+| Ankunftspruefung (n8n, „Ablage entscheiden") | trifft ein fremdes Dokument → nie eingebettete Datei wandert ins Archiv |
+| Belegvorrat (`veredeln.py:319`) | jede zweite gleichnamige Textfassung wird verworfen → Dokument ist durchsuchbar, aber **nicht belegbar** |
+| PDF-Index (`pruef_proxy.py:2429`) | „erster Fund gewinnt", ohne feste Reihenfolge — derselbe Beleglink kann nach einem Neustart ein anderes Dokument oeffnen |
+| Rechtepruefung (`pruef_proxy.py:1967`) | Zugang zu **einem** „Angebot" erlaubt den Zugriff auf **alle** gleichnamigen |
+
+**Loesung (entschieden, noch nicht gebaut).** Die Kennung eines Dokuments wird
+sein **relativer Pfad** — Archiv und Aussortier-Ordner spiegeln die Unterordner
+des Eingangs. Der Pfad allein reicht aber **nicht**: Weil die Normalisierung
+alle Trennzeichen wegwirft, fallen bei bis zu acht Ordnerebenen immer noch
+785 Dateien zusammen (`Kunde/Angebot 2024/x` = `Kunde/Angebot/2024 x`), und
+zwei Schluessel reissen die 255-Byte-Grenze von ext4.
+
+Deshalb: **lesbarer, auf 120 Byte gekuerzter Name + zehnstelliger
+Fingerabdruck des vollen Pfades.** Der Fingerabdruck ist alphanumerisch und
+ueberlebt jede der acht Normalisierungen. Am echten Bestand gemessen:
+**0 Kollisionen in allen drei Normalformen, laengster Schluessel 176 Byte.**
+
+⚠ **Dateien auf der Platte werden dabei nicht umbenannt.** Der Pfadname
+betrifft nur die Kennung und die an AnythingLLM uebergebene Kopie.
+
+## 7 · Unterordner brechen die Aufnahmekette (20.09.2026, OFFEN)
+
+Zwei Fehler, die unabhaengig von Punkt 6 **heute schon** wirken, sobald
+Dokumente in Unterordnern des Eingangs liegen:
+
+- **Die 180-Minuten-Sicherung erzeugt eine Endlosschleife.** Sie bestimmt den
+  Bereich ueber `dirname(dirname(datei))`. Bei einer Datei in einem Unterordner
+  ergibt das den Eingang selbst — die aussortierte Datei landet in einem
+  Aussortier-Ordner *unterhalb des Eingangs* und wird beim naechsten Durchgang
+  von dort wieder eingesammelt. Der Riegel gegen Endlosschleifen erzeugt eine.
+- **Die Bereichserkennung liefert `"input"` statt des Bereichsnamens.** Der
+  Knoten „Nur ein Bereich je Durchgang" nimmt das vorletzte Pfadsegment. Folge:
+  Dateien verschiedener Bereiche gelten als ein Bereich und werden mit **einem**
+  Ablageordner hochgeladen — dem der ersten Datei. Dokumente koennen so im
+  falschen Arbeitsbereich landen.
+
+---
+
 ## Offen / vor einer Vermarktung zu klären
 
 - **Erste vollständige Installation von null** auf der Zielumgebung — erst damit
@@ -104,3 +169,11 @@ nicht, deshalb die maschinelle Prüfung.
 - **n8n-Lizenz** (*Sustainable Use License*): interner Betrieb gedeckt; ein
   vermarktetes Produkt mit fest verbautem n8n wäre vorher zu prüfen (siehe
   `LIZENZEN.md`).
+- **Dokumentkennung** (Punkt 6) und **Unterordner in der Aufnahmekette**
+  (Punkt 7). Solange beides offen ist, ist die Anlage fuer Bestaende mit
+  gleichnamigen Dateien — Kundenakten, Projektablagen, Angebotsarchive —
+  **nicht geeignet**. Fuer Forschungsbestaende mit eindeutigen Titeln ist sie es.
+- **Der Testlauf `dialogtest.py` deckt diese Fehlerklasse nicht ab.** Von 44
+  Szenarien behandelt keines Pfade, Namen, Archiv oder Dubletten; ein grosser
+  Teil der Pruefungen sind Zeichenketten-Vergleiche im eigenen Quelltext. Vor
+  dem Umbau gehoeren Szenarien dazu, die das **Verhalten** messen.
