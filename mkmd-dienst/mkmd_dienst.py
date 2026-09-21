@@ -38,6 +38,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import mk_md  # noqa: E402
 import pdfstelle  # noqa: E402
+import schluessel  # noqa: E402
 import seiten_echt  # noqa: E402
 
 PORT = int(os.environ.get("KI4KI_MKMD_PORT") or 5055)
@@ -140,7 +141,53 @@ class Griff(BaseHTTPRequestHandler):
             return
         self._antwort(404, {"fehler": "unbekannter Pfad"})
 
+    def _schluessel(self):
+        """Bereich + Pfad rein, Schluessel + Abdruck raus.
+
+        Warum hier und nicht in n8n: Der Schluessel entsteht aus SHA-256,
+        einem Basiswechsel, einer NFKD-Bereinigung und einer Byte-Kuerzung.
+        Eine zweite Fassung davon in JavaScript waere genau der Fehler, fuer
+        den dieser Dienst gebaut wurde - im Ablaufplan lag frueher eine
+        eigene Nachbildung der Markdown-Erzeugung, sogar in zwei Fassungen,
+        und keine kannte die Seitennummerierung.
+
+        Eine Rechnung, zwei Leser: Der Proxy ruft schluessel.py direkt auf,
+        n8n ueber diesen Weg. Dass beide Kopien der Datei gleich sind,
+        bewacht schluesseltest.py.
+        """
+        n = int(self.headers.get("Content-Length") or 0)
+        if n > HOECHSTENS:
+            self._antwort(413, {"fehler": "Anfrage zu gross"})
+            return
+        try:
+            auftrag = json.loads(self.rfile.read(n) or b"{}")
+        except Exception as e:
+            self._antwort(400, {"fehler": "kein gueltiges JSON: %s" % e})
+            return
+        fertig, kaputt = [], []
+        for eintrag in (auftrag.get("dateien") or []):
+            bereich = str(eintrag.get("bereich") or "")
+            unterpfad = str(eintrag.get("unterpfad") or "")
+            try:
+                kpfad = schluessel.kennpfad(bereich, unterpfad)
+                fertig.append({
+                    "bereich": bereich,
+                    "unterpfad": unterpfad,
+                    "schluessel": schluessel.schluessel(bereich, unterpfad),
+                    "abdruck": schluessel.fingerabdruck(kpfad),
+                })
+            except ValueError as e:
+                # ⛔ NICHT raten. Ein geratener Bereich macht aus einem
+                #   bereichsrelativen Pfad still den "Bereich archiv" - und
+                #   damit fuer jedes Dokument einen falschen Schluessel.
+                #   Lieber ein Fehler, den der Ablaufplan sieht.
+                kaputt.append({"unterpfad": unterpfad, "grund": str(e)[:200]})
+        self._antwort(200, {"schluessel": fertig, "fehler": kaputt})
+
     def do_POST(self):
+        if self.path.rstrip("/") == "/schluessel":
+            self._schluessel()
+            return
         if self.path.rstrip("/") != "/markdown":
             self._antwort(404, {"fehler": "unbekannter Pfad"})
             return

@@ -7,6 +7,7 @@ Grundsatz dieser Datei: Zu jeder Pruefung gehoert der Nachweis, mit WELCHER
 Eingabe sie rot wird. Eine Pruefung, die per Konstruktion immer gruen ist,
 beweist nichts - in vier Planfassungen standen vier solche Pruefungen.
 """
+import hashlib
 import os
 import re
 import sys
@@ -225,6 +226,29 @@ STEUER = {"bereich.json", "metadaten.json", "prompt.md", "kategorien.txt",
           "bilder-nachholen.txt", "aussortiert.log"}
 
 
+def test_beide_kopien_gleich():
+    """Zwei Dienste, eine Rechnung.
+
+    pdfstelle.py liegt schon zweimal im Repo, byteweise identisch; mit
+    schluessel.py kommt eine zweite solche Kopie dazu. Beide Container bauen
+    mit COPY *.py - wer nur eine Kopie aendert, hat im anderen Dienst
+    stillschweigend die alte Fassung. Die Aufnahme vergaebe dann Schluessel,
+    die die Auswertung nicht kennt.
+    """
+    print("\nBeide Kopien identisch")
+    hier = os.path.dirname(os.path.abspath(__file__))
+    for a, b in (("schluessel.py", "../mkmd-dienst/schluessel.py"),
+                 ("pdfstelle.py", "../mkmd-dienst/pdfstelle.py")):
+        pa, pb = os.path.join(hier, a), os.path.join(hier, b)
+        if not (os.path.exists(pa) and os.path.exists(pb)):
+            pruefe(False, "Kopie fehlt: %s oder %s" % (a, b))
+            continue
+        ha = hashlib.sha256(open(pa, "rb").read()).hexdigest()
+        hb = hashlib.sha256(open(pb, "rb").read()).hexdigest()
+        pruefe(ha == hb, "%s ist in beiden Diensten gleich (%s / %s)"
+               % (a, ha[:8], hb[:8]))
+
+
 def test_baum_enthaelt_die_fehlerklasse():
     """Taugt der Pruefbaum ueberhaupt als Grundlage?
 
@@ -367,6 +391,7 @@ if __name__ == "__main__":
     test_fingerabdruck()
     test_schluessel()
     test_abdruck_lesen()
+    test_beide_kopien_gleich()
     test_baum_enthaelt_die_fehlerklasse()
     test_invariante_am_bestand()
     print("\n%d Fehler" % len(FEHLER))
