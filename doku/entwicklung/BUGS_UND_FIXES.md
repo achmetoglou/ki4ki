@@ -296,10 +296,30 @@ Abbildungen unter der Schwelle. Selbst bei Schwelle 0 waeren das 32 Minuten
 fuer dieses eine Dokument — die 180-Minuten-Sicherung aus Fix 2 greift nicht.
 Die Gefahr von damals ist abgedeckt.
 
-⛔ **Nebenbefund, unabhaengig von der Schwelle: 16 von 788 PDF (2 %) konnte
-Docling gar nicht umwandeln.** Diese Dateien haetten im Betrieb weder Text
-noch Bildbeschreibung — und nach Punkt 10 wuerden sie trotzdem als
-aufgenommen im Archiv landen. Eigener Punkt, noch nicht untersucht.
+⭐ **Und die Frage, warum diese Messung ueberhaupt ueber Docling laeuft und
+nicht ueber `pdfimages`** — je Dokument gezaehlt:
+
+| | Dokumente | |
+|---|---|---|
+| Docling sieht **mehr** → Zeichnungen ohne eingebettetes Bild | 284 | **36,8 %** |
+| `pdfimages` sieht mehr → zerlegte Bilder | 242 | 31,3 % |
+| gleich viele | 246 | 31,9 % |
+
+Bei **gut einem Drittel** der Dokumente stecken Abbildungen drin, die im PDF
+gar keine Bilddaten sind — technische Zeichnungen. Eine Messung ueber
+`pdfimages` allein haette sie nicht gesehen. Fuer UC 1 sind das die
+wichtigsten Abbildungen ueberhaupt.
+
+⚠ Die **Summe** beantwortet diese Frage nicht (21.713 Abbildungen gegenueber
+82.700 Rasterbildern): Dort ueberlagern sich zwei gegenlaeufige Effekte —
+Docling fasst Kacheln zusammen und erkennt zugleich Vektorzeichnungen.
+Nur die Zaehlung je Dokument trennt beides.
+
+⛔ **Die Arbeit konzentriert sich extrem:** 17 Dokumente (2,2 %) stellen
+4.606 der 12.201 uebersprungenen Abbildungen — **38 % der Arbeit in 2,2 % der
+Dokumente**, die groessten mit 588, 530 und 432. Genau dafuer wurde die
+Schwelle eingefuehrt. (In dieser Liste stehen `419, 419` und `308, 308`
+nebeneinander: dieselben Dokumente doppelt im Bestand.)
 
 ---
 
@@ -455,6 +475,57 @@ Längenrechnung **grundsätzlich nicht exakt** — die Umschreibung ändert die 
 je nach Zeichen (Umlaute schrumpfen, `&`→`and` wächst, `›` fällt von 3 Byte auf
 1). Gemessen wurden +39, +40, +42 und +14 Byte bei vier Testnamen. Deshalb wird
 der lesbare Teil vor der Längenrechnung auf `A-Za-z0-9-` bereinigt.
+
+---
+
+## 12 · 16 PDF scheitern an beiden Motoren - und keine davon ist ein Dokument (21.09.2026)
+
+**Symptom.** Beim Durchmessen des Bestands meldete Docling bei 16 von 788 PDF
+`docling-parse could not load document`.
+
+**Erster Schluss war zu voreilig.** Notiert wurde: „Diese Dateien haetten im
+Betrieb weder Text noch Bildbeschreibung." Das uebersieht den Knoten
+*Docling Zweitversuch (pypdfium2)*, der mit anderem PDF-Motor und mit
+Texterkennung nachsetzt — die Messung kennt ihn nicht, der Betrieb schon.
+Nachgeprueft mit genau dessen Einstellungen (`bau/bildfehler.py`):
+**0 von 16 kommen durch.** Der Befund haelt, aber jetzt belegt.
+
+**Was diese Dateien wirklich sind** — an den ersten Bytes bestimmt, ohne
+Namen und ohne Inhalt:
+
+| Art | Anzahl | Groesse |
+|---|---|---|
+| **macOS-Metadatei (AppleDouble)** | **9** | je exakt 4.096 Byte |
+| Beschaedigte PDF (`Couldn't find trailer dictionary`) | 4 | 64 KB bis 904 KB |
+| Leere Datei | 2 | 0 Byte |
+| Unbekanntes Format ohne PDF-Kennung | 1 | 115 KB |
+| **Gueltige PDF, die nur Docling nicht laedt** | **0** | — |
+
+⭐ **Die letzte Zeile ist die wichtigste: Es gibt keine.** Die Anlage
+scheitert an keinem einzigen lesbaren Dokument. Ein dritter Extraktionsweg
+wird also **nicht** gebraucht — das war die naheliegende und falsche Folgerung.
+
+**Was stattdessen zu tun ist:**
+
+1. **Die 9 macOS-Metadateien beim Einlesen ueberspringen**, wie `.DS_Store`.
+   Sie heissen `._<name>.pdf`, entstehen beim Kopieren von einem Mac auf ein
+   fremdes Dateisystem und sind keine Dokumente. Der Bestand ist dadurch nicht
+   um 9 Dokumente aermer, er war nie um 9 reicher. ⚠ Sie zaehlen heute in
+   jeder Bestandszahl mit — auch in den 4.484 aus dem Schluesselmodul.
+2. **Die uebrigen 7 aussortieren statt archivieren.** Heute gelten sie als
+   erfolgreich aufgenommen, obwohl nichts aus ihnen herauskam — derselbe
+   stille Ausfall wie in Punkt 10.
+3. **Die 4 beschaedigten PDF Emrach melden.** Das sind echte Dokumente mit
+   kaputter Struktur; die Rohdaten liegen lokal und koennten neu bereitgestellt
+   werden. Nur hier geht tatsaechlich Inhalt verloren.
+
+⚠ **Lehre.** „Docling kann sie nicht laden" ist keine Fehlerklasse, aus der
+eine Massnahme folgt. Erst die Frage *was ist das ueberhaupt fuer eine Datei*
+trennt drei voellig verschiedene Faelle: Nichtdokumente zum Ueberspringen,
+Muell zum Aussortieren und echte Dokumente zum Neubeschaffen. Aufgefallen ist
+das an einer Zahl: **neun Dateien mit exakt derselben Groesse** sind kein
+Zufall, und der doppelt auftretende Hash `e3b0c442...` ist der SHA-256 der
+leeren Zeichenkette.
 
 ---
 
