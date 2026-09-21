@@ -158,6 +158,57 @@ def test_pdfstelle():
            "ist %r" % os.path.basename(op or ""))
 
 
+def test_belegvorrat():
+    """Heute verwirft veredeln.Bestand jede zweite gleichnamige Textfassung.
+
+    Sie landet in .doppelte und ist fuer die Zitatpruefung unerreichbar - das
+    Dokument ist dann durchsuchbar, aber NICHT belegbar. Hochrechnung aus
+    BUGS_UND_FIXES.md 6: rund 942 Dokumente.
+
+    Mit dem Schluessel als Uploadname verschwindet die Kollision von selbst.
+    Diese Pruefung belegt das, statt sich darauf zu verlassen - und die
+    Gegenprobe zeigt, dass sie die Fehlerklasse ueberhaupt trifft.
+    """
+    import schluessel
+    import veredeln
+    print("\nBelegvorrat")
+    vorrat = tempfile.mkdtemp(prefix="ki4ki-vorrat-")
+    kennung = "-11111111-2222-3333-4444-5555555555%02d.json"
+    try:
+        mit = os.path.join(vorrat, "mit-schluessel")
+        os.makedirs(mit)
+        kap_a = schluessel.schluessel("kap", "archiv/KundeA/Angebot.pdf")
+        kap_b = schluessel.schluessel("kap", "archiv/KundeB/Angebot.pdf")
+        for i, sl in enumerate((kap_a, kap_b)):
+            with open(os.path.join(mit, sl + ".md" + (kennung % i)), "w") as fh:
+                fh.write('{"pageContent": "Text %d"}' % i)
+        b = veredeln.Bestand(ordner=mit,
+                             speicher=os.path.join(vorrat, "a.pickle"))
+        pruefe(len(b.titel()) == 2,
+               "beide gleichnamigen Textfassungen sind im Vorrat, sind %d"
+               % len(b.titel()))
+        pruefe(not b.doppelte,
+               "nichts wurde als Dublette verworfen, verworfen: %d"
+               % len(b.doppelte))
+
+        # ⛔ Gegenprobe, ohne die die zwei Zeilen oben nichts sagen: MIT den
+        #   alten, nackten Namen muss derselbe Vorrat genau EINE Fassung
+        #   verschlucken. Tut er das nicht, prueft dieser Test die
+        #   Fehlerklasse gar nicht und sein Gruen ist geschenkt.
+        ohne = os.path.join(vorrat, "ohne-schluessel")
+        os.makedirs(ohne)
+        for i in range(2):
+            with open(os.path.join(ohne, "Angebot.md" + (kennung % i)), "w") as fh:
+                fh.write('{"pageContent": "Text %d"}' % i)
+        b2 = veredeln.Bestand(ordner=ohne,
+                              speicher=os.path.join(vorrat, "b.pickle"))
+        pruefe(len(b2.doppelte) == 1,
+               "Gegenprobe: mit nackten Namen wird genau eine Fassung "
+               "verworfen, verworfen: %d" % len(b2.doppelte))
+    finally:
+        shutil.rmtree(vorrat, ignore_errors=True)
+
+
 def test_stuetze_laeuft_ab():
     """Die Uebergangsstuetze darf sich NICHT selbst schuetzen.
 
@@ -218,7 +269,8 @@ def test_stuetze_laeuft_ab():
 
 def main():
     baum_bauen()
-    pruefungen = [test_index, test_pdfstelle, test_stuetze_laeuft_ab]
+    pruefungen = [test_index, test_pdfstelle, test_belegvorrat,
+                  test_stuetze_laeuft_ab]
     try:
         for t in pruefungen:
             t()

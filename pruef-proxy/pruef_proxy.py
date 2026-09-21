@@ -2376,6 +2376,17 @@ def bestandsschluessel(anzeigetitel):
         return anzeigetitel
     if anzeigetitel in alle:
         return anzeigetitel
+    # ⭐ Ueber den ABDRUCK, nicht ueber die Grundform: assistent._flach wirft
+    #   alles ausser a-z0-9 weg und macht aus zwei gleichnamigen Dokumenten
+    #   wieder eines - genau die Fehlerklasse, die dieser Umbau beseitigt.
+    meiner = schluessel.abdruck_finden(anzeigetitel, PDFS_ABDRUCK)
+    if meiner:
+        for t in alle:
+            if schluessel.abdruck_finden(schluessel.ohne_uuid(t),
+                                         {meiner: 1}) == meiner:
+                return t
+    # ⚠ UEBERGANGSSTUETZE fuer Titel aus der Zeit vor dem Umbau. Faellt weg,
+    #   sobald nur_ueber_altweg() 0 meldet.
     ziel = assistent._flach(
         anzeigetitel[:-3] if anzeigetitel.endswith(".md") else anzeigetitel)
     for t in alle:
