@@ -1,8 +1,11 @@
 # Einstieg in die nächste Sitzung
 
-Stand 20.09.2026. Diese Datei ersetzt das Zusammensuchen am Sitzungsanfang.
-Sie sagt, wo die Ziele stehen, was entschieden ist, was offen ist und was als
-Beweis zählt. **Erst lesen, dann arbeiten.**
+**Stand 21.09.2026, abends.** Diese Datei ersetzt das Zusammensuchen am
+Sitzungsanfang. Sie sagt, wo die Ziele stehen, was entschieden ist, was offen
+ist und was als Beweis zählt. **Erst lesen, dann arbeiten.**
+
+⭐ **Wer nur eines liest: §3d.** Dort steht, was am 21.09. gebaut und
+entschieden wurde — und was davon noch aussteht.
 
 ---
 
@@ -25,7 +28,7 @@ Beweis zählt. **Erst lesen, dann arbeiten.**
 |---|---|
 | `doku/entwicklung/GESPRAECH-ANFORDERUNGEN.md` | **Die Hauptquelle.** Drei Recherchen (Laien-Erwartungen, Wissenschaftler/Ingenieure, Stand der Technik für mehrstufige RAG-Dialoge) mit Quellen. Abgleichstabelle: **31 ✅ · 24 🟡 · 12 ❌** (Stand 25.–27.08.). Abschnitt 7 wertet die **Partner-Unterlagen** aus (Netzwerktreffen 2+3, Implementierungsleitfaden 141 S.), Abschnitt K die Demonstrator-Anforderungen. |
 | `doku/entwicklung/ARCHITEKTUR-GESPRAECH.md` | Architekturentscheidungen zum Gesprächsteil |
-| `doku/entwicklung/BUGS_UND_FIXES.md` | Gefundene Fehler mit Ursache. **Punkte 6 und 7 sind offen.** |
+| `doku/entwicklung/BUGS_UND_FIXES.md` | Gefundene Fehler mit Ursache, **12 Punkte**. Offen: **6** Dokumentkennung · **7** Unterordner · **8** Protokoll zählt Versuche · **9** Bildkette (teils erledigt) · **11** Fundstellen-Sprung. Neu am 21.09.: **9** Bildkette · **10** Formate · **11** `&`/`%`/`€` · **12** die 16 Ausfälle. |
 | Gedächtnis `project_ki4ki_index` | Hub über 18 KI4KI-Einträge — bei jeder KI4KI-Frage zuerst öffnen |
 | Gedächtnis `project_ki4ki_produktanspruch` | Emrach wörtlich (03.08.): die Anlage muss **beides** können — Schlüsse ziehen und zusammenfassen **und** belegen. Gilt für alle Bereiche, auch Partner. |
 
@@ -65,8 +68,12 @@ jeder Linie vor.
    Die Sperre „nicht bauen, bevor das gemessen ist" ist damit **aufgehoben**.
 2. **Pfad + Fingerabdruck bauen** (siehe §5), mit Prüfungen, die **Verhalten**
    messen, nicht Zeichenketten im Quelltext (siehe §7).
+   ✅ **Teil 1 ist am 21.09. abends gebaut und am Bestand gemessen** —
+   `pruef-proxy/schluessel.py`, Einzelheiten in §3d. ⚠ Das Modul wird bisher
+   **von niemandem aufgerufen**; die Umstellung der sieben Verzeichnisse ist
+   Teil 3 und steht noch aus.
    ⭐ **Zwei Anforderungen laufen mit**, ohne Zusatzaufwand, und sie machen die
-   Beweisführung in Schritt 3 überhaupt erst möglich:
+   Beweisführung in Schritt 3 überhaupt erst möglich — **beide noch offen**:
    - Die Meldung muss zwischen „nie hochgeladen" und „hochgeladen, aber nicht
      wiedergefunden" **unterscheiden**. Heute prüft der Ablaufplan nur, ob der
      Name in der Antwort des Einbetten-Aufrufs steht — und der baut seine Liste
@@ -79,8 +86,11 @@ jeder Linie vor.
      jedem Minutentakt erneut. ⛔ **Solange das nicht gilt, ist die Forderung
      „der Fehlerzähler muss nach dem Fix stillstehen" nicht durchführbar** — er
      kann per Konstruktion nie stillstehen.
+   ✅ Eine dritte Anforderung, die hier stand, ist **erledigt**: Ein leeres
+   Ergebnis wird nicht mehr archiviert, sondern aussortiert (§3d).
 3. **KAP vollständig neu einspielen und messen**, dass der Fehlerzähler
    **stillsteht** — nicht nur, dass der Bestand steigt.
+   ⚠ Mit Schwelle 0,01 dauert das **rund 12,7 Stunden** (§3d).
 4. **Dann UC 1.** Dafür braucht es zuerst eine Entscheidung über den Bestand:
    Störfalldaten als Datensätze mit Feldern, nicht als Dokumente.
 
@@ -93,9 +103,8 @@ jeder Linie vor.
 - ⛔ **`KI4KI_KONTAKT` ist leer.** Der „Weg zum Menschen" und die für UC 1
   geforderte Eskalation laufen ins Nichts — die Anforderung ist im Abgleich als
   ✅ geführt und im Betrieb wirkungslos.
-- ⚠ **Der Server hängt zwei Commits zurück** (nur Markdown, kein Code). Wer dort
-  `BUGS_UND_FIXES.md` liest, sieht die Punkte 6 und 7 **nicht**.
-  `./aktualisiere.sh` ist seit dem 20.09. nicht gelaufen.
+- ~~Der Server hängt zwei Commits zurück~~ — ✅ **erledigt 21.09.**, Repo und
+  Server stehen beide auf `28e207c`.
 
 ## 3c · Was der KAP-Bestand wirklich enthält (gemessen 21.09.)
 
@@ -118,10 +127,11 @@ doc/docx/odt/rtf · ppt/pptx/odp. Alles andere wird `unsupported`
 - Abbildungen **in** einem Dokument werden beim Aufnehmen an Docling gereicht
   (`do_picture_description`, `do_picture_classification`) und wandern in die
   Textfassung.
-  ⛔ **Korrektur 21.09.: „Das funktioniert" war falsch.** Gemessen werden nur
-  Abbildungen über **8 % Seitenfläche** beschrieben — bei der Probe **null von
-  drei**. Die Schwelle 0,08 unterdrückt die Bildbeschreibung im **ganzen
-  Bestand**, ohne Meldung. Siehe `BUGS_UND_FIXES.md` §9a.
+  ⛔ **Korrektur 21.09.: „Das funktioniert" war falsch.** Es wurden nur
+  Abbildungen über **8 % Seitenfläche** beschrieben — im ganzen Bestand
+  56,2 % aller Abbildungen fielen durch, ohne Meldung.
+  ✅ **Behoben am selben Abend:** Schwelle steht auf **0,01**, siehe §3d und
+  `BUGS_UND_FIXES.md` §9.
 - **Freistehende** Bilddateien erreichen Docling nie — sie scheitern schon an der
   Klassifizierung. Für die Störfallassistenz sind das ausgerechnet Schadensfotos
   und Zeichnungen. Und selbst wenn man sie durchreicht, hilft Docling nicht: es
@@ -149,9 +159,79 @@ Aussortiert entscheidet allein der Namensvergleich. Eine leere Datei landet im
 Archiv und gilt als aufgenommen. **Damit wäre Schritt 3 durch leere Dokumente
 abnehmbar.** Es braucht eine Verzweigung vor dem Upload.
 
+## 3d · Stand 21.09. abends — was gebaut und entschieden ist
+
+### ✅ Teil 1: das Schlüsselmodul steht
+
+`pruef-proxy/schluessel.py` und `schluesseltest.py`, **48 Prüfungen**, am echten
+Bestand gemessen:
+
+```
+4.484 Dokumente = 4.484 Kennpfade = 4.484 Schlüssel
+Doppelablagen (dieselbe Datei in zwei Stufen):            0
+Dokumente, deren lesbarer Teil nur der Bereichsname ist:  0
+längster Kennpfad 202 Byte -> längster Schlüssel 137 Byte
+lesbarer Teil gestutzt: 59 · Fingerabdruck fehlt bei: 0
+```
+
+⭐ **0 Doppelablagen** heißt für Teil 3: Beim Umstellen fällt nichts zusammen,
+jede Datei bleibt ein eigenes Dokument. Ein Risiko weniger.
+
+⛔ **Die 200-Byte-Zusicherung war strukturell immer grün.** 137 = 120
+(`LESBAR_BYTE`) + 2 + 10 + 5 — mehr als 141 Byte kann ein Schlüssel nie werden,
+an keinem Bestand. Scharf ist erst der Vergleich mit dieser Obergrenze.
+⚠ Und die Grenze hängt an der **Endungsregel** (1–8 Zeichen), *nicht* am
+`max(0, …)`: Mit aufgeweichter Regel kommen 216 Byte heraus, obwohl das
+`max(0, …)` greift. Wer `_ENDUNG` anfasst, bricht die Grenze.
+
+⚠ **Offen für Teil 3:** Von 200 zulässigen Byte bleiben 63 ungenutzt, weil
+`LESBAR_BYTE` härter deckelt als `GRENZE_BYTE`. Deshalb sind 59 lesbare Teile
+gestutzt. Eine Anhebung auf 179 ist möglich, **nicht entschieden**.
+
+### ✅ Die Bildfrage ist entschieden: Schwelle 0,08 → 0,01
+
+Am ganzen Bestand gemessen (772 von 788 PDF): **21.713 Abbildungen**, davon
+werden heute 9.512 beschrieben und 12.201 übersprungen. Die neue Schwelle holt
+**4.353** davon; das Neu-Einlesen dauert damit **12,7 statt 8,7 Stunden**.
+Unter 1 % liegen 7.848 Abbildungen — Trennlinien, Logos, Schnipsel; die kosten
+7 weitere Stunden und bringen nichts. Einzelheiten in `BUGS_UND_FIXES.md` §9.
+
+⭐ **Wie Docling überhaupt erkennt** (gemessen, §9e): Es arbeitet **visuell auf
+der gerenderten Seite**, nicht an den PDF-Bildobjekten.
+- Ein **gekacheltes Bild** (36 Kacheln à 1 %) wird als **eine** Abbildung mit
+  36 % erkannt und beschrieben — zerlegte Bilder fallen **nicht** durch.
+- **Icons in einer Infografik** werden **einzeln** erkannt und fallen durch.
+  Das ist der Grund für 0,01 statt 0,02.
+- Bei **37 % der Dokumente** sieht Docling Abbildungen, die `pdfimages` nicht
+  findet — Zeichnungen ohne eingebettetes Bild, für UC 1 die wichtigsten.
+
+### ✅ Vier Änderungen an der Aufnahmekette (`53edd7c`, im Betrieb bestätigt)
+
+1. Schwelle **0,01**.
+2. Der **Massenlauf** kann die Bildbeschreibung nicht mehr abschalten — Schritt 3
+   ist selbst ein Massenlauf, ohne das wäre Nr. 1 wirkungslos.
+3. **macOS-Metadateien** (`._*`) und Merkdateien werden übersprungen. Neun davon
+   steckten im Bestand, je exakt 4.096 Byte, und zählten als Dokumente mit —
+   auch in den 4.484 oben.
+4. ⭐ **Ein leeres Ergebnis geht nicht mehr ins Archiv.** Bisher entschied allein
+   der Namensvergleich; eine Datei ohne gewonnenen Text galt als aufgenommen.
+   Damit wäre Schritt 3 durch leere Dokumente abnehmbar gewesen.
+
+`bau/ablauf_pruefen.py` prüft diese Knoten, ohne sie im Betrieb auszuprobieren —
+und gleicht ab, was n8n **wirklich geladen** hat. Aufruf auf dem Host:
+`cd ~/ki4ki && python3 bau/ablauf_pruefen.py`
+
+### Was daraus offen bleibt
+
+1. **Vier beschädigte PDF** (`BUGS_UND_FIXES.md` §12). Nur dort geht wirklich
+   Inhalt verloren — Emrach hat die Rohdaten lokal und kann sie neu bereitstellen.
+2. **`LESBAR_BYTE`** (siehe oben), gehört zu Teil 3.
+3. **Die Protokoll-Wiederholung** bei jedem Minutentakt (§3, Punkt 2).
+
 ## 4 · Stand der Anlage
 
 ```
+Stand     Repo UND Server auf 28e207c (21.09. abends), 30 Commits vor main
 Zweig     pfad-identitaet · Rückweg: Tag vor-pfad-identitaet-2026-09-20
           zurück mit: git checkout main && ./aktualisiere.sh
 n8n       LÄUFT wieder (seit 21.09.), aber alle Eingänge sind LEER —
@@ -160,6 +240,13 @@ n8n       LÄUFT wieder (seit 21.09.), aber alle Eingänge sind LEER —
 KAP       Eingang leer · 8 im Archiv · 15 aussortiert · 4.241 geparkt
 Bestand   67 Dokumente
 Daten     Emrach hat alle Rohdaten lokal — der Serverbestand ist entbehrlich
+
+Bildbeschreibung   Schwelle 0,01 (war 0,08), Massenlauf kann sie NICHT
+                   mehr abschalten. Eingespielt und im Betrieb bestätigt.
+Aufnahmefilter     ._* und Merkdateien werden übersprungen
+Leerer Text        wird aussortiert, NICHT mehr archiviert (Mindestmass
+                   20 Zeichen)
+Schlüsselmodul     gebaut und gemessen, aber noch von NIEMANDEM aufgerufen
 ```
 
 ## 5 · Der Umbau: was entschieden ist
