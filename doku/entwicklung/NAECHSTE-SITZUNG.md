@@ -97,6 +97,40 @@ jeder Linie vor.
   `BUGS_UND_FIXES.md` liest, sieht die Punkte 6 und 7 **nicht**.
   `./aktualisiere.sh` ist seit dem 20.09. nicht gelaufen.
 
+## 3c · Was der KAP-Bestand wirklich enthält (gemessen 21.09.)
+
+4.264 Dateien, Endungen gezählt:
+
+```
+jpg 786 · tif 690 · jpeg 118      = 1.594 Bilder            37 %
+pdf 612 · doc 559 · docx 320 · pptx 142 · txt 93 · ppt 92
+csv 84 · xlsx 78 · xls 54          = 2.034 in der Formatliste 48 %
+msg 64 · xlsm 64                   = nicht in der Liste
+ds_store 142 · db 87 · 001 72 · inf 32  ≈ 333 Müll
+```
+
+⛔ **Rund die Hälfte des Bestands passiert die Eingangstür nicht.** Die
+Klassifizierung im Ablaufplan kennt genau: pdf · csv · txt · html/htm · xlsx/xls ·
+doc/docx/odt/rtf · ppt/pptx/odp. Alles andere wird `unsupported`
+(`let fileType = 'unsupported'` als Vorgabe).
+
+⭐ **Wichtige Unterscheidung bei Bildern — die Fähigkeit ist da, der Weg fehlt:**
+- Abbildungen **in** einem Dokument werden beim Aufnehmen beschrieben (Docling
+  mit `do_picture_description`, `do_picture_classification`) und wandern in die
+  Textfassung. Das funktioniert.
+- **Freistehende** Bilddateien erreichen Docling nie — sie scheitern schon an der
+  Klassifizierung. Für die Störfallassistenz sind das ausgerechnet Schadensfotos
+  und Zeichnungen.
+- `_bild_beschreiben` **zur Antwortzeit** (`pruef_proxy.py:8515`) arbeitet nur aus
+  dem Seitentext. Das ist eine dritte, davon unabhängige Funktion — sie erklärt
+  eine bereits aufgenommene Abbildung, sie nimmt keine auf.
+
+**Offen für Schritt 2:** Ob `.msg` und `.xlsm` über den Tika-Rückfall trotzdem
+durchkommen (der Unter-Ablaufplan hat einen Knoten „Tika-Text (Word, PowerPoint,
+sonstige)"), und ob freistehende Bilder aufgenommen werden können, indem die
+Klassifizierung sie wie ein PDF an Docling weiterreicht. **Beides ist am Code
+nicht sicher zu entscheiden — es braucht je eine Testdatei.**
+
 ## 4 · Stand der Anlage
 
 ```
