@@ -460,6 +460,73 @@ def test_belegvergleich():
 
 
 
+def test_rechtepruefung():
+    """Heute erlaubt der Zugang zu EINEM 'Angebot' den Zugriff auf ALLE
+    gleichnamigen - ueber alle Bereiche hinweg (BUGS_UND_FIXES.md 6).
+
+    Geprueft wird das VERHALTEN von dokument_erlaubt, nicht die Struktur der
+    Wege: wegabgleich.py sieht, ob eine Rechtefunktion aufgerufen wird, aber
+    nicht, ob ihr Urteil richtig ist.
+    """
+    import schluessel
+    import pruef_proxy as p
+    print("\nRechtepruefung am Abdruck")
+    p.pdfs_einlesen()
+    kap_a = schluessel.schluessel("kap", "archiv/KundeA/Angebot.pdf")
+    kap_b = schluessel.schluessel("kap", "archiv/KundeB/Angebot.pdf")
+    auw_a = schluessel.schluessel("auw", "archiv/KundeA/Angebot.pdf")
+
+    # Ein Konto, das GENAU EIN Angebot sehen darf. Die Liste kommt sonst aus
+    # der AnythingLLM-Abfrage; hier wird sie gesetzt, damit die Pruefung ohne
+    # Server laeuft und nur den Vergleich misst.
+    echt = p.erlaubte_dokumente
+    try:
+        p.erlaubte_dokumente = lambda kopfzeilen: [kap_a.lower()]
+        kopf = {}
+
+        pruefe(p.dokument_erlaubt(kap_a, kopf) is True,
+               "das erlaubte Dokument bleibt erlaubt")
+
+        # Die Zusicherung, um die es geht - heute ist sie ROT:
+        pruefe(p.dokument_erlaubt(kap_b, kopf) is False,
+               "das GLEICHNAMIGE Dokument eines anderen Kunden bleibt "
+               "gesperrt")
+        pruefe(p.dokument_erlaubt(auw_a, kopf) is False,
+               "dasselbe im anderen Bereich bleibt gesperrt")
+
+        # fail-closed: kein Abdruck = kein Zugang. Die Gegenprobe dazu steht
+        # in der ersten Zeile - ohne sie waere das hier auch dann gruen, wenn
+        # die Funktion einfach IMMER False lieferte.
+        pruefe(p.dokument_erlaubt("Angebot", kopf) is False,
+               "ein nackter Name ohne Abdruck bekommt KEINEN Zugang")
+        pruefe(p.dokument_erlaubt("", kopf) is False,
+               "leerer Name: kein Zugang")
+
+        # Die Endung darf den Zugang nicht kippen - das Modell schreibt sie
+        # mal mit, mal ohne.
+        pruefe(p.dokument_erlaubt(kap_a + ".md", kopf) is True,
+               "mit angehaengter Endung weiterhin erlaubt")
+
+        # Waehrend der Uebergangszeit muss ein Dokument aus der Zeit VOR dem
+        # Umbau weiter zugaenglich sein - es hat keinen Abdruck. Das ist der
+        # alte, leckende Vergleich; er bleibt genau so lange wie noetig und
+        # faellt mit der Uebergangsstuetze weg (Aufgabe 12). Ohne diese Zeile
+        # waere nicht festgehalten, dass das Absicht ist und nicht Zufall.
+        p.erlaubte_dokumente = lambda kopfzeilen: ["ds-24-005"]
+        pruefe(p.dokument_erlaubt("DS-24-005.md", kopf) is True,
+               "Uebergangszeit: ein Dokument ohne Abdruck bleibt zugaenglich")
+        pruefe(p.dokument_erlaubt("DS-24-006.md", kopf) is False,
+               "aber ein anderes ohne Abdruck nicht")
+        p.erlaubte_dokumente = lambda kopfzeilen: [kap_a.lower()]
+
+        # Eine leere Erlaubnisliste ist eine ANTWORT, kein Ausfall.
+        p.erlaubte_dokumente = lambda kopfzeilen: []
+        pruefe(p.dokument_erlaubt(kap_a, kopf) is False,
+               "leere Liste heisst: dieses Konto darf nichts sehen")
+    finally:
+        p.erlaubte_dokumente = echt
+
+
 def test_stuetze_laeuft_ab():
     """Die Uebergangsstuetze darf sich NICHT selbst schuetzen.
 
@@ -523,6 +590,7 @@ def main():
     pruefungen = [test_index, test_pdfstelle, test_belegvorrat,
                   test_anzeigetitel, test_metadaten_tor,
                   test_belegvergleich,
+                  test_rechtepruefung,
                   test_stuetze_laeuft_ab]
     try:
         for t in pruefungen:

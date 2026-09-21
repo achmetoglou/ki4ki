@@ -1974,12 +1974,30 @@ def dokument_erlaubt(stamm, kopfzeilen):
                      flags=re.I).strip().lower()
     if not gesucht:
         return False
-    if gesucht in erlaubt:
-        return True
-    # Der Bestand traegt Dateinamen ohne Umlaute, die Anzeige mit - und die
-    # Endung .md haengt manchen Titeln noch an.
-    flach = _flach_stamm(gesucht)
-    return any(_flach_stamm(t) == flach for t in erlaubt)
+    # ⭐ Verglichen wird AUSSCHLIESSLICH der Abdruck. Der lesbare Teil darf
+    #   verstuemmelt sein - er ist Bequemlichkeit fuer Menschen.
+    #   ⛔ fail-closed: Ohne Abdruck auf BEIDEN Seiten kein Zugang. Ein
+    #     Rueckfall auf den Namensvergleich waere genau das Loch, das hier
+    #     geschlossen wird - Zugang zu EINEM "Angebot" erlaubte bisher ALLE
+    #     gleichnamigen, ueber alle Bereiche hinweg. Zulaessig ist das, weil
+    #     jedes Dokument durch die Aufnahmekette laeuft und einen Schluessel
+    #     bekommt; auch das ueber den Hochladen-Knopf, das nach input/
+    #     geschrieben wird.
+    meiner = schluessel.abdruck_finden(gesucht, PDFS_ABDRUCK)
+    if meiner:
+        return any(schluessel.abdruck_finden(t, {meiner: 1}) == meiner
+                   for t in erlaubt)
+    # ⚠ UEBERGANGSSTUETZE fuer Dokumente aus der Zeit vor dem Umbau: Sie
+    #   tragen keinen Abdruck, und ohne diesen Zweig waeren sie waehrend des
+    #   Neu-Einlesens fuer jeden gesperrt. Sie faellt mit Aufgabe 12 weg -
+    #   und mit ihr die Fehlerklasse, denn dann hat jedes Dokument einen
+    #   Abdruck und der Zweig wird nie mehr erreicht.
+    if altweg_aktiv():
+        if gesucht in erlaubt:
+            return True
+        flach = _flach_stamm(gesucht)
+        return any(_flach_stamm(t) == flach for t in erlaubt)
+    return False
 
 
 def _flach_stamm(text):
