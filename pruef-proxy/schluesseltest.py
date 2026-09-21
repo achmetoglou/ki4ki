@@ -225,10 +225,21 @@ def test_invariante_am_bestand():
     pruefe(ohne_abdruck == 0,
            "in jedem Schluessel steckt der Abdruck seines Kennpfads, ohne: %d"
            % ohne_abdruck)
-    if laengster_s <= 150:
-        print("  ACHTUNG zur Aussagekraft: der laengste Schluessel liegt %d Byte"
-              " unter der Grenze. Die Zusicherung 'kein Schluessel ueber 200"
-              " Byte' konnte an diesem Bestand nicht rot werden." % (200 - laengster_s))
+    # ⛔ Die 200-Byte-Zusicherung oben ist STRUKTURELL immer gruen: der lesbare
+    #    Teil ist auf LESBAR_BYTE gedeckelt, der Schwanz auf 2 + 10 + hoechstens
+    #    9 Byte Endung. Mehr als die Summe kann nie herauskommen - an keinem
+    #    Bestand. Gemessen 21.09.: laengster Schluessel 137 Byte bei 4.484
+    #    Dokumenten, und 137 = 120 + 2 + 10 + 5.
+    #    Scharf ist deshalb erst der Vergleich mit DIESER Obergrenze. Sie wird
+    #    rot, sobald die Kuerzung nicht mehr greift, LESBAR_BYTE steigt oder die
+    #    Endungsregel aufgeweicht wird - also genau dann, wenn etwas kaputt ist.
+    obergrenze = schluessel.LESBAR_BYTE + len("--") + 10 + 9
+    pruefe(laengster_s <= obergrenze,
+           "laengster Schluessel %d Byte, Obergrenze aus den Konstanten %d"
+           % (laengster_s, obergrenze))
+    print("  Abstand zur 200-Byte-Grenze: %d Byte ungenutzt. Die Grenze wird"
+          " nicht von GRENZE_BYTE erzwungen, sondern von LESBAR_BYTE."
+          % (200 - laengster_s))
     # Keine Zusicherung, sondern die Kennzahl, die wirklich etwas aussagt:
     print("  Hinweis: bei %d Dokumenten besteht der lesbare Teil NUR noch aus dem"
           " Bereichsnamen - dort ist die Zuordnung im Schluessel verloren"
