@@ -69,9 +69,29 @@ SEITE = BREITE * HOEHE
 # Zusatzpaket laeuft.
 # --------------------------------------------------------------------------
 
-def _graustufenbild(breite_px, hoehe_px, hell):
-    """Ein einfarbiges Graustufenbild als PDF-Objekt-Inhalt."""
-    roh = bytes([hell]) * (breite_px * hoehe_px)
+def _graustufenbild(breite_px, hoehe_px, hell, streu=0):
+    """Graustufenbild als PDF-Objektinhalt.
+
+    Mit streu > 0 bekommt das Bild Struktur statt einer einfarbigen
+    Flaeche. Das ist nicht Kosmetik: In der ersten Fassung waren alle
+    Bilder einfarbig grau, und das Layout-Modell hat die ganze Seite als
+    EINE Bildregion gelesen - auch im Fall, wo fuenf getrennte Icons
+    erwartet waren. Ein Versuch mit unrealistischen Vorlagen misst das
+    Modell nicht, sondern die Vorlage.
+    """
+    if not streu:
+        roh = bytes([hell]) * (breite_px * hoehe_px)
+    else:
+        werte = bytearray()
+        zahl = 12345
+        for y in range(hoehe_px):
+            for x in range(breite_px):
+                zahl = (1103515245 * zahl + 12345) % 2147483648
+                rand = (zahl >> 16) % (2 * streu + 1) - streu
+                # zusaetzlich ein Muster, damit Kanten und Linien entstehen
+                muster = 40 if (x // 3 + y // 3) % 2 else 0
+                werte.append(max(0, min(255, hell + rand + muster)))
+        roh = bytes(werte)
     return zlib.compress(roh)
 
 
@@ -82,9 +102,9 @@ def baue_pdf(pfad, bilder, texte):
     bildnamen = []
 
     for nr, (_x, _y, _b, _h, hell) in enumerate(bilder):
-        daten = _graustufenbild(24, 24, hell)
+        daten = _graustufenbild(48, 48, hell, streu=30)
         objekte.append(
-            b"<< /Type /XObject /Subtype /Image /Width 24 /Height 24"
+            b"<< /Type /XObject /Subtype /Image /Width 48 /Height 48"
             b" /ColorSpace /DeviceGray /BitsPerComponent 8"
             b" /Filter /FlateDecode /Length " + str(len(daten)).encode() +
             b" >>\nstream\n" + daten + b"\nendstream")
@@ -134,6 +154,33 @@ def baue_pdf(pfad, bilder, texte):
         f.write(b"".join(aus + tabelle))
 
 
+ZEILE = ("Die Instandhaltung der Anlage folgt einem festen Ablauf. Nach dem "
+         "Erkennen der Stoerung wird die Ursache eingegrenzt und das "
+         "betroffene Bauteil geprueft. Die Messwerte sind zu dokumentieren.")
+
+
+def fliesstext(von_y, bis_y, x=90, schritt=15, aussparen=()):
+    """Zeilen Fliesstext, damit die Seite wie ein echtes Dokument aussieht.
+
+    Ohne das bestand die erste Fassung aus grauen Quadraten und drei
+    Zeilen - das Layout-Modell las darin EINE grosse Bildregion, auch wo
+    fuenf getrennte Icons standen. Der Versuch mass damit die Vorlage,
+    nicht das Modell.
+
+    aussparen: Liste (y_unten, y_oben), in denen keine Zeile gesetzt wird.
+    """
+    zeilen = []
+    y = von_y
+    n = 0
+    while y > bis_y:
+        if not any(u - 6 <= y <= o + 6 for u, o in aussparen):
+            teil = ZEILE[(n * 37) % 90:][:78]
+            zeilen.append((x, y, teil or ZEILE[:78]))
+        y -= schritt
+        n += 1
+    return zeilen
+
+
 def kante(anteil):
     """Kantenlaenge eines Quadrats mit diesem Flaechenanteil."""
     return (anteil * SEITE) ** 0.5
@@ -150,32 +197,40 @@ def faelle():
         for spalte in range(6):
             bilder.append((100 + spalte * k, 300 + zeile * k, k, k,
                            60 + (zeile * 6 + spalte) * 3))
-    ergebnis.append(("1-kachelbild", bilder,
-                     [(100, 260, "Abbildung 1: Messaufbau, aus Kacheln zusammengesetzt")],
+    unten, oben = 300, 300 + 6 * k
+    texte = ([(100, 260, "Abbildung 1: Messaufbau, aus Kacheln zusammengesetzt")]
+             + fliesstext(790, 270, aussparen=((unten - 10, oben + 10),)))
+    ergebnis.append(("1-kachelbild", bilder, texte,
                      "1 Abbildung mit rund 36 %, NICHT 36 Abbildungen mit je 1 %"))
 
     # 2 - Infografik: Block aus Ueberschrift, drei Icons, Text
     k2 = kante(0.01)
     bilder = [(120 + i * (k2 + 40), 520, k2, k2, 80 + i * 40) for i in range(3)]
-    texte = [(120, 620, "Ablauf der Stoerungsbehebung"),
-             (120, 500, "Schritt 1                Schritt 2                Schritt 3"),
-             (120, 480, "Anlage pruefen     Fehler eingrenzen     Teil tauschen")]
+    texte = ([(120, 620, "Ablauf der Stoerungsbehebung"),
+              (120, 500, "Schritt 1                Schritt 2                Schritt 3"),
+              (120, 480, "Anlage pruefen     Fehler eingrenzen     Teil tauschen")]
+             + fliesstext(790, 650) + fliesstext(450, 80))
     ergebnis.append(("2-infografik", bilder, texte,
                      "1 Abbildung (der ganze Block) oder 3 kleine? Das ist die Frage"))
 
     # 3 - fuenf verstreute Icons zwischen Text (Gegenprobe)
     k3 = kante(0.01)
     bilder = [(90, 700 - i * 130, k3, k3, 70 + i * 30) for i in range(5)]
-    texte = [(160, 700 - i * 130 + k3 / 2,
-              "Absatz %d - Hinweiszeichen am Rand, gehoert nicht zusammen" % (i + 1))
-             for i in range(5)]
+    texte = []
+    for i in range(5):
+        kopf_y = 700 - i * 130 + k3
+        texte.append((90, kopf_y + 22, "%d. Abschnitt der Pruefanweisung" % (i + 1)))
+        # Fliesstext RECHTS vom Icon und darunter - so sieht ein Absatz mit
+        # Randzeichen aus, und die Icons sind durch Text getrennt.
+        texte += fliesstext(kopf_y, kopf_y - 95, x=160, schritt=16)
     ergebnis.append(("3-verstreut", bilder, texte,
                      "5 einzelne Abbildungen - hier waere Zusammenfassen FALSCH"))
 
     # 4 - Kontrolle
     k4 = kante(0.30)
-    ergebnis.append(("4-einzelgross", [(120, 300, k4, k4, 110)],
-                     [(120, 260, "Abbildung 4: Uebersichtsaufnahme")],
+    texte4 = ([(120, 260, "Abbildung 4: Uebersichtsaufnahme")]
+              + fliesstext(790, 270, aussparen=((290, 300 + k4 + 10),)))
+    ergebnis.append(("4-einzelgross", [(120, 300, k4, k4, 110)], texte4,
                      "genau 1 Abbildung mit rund 30 %"))
     return ergebnis
 
@@ -235,6 +290,7 @@ def messe(pfad):
 def main():
     os.makedirs(ZIEL, exist_ok=True)
     print("Vier kontrollierte Faelle, Schwelle %.2f\n" % SCHWELLE)
+    gefunden = {}
     for name, bilder, texte, erwartung in faelle():
         pfad = os.path.join(ZIEL, name + ".pdf")
         baue_pdf(pfad, bilder, texte)
@@ -249,6 +305,7 @@ def main():
         if anteile is None:
             print("  FEHLER: Docling lieferte keine JSON-Fassung\n")
             continue
+        gefunden[name] = anteile
         ueber = sum(1 for a in anteile if a >= SCHWELLE)
         print("  Docling sieht: %d Abbildungen%s"
               % (len(anteile),
@@ -257,15 +314,59 @@ def main():
         print("  davon beschrieben: %d von %d%s\n"
               % (ueber, len(anteile),
                  "   ⛔ NICHTS wird beschrieben" if anteile and ueber == 0 else ""))
-    print("Lesehilfe:")
-    print("  Fall 1 muss 1 grosse Abbildung ergeben. Ergibt er 36 kleine,"
-          " faellt jedes zerlegte Bild im Bestand durch die Schwelle.")
-    print("  Fall 2 sagt, ob Icons in einer Infografik mit dem Block"
-          " zusammen erkannt werden oder einzeln durchfallen.")
-    print("  Fall 3 muss 5 einzelne ergeben - sonst fasst Docling immer"
-          " zusammen und Fall 1 und 2 haetten nichts bewiesen.")
-    print("  Fall 4 muss genau 1 ergeben. Tut er das nicht, stimmt die"
-          " Messung nicht und die anderen drei sind wertlos.")
+    # ---- Gueltigkeit des Versuchs, bevor irgendetwas gedeutet wird ----
+    # Die erste Fassung lieferte bei Fall 3 eine Abbildung statt fuenf. Das
+    # stand nur in der Lesehilfe und haette beim Ueberfliegen wie ein
+    # Ergebnis ausgesehen. Der Versuch beurteilt sich jetzt selbst.
+    print("=" * 66)
+    verstreut = gefunden.get("3-verstreut") or []
+    kontrolle = gefunden.get("4-einzelgross") or []
+    maengel = []
+    if len(kontrolle) != 1:
+        maengel.append("Fall 4 (Kontrolle) ergab %d Abbildungen statt genau 1"
+                       % len(kontrolle))
+    elif not (0.24 <= kontrolle[0] <= 0.36):
+        maengel.append("Fall 4 ergab %.1f %% statt rund 30 %%"
+                       % (100 * kontrolle[0]))
+    if len(verstreut) < 4:
+        maengel.append("Fall 3 (Gegenprobe) ergab %d Abbildungen statt 5 -"
+                       " Docling fasst hier zusammen, wo Trennen richtig waere"
+                       % len(verstreut))
+
+    if maengel:
+        print("⛔ DER VERSUCH IST UNGUELTIG. Nichts davon deuten.")
+        for m in maengel:
+            print("   - %s" % m)
+        print("\n   Warum das zaehlt: Wenn die Gegenprobe zusammenfasst, wo"
+              " Trennen richtig waere,\n   dann ist auch das Ergebnis von Fall 1"
+              " (\"1 grosse Abbildung\") kein Befund\n   ueber Kacheln, sondern"
+              " dasselbe Verhalten. Die Frage bleibt offen.")
+        return 1
+
+    print("✓ Der Versuch ist gueltig: Kontrolle stimmt, und die Gegenprobe"
+          " trennt,\n  wo Trennen richtig ist. Erst damit sagen Fall 1 und 2"
+          " etwas aus.\n")
+    kachel = gefunden.get("1-kachelbild") or []
+    if len(kachel) == 1 and kachel[0] >= SCHWELLE:
+        print("Fall 1: Ein zerlegtes Bild wird als EINE grosse Abbildung"
+              " erkannt und beschrieben.\n        Zerlegte Bilder fallen also"
+              " NICHT durch die Schwelle.")
+    else:
+        print("⛔ Fall 1: Ein zerlegtes Bild zerfaellt in %d Abbildungen."
+              " Jedes gekachelte Bild\n   im Bestand faellt damit durch die"
+              " Schwelle - unabhaengig von seiner wahren Groesse." % len(kachel))
+
+    grafik = gefunden.get("2-infografik") or []
+    beschrieben = sum(1 for a in grafik if a >= SCHWELLE)
+    if beschrieben:
+        print("Fall 2: Die Icons werden mit dem Block zusammen erkannt und"
+              " beschrieben.")
+    else:
+        print("⛔ Fall 2: Der Infografik-Block ergibt %d Abbildung(en) mit"
+              " %s - nichts davon\n   wird beschrieben. Icons in Infografiken"
+              " fallen durch die Schwelle."
+              % (len(grafik),
+                 ", ".join("%.1f %%" % (100 * a) for a in grafik) or "keiner"))
     return 0
 
 
