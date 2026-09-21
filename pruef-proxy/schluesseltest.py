@@ -155,6 +155,12 @@ def test_invariante_am_bestand():
         return
     kennpfade, schluessel_menge, dokumente, tiefste = set(), set(), 0, 0
     zu_lang, nicht_ascii, nur_bereich, uebersprungen, fehler = 0, 0, 0, 0, 0
+    # Ohne diese Verteilung ist "kein Schluessel ueber 200 Byte" wertlos: Sind
+    # alle Schluessel 60 Byte lang, ist das Gruen geschenkt und die Zusicherung
+    # hat am Bestand nichts geprueft. Erst der Abstand zur Grenze sagt, ob sie
+    # ueberhaupt rot werden KONNTE.
+    laengster_s, laengster_kp, nah_an_grenze, gekuerzt = 0, 0, 0, 0
+    ohne_abdruck = 0
     for ordner, _unter, namen in os.walk(wurzel):
         for n in namen:
             if n in STEUER or n.endswith(".log"):
@@ -176,10 +182,24 @@ def test_invariante_am_bestand():
             tiefste = max(tiefste, rel.count(os.sep) + 1)
             kennpfade.add(kp)
             schluessel_menge.add(s)
-            if len(s.encode("utf-8")) > 200:
+            byte_s = len(s.encode("utf-8"))
+            if byte_s > 200:
                 zu_lang += 1
+            if byte_s > 150:
+                nah_an_grenze += 1
+            laengster_s = max(laengster_s, byte_s)
+            laengster_kp = max(laengster_kp, len(kp.encode("utf-8")))
+            # Der lesbare Teil wurde gestutzt, wenn er genau an der Schranke
+            # endet - dann greift die Kuerzung ueberhaupt.
+            if len(s.split("--")[0].encode("utf-8")) >= schluessel.LESBAR_BYTE:
+                gekuerzt += 1
             if any(ord(c) > 127 for c in s):
                 nicht_ascii += 1
+            # Die eigentliche Zusicherung am Bestand: Der Abdruck ist das
+            # Einzige, was verglichen wird. Frisst die Kuerzung ihn an, ist das
+            # Dokument nicht mehr identifizierbar - und zwar still.
+            if schluessel.fingerabdruck(kp) not in s:
+                ohne_abdruck += 1
             # NICHT auf den Rueckfall pruefen: der Bereichsname ueberlebt die
             # Bereinigung immer, der lesbare Teil wird deshalb nie leer und der
             # Rueckfall nie erreicht. Ein Zaehler darauf meldete dauerhaft 0 und
@@ -192,12 +212,23 @@ def test_invariante_am_bestand():
           % (len(kennpfade), len(schluessel_menge), tiefste))
     print("  Doppelablagen (dieselbe Datei in zwei Stufen): %d"
           % (dokumente - len(kennpfade)))
+    print("  laengster Schluessel %d Byte (Grenze 200), laengster Kennpfad %d Byte"
+          % (laengster_s, laengster_kp))
+    print("  ueber 150 Byte: %d · lesbarer Teil gestutzt: %d"
+          % (nah_an_grenze, gekuerzt))
     # Die vier Zusicherungen, die am Bestand WIDERLEGBAR sind:
     pruefe(dokumente > 0, "der Pruefbaum enthaelt Dokumente")
     pruefe(zu_lang == 0, "kein Schluessel ueber 200 Byte, darueber: %d" % zu_lang)
     pruefe(nicht_ascii == 0,
            "alle Schluessel reines ASCII, mit Sonderzeichen: %d" % nicht_ascii)
     pruefe(fehler == 0, "jeder Pfad zerlegbar, unzerlegbar: %d" % fehler)
+    pruefe(ohne_abdruck == 0,
+           "in jedem Schluessel steckt der Abdruck seines Kennpfads, ohne: %d"
+           % ohne_abdruck)
+    if laengster_s <= 150:
+        print("  ACHTUNG zur Aussagekraft: der laengste Schluessel liegt %d Byte"
+              " unter der Grenze. Die Zusicherung 'kein Schluessel ueber 200"
+              " Byte' konnte an diesem Bestand nicht rot werden." % (200 - laengster_s))
     # Keine Zusicherung, sondern die Kennzahl, die wirklich etwas aussagt:
     print("  Hinweis: bei %d Dokumenten besteht der lesbare Teil NUR noch aus dem"
           " Bereichsnamen - dort ist die Zuordnung im Schluessel verloren"
