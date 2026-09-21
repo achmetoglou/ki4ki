@@ -10,8 +10,12 @@ Das Skript schneidet die geaenderten Entscheidungen aus dem JSON heraus,
 fuehrt sie mit node aus und prueft sie gegen Faelle mit bekanntem
 Ergebnis. Zu jedem Fall gehoert die Angabe, was herauskommen MUSS.
 
-Aufruf (braucht node, im Container vorhanden, sonst lokal):
-    python3 bau/ablauf_pruefen.py
+⚠ Dieses Skript gehoert auf den HOST. Die Ablaufplaene liegen im Repo
+(n8n-workflows/), nicht im Proxy-Container - ein Aufruf per docker exec
+scheitert daran. node holt sich das Skript notfalls aus dem n8n-Container.
+
+Aufruf:
+    cd ~/ki4ki && python3 bau/ablauf_pruefen.py
 """
 import json
 import io
@@ -19,9 +23,55 @@ import os
 import subprocess
 import sys
 
-HIER = os.path.dirname(os.path.abspath(__file__))
-PLAENE = os.path.join(os.path.dirname(HIER), "n8n-workflows")
+def _plaene_finden():
+    """Wo liegen die Ablaufplaene?
 
+    Ueber die Standardeingabe gestartet (python3 - < datei) kennt das
+    Skript seinen eigenen Ort NICHT: __file__ ist dann "<stdin>", und der
+    daraus abgeleitete Pfad landet im Wurzelverzeichnis. Deshalb mehrere
+    Wege - und am Ende eine Meldung, die sagt was zu tun ist, statt eines
+    Traceback.
+    """
+    kandidaten = []
+    if os.environ.get("PLAENE"):
+        kandidaten.append(os.environ["PLAENE"])
+    hier = os.path.abspath(globals().get("__file__", ""))
+    if os.path.basename(hier) == "ablauf_pruefen.py":
+        kandidaten.append(os.path.join(os.path.dirname(os.path.dirname(hier)),
+                                       "n8n-workflows"))
+    kandidaten.append(os.path.join(os.getcwd(), "n8n-workflows"))
+    kandidaten.append(os.path.join(os.getcwd(), "..", "n8n-workflows"))
+    for k in kandidaten:
+        if os.path.isdir(k):
+            return os.path.abspath(k)
+    raise SystemExit(
+        "Die Ablaufplaene sind nicht zu finden. Gesucht in:\n  "
+        + "\n  ".join(os.path.abspath(k) for k in kandidaten)
+        + "\n\nDieses Skript gehoert auf den HOST - im Proxy-Container"
+          " liegen die Plaene nicht.\nAufruf:  cd ~/ki4ki && python3"
+          " bau/ablauf_pruefen.py")
+
+
+PLAENE = _plaene_finden()
+
+
+def _node_aufruf():
+    """node wird gebraucht, um die Knoten-Logik wirklich AUSZUFUEHREN statt
+    sie zu lesen. Fehlt es auf dem Host, tut es der n8n-Container - der hat
+    per Definition eines."""
+    for befehl in (["node"], ["docker", "exec", "-i", "ki4ki-n8n", "node"]):
+        try:
+            e = subprocess.run(befehl + ["-e", "console.log('da')"],
+                               capture_output=True, text=True, timeout=30)
+            if e.returncode == 0 and "da" in e.stdout:
+                return befehl
+        except (OSError, subprocess.SubprocessError):
+            continue
+    raise SystemExit("Kein node gefunden - weder auf dem Host noch im"
+                     " n8n-Container.")
+
+
+NODE = None
 FEHLER = []
 
 
@@ -40,7 +90,10 @@ def knoten(datei, name):
 
 
 def node_lauf(js):
-    e = subprocess.run(["node", "-e", js], capture_output=True, text=True,
+    global NODE
+    if NODE is None:
+        NODE = _node_aufruf()
+    e = subprocess.run(NODE + ["-e", js], capture_output=True, text=True,
                        timeout=60)
     if e.returncode != 0:
         raise SystemExit("node-Fehler:\n" + (e.stderr or "")[:2000])
@@ -180,5 +233,6 @@ if __name__ == "__main__":
     test_leere_aussortieren()
     test_docling_einstellungen()
     test_plaene_unversehrt()
-    print("\n%d Fehler" % len(FEHLER))
+    print("\nGeprueft wurden die Plaene in: %s" % PLAENE)
+    print("%d Fehler" % len(FEHLER))
     sys.exit(1 if FEHLER else 0)
