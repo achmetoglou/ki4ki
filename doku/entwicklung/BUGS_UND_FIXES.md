@@ -529,6 +529,49 @@ leeren Zeichenkette.
 
 ---
 
+## 13 · Der Pfad-Schlüssel nimmt der Bibliothek ihre Metadaten (21.09.2026, VOR Teil 3 zu lösen)
+
+**Gefunden beim Gegenlesen des Teil-3-Plans, nicht beim Bauen.** Eine Folge der
+Entscheidung „alles neu einlesen", die vorher niemand sehen konnte.
+
+**Symptom.** Nach der Umstellung heisst ein Dokument nicht mehr `DS-24-005.pdf`,
+sondern `wissensdatenbank-DS-24-005--dqda3iuv74.pdf`. Am Modul nachgemessen:
+
+```
+kennung("DS-24-005.pdf")                       -> "DS"
+kennung("wissensdatenbank-DS-24-005--dq…pdf")  -> None
+art_von(…)                                      -> None   (statt "Dissertation")
+_flach(…).startswith("ds24")                    -> False  (statt True)
+```
+
+⛔ **Und eine Ebene tiefer: `bestand.angaben()` bricht ebenfalls.** Es schlägt
+in `nach_grund` nach, einem Index, der aus den **alten** Namen gebaut wird
+(`bestand.py:119`):
+
+```
+im Index steht :  'ds24005'
+gesucht wird   :  'wissensdatenbankds24005dqda3iuv74'
+Treffer        :  False
+```
+
+**Folge.** `angaben()` liefert für **jedes** Dokument `None`. Damit fehlen
+**Titel, Verfasser, Jahr, Band, Art, Kategorie und Schlagworte** in der ganzen
+Bibliothek. Betroffen sind **11 Aufrufstellen in `assistent.py`**, 4 in
+`pruef_proxy.py` und mehrere in `bestand.py` selbst. Zwei Nachschlagestellen:
+`bestand.py:153` und `:618`.
+
+**Lösung (Teil 3, Aufgabe 6c).** Ein `anzeigetitel()` bildet aus dem Schlüssel
+wieder `DS-24-005` — Bereichsvorspann und Abdruck fallen weg.
+⭐ **Entscheidend ist, wo er eingesetzt wird:** *in* `angaben()` und `kennung()`,
+bevor die Grundform gebildet wird — nicht daneben. Dann bleiben alle
+15+ Aufrufstellen unangetastet. Zwei Funktionen statt fünfzehn.
+
+⚠ Die Prüfung dazu beginnt mit der Gegenprobe, dass es **ohne** Anzeigetitel
+wirklich bricht (`angaben(<schluessel>)` muss `None` liefern) — sonst repariert
+man etwas Heiles und merkt es nie.
+
+---
+
 ## Offen / vor einer Vermarktung zu klären
 
 - **Erste vollständige Installation von null** auf der Zielumgebung — erst damit
