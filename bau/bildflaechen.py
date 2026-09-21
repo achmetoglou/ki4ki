@@ -100,6 +100,11 @@ def main():
     ueber = unter = 0
     groesstes_unter = 0.0
     treppe = [0] * 6   # <1%, 1-2%, 2-4%, 4-8%, 8-16%, >=16%
+    # Der Mittelwert allein taeuscht: Ein einziges Dokument mit 1.500 Bildern
+    # wuerde die Hochrechnung auf den Bestand voellig verzerren, und genau so
+    # ein Fall ist bekannt (BUGS_UND_FIXES.md Punkt 1: 285 Bilder). Deshalb
+    # wird die Verteilung JE DOKUMENT mitgefuehrt.
+    je_dokument = []
 
     for p in probe:
         flaeche = seitenflaeche(p)
@@ -114,6 +119,7 @@ def main():
             ohne_bild += 1
             continue
         mit_bild += 1
+        je_dokument.append(sum(1 for x in anteile if x < SCHWELLE))
         for a in anteile:
             if a >= SCHWELLE:
                 ueber += 1
@@ -146,16 +152,39 @@ def main():
                         "8 bis 16 %", "16 % und mehr"), treppe):
         strich = "#" * int(round(40.0 * n / gesamt)) if gesamt else ""
         print("  %-14s %5d  %s" % (name, n, strich))
+    sortiert = sorted(je_dokument)
+    mitte = sortiert[len(sortiert) // 2] if sortiert else 0
+    print("\nWie sich diese Bilder auf die Dokumente verteilen:")
+    print("  Mittelwert %.1f je Dokument · Mittelwert der Mitte (Median) %d"
+          " · groesstes Dokument %d" % (1.0 * unter / len(probe), mitte,
+                                        sortiert[-1] if sortiert else 0))
+    if mitte and sortiert[-1] > 10 * mitte:
+        print("  ⛔ Der Mittelwert ist von Ausreissern getrieben - das groesste"
+              " Dokument hat mehr als das Zehnfache des Medians. Die"
+              " Hochrechnung mit dem Mittelwert ist dann NICHT belastbar.")
     print("\nWas das Senken der Schwelle kosten wuerde, hochgerechnet:")
-    je_dok = 1.0 * unter / len(probe)
-    print("  %.1f zusaetzliche Bilder je Dokument -> %.1f s je Dokument"
-          % (je_dok, je_dok * SEKUNDEN_JE_BILD))
-    stunden = je_dok * SEKUNDEN_JE_BILD * len(alle) / 3600.0
-    print("  bei %d PDF im Bestand: rund %.1f Stunden zusaetzlich"
-          % (len(alle), stunden))
+    for bez, wert in (("mit dem Mittelwert", 1.0 * unter / len(probe)),
+                      ("mit dem Median", 1.0 * mitte)):
+        print("  %-20s %6.1f Bilder je Dokument -> %5.1f Stunden fuer %d PDF"
+              % (bez, wert, wert * SEKUNDEN_JE_BILD * len(alle) / 3600.0,
+                 len(alle)))
     schon = 1.0 * ueber / len(probe) * SEKUNDEN_JE_BILD * len(alle) / 3600.0
-    print("  (heute gehen dafuer schon %.1f Stunden drauf - das ist der"
-          " Vergleichswert, nicht null)" % schon)
+    print("  heute gehen dafuer schon %.1f Stunden drauf - das ist der"
+          " Vergleichswert, nicht null" % schon)
+    print("\nWas die einzelnen Schwellen braechten (zusaetzliche Bilder in"
+          " dieser Stichprobe):")
+    namen = ("unter 1 %", "1 bis 2 %", "2 bis 4 %", "4 bis 8 %")
+    # Die Schwelle ist die UNTERE Kante der Gruppe, die dazukommt: Gruppe
+    # "4 bis 8 %" faellt bei Schwelle 0,04 herein, nicht bei 0,08.
+    kanten = (0.0, 0.01, 0.02, 0.04)
+    dazu = 0
+    for i in range(3, -1, -1):
+        dazu += treppe[i]
+        grenze = kanten[i]
+        print("  Schwelle %.2f: +%-5d Bilder -> +%5.1f Stunden   (Gruppe %s)"
+              % (grenze, dazu,
+                 1.0 * dazu / len(probe) * SEKUNDEN_JE_BILD * len(alle) / 3600.0,
+                 namen[i]))
     print("\n⚠ Untere Schranke: Vektorgrafiken sind hier NICHT mitgezaehlt.")
     return 0
 
