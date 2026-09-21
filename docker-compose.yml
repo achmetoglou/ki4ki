@@ -367,6 +367,12 @@ services:
     # nirgends ablegen, und der Upload-Weg ist tot.
     - ./dokumente:/daten/eingang
     - pruefdaten:/daten/pruefung
+    # Die erzeugten Markdown-Fassungen. SCHREIBBAR, weil der Loeschweg sie
+    # mit entfernen muss: Bis zum 21.09. blieb hier von JEDEM jemals
+    # aufgenommenen Dokument eine Volltext-Fassung liegen - ein Loeschklick
+    # in der Oberflaeche beruehrte sie nicht. Bei Kundenakten waere das ein
+    # Datenschutzschaden.
+    - austausch-md:/daten/mdablage
     # den gepruef-ten Systemprompt lesbar machen (fuer die Selbstheilung)
     - ./systemprompt.txt:/systemprompt.txt:ro
     # Die Wortlisten von der Platte, nicht aus dem Abbild: So wirkt eine

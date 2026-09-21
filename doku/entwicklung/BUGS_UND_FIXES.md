@@ -603,6 +603,57 @@ man etwas Heiles und merkt es nie.
 
 ---
 
+## 14 · Loeschen liess eine Volltext-Kopie zurueck (21.09.2026, BEHOBEN)
+
+**Gefunden beim Aufraeumen nach der Schluesselprobe, nicht beim Suchen.**
+Emrach: *"wenn ich mds in der ui loesche, sollten die unbedingt auch auf dem
+server ueberall weg sein."*
+
+**Symptom.** Ein Dokument hat **drei** Ablageorte, nicht zwei:
+
+| Ort | Was | Wer raeumt es |
+|---|---|---|
+| `dokumente/<bereich>/archiv/` | das Original | Loeschweg |
+| AnythingLLM-Bestand | Textfassung + Vektoren | Loeschweg / Oberflaeche |
+| **Volume `austausch-md`** (`/files/anythingllm`) | **die erzeugte Markdown-Fassung, Volltext** | **niemand** |
+
+Gemessen am laufenden System: Dort lagen Dateien zurueck bis **August** - jedes
+jemals aufgenommene Dokument, darunter Unterlagen, die dem Namen nach
+vertraulich sind. Ein Loeschklick in der Oberflaeche beruehrte sie nicht.
+
+⛔ **Warum das vor dem KAP-Lauf zaehlt:** Danach laegen dort 4.300
+Kundendokumente im Klartext - dauerhaft, unbemerkt, und ein Loeschauftrag
+haette sie nicht erreicht. Bei Kundenakten ist das ein Datenschutzschaden,
+kein Aufraeumdetail.
+
+**Loesung.** Das Volume ist jetzt **schreibbar** im Pruef-Proxy eingehaengt
+(`/daten/mdablage`), und `_eigene_spuren_tilgen()` entfernt die zugehoerige
+Markdown-Fassung ueber denselben Abdruck-Vergleich wie alles andere. Damit
+raeumen beide Ausloeser - die Wache ueber `loeschen/` und der Papierkorb der
+Oberflaeche - alle drei Orte.
+
+⭐ **Die Pruefung greift in beide Richtungen** und ist durch Mutation belegt:
+Die Fassung des geloeschten Dokuments muss weg sein, die eines anderen
+**unangetastet** bleiben. Ohne die zweite Zeile waere die erste auch dann
+gruen, wenn der Loeschweg einfach den ganzen Ordner leerraeumt.
+
+⚠ **Was das NICHT aufraeumt:** die Altlast aus den Monaten davor. Sie muss
+einmal von Hand weg - ab jetzt entsteht keine neue.
+
+---
+
+## 15 · Eine Datei namens "undefined" (21.09.2026, OFFEN)
+
+Im Volume `austausch-json` liegt eine Datei mit dem Namen `undefined`.
+Sie entstand im misslungenen Probelauf. Der Zweig, der sie schreibt
+(*Convert to File* -> *Read/Write Files from Disk1*), ist eine **Sackgasse**:
+Er hat keinen Ausgang, sein Ergebnis wird nirgends gelesen.
+
+Zu klaeren: ob der Zweig ueberhaupt noch gebraucht wird. Wenn nicht, faellt
+mit ihm ein Volume weg, das sonst bei jedem Durchgang weiterwaechst.
+
+---
+
 ## Offen / vor einer Vermarktung zu klären
 
 - **Erste vollständige Installation von null** auf der Zielumgebung — erst damit

@@ -525,6 +525,24 @@ def _eigene_spuren_tilgen(stamm, grund_log="geloescht"):
         BESTAND._roh = None
     except Exception:
         pass
+    # ⭐ Die erzeugte Markdown-Fassung. Dritter Ablageort eines Dokuments,
+    #   und der einzige, den bis zum 21.09. niemand raeumte: Loeschen in der
+    #   Oberflaeche entfernte Textfassung und Vektoren, hier blieb der
+    #   Volltext liegen - bei Kundenakten ein Datenschutzschaden.
+    try:
+        for d in os.listdir(MD_ABLAGE):
+            if not d.lower().endswith(".md"):
+                continue
+            if _trifft_ziel(d[:-3], ziel, alt_ziel):
+                os.remove(os.path.join(MD_ABLAGE, d))
+                print("[Loeschen] Markdown-Fassung entfernt (%s)" % grund_log,
+                      file=sys.stderr, flush=True)
+    except FileNotFoundError:
+        pass          # Ablage nicht eingehaengt - aeltere Installation
+    except Exception as e:
+        print("[Loeschen] Markdown-Fassung nicht entfernbar: %s" % str(e)[:80],
+              file=sys.stderr, flush=True)
+
     betroffen = []
     try:
         bereiche = sorted(os.listdir(EINGANG_ORDNER))
@@ -1207,6 +1225,10 @@ PDF_ORDNER = (os.environ.get("KI4KI_PDFS")
 # Wohin der Hochladen-Knopf legt. Im Container ein eigener, SCHREIBBARER Weg
 # in denselben Eingang - der Lesepfad oben bleibt schreibgeschuetzt.
 EINGANG_ORDNER = os.environ.get("KI4KI_EINGANG") or PDF_ORDNER
+# Die von der Aufnahme erzeugten Markdown-Fassungen. Sie sind der dritte
+# Ablageort eines Dokuments - neben dem Original und der Textfassung in
+# AnythingLLM - und wurden bis zum 21.09. NIE geraeumt.
+MD_ABLAGE = os.environ.get("KI4KI_MD_ABLAGE") or "/daten/mdablage"
 
 # Wer fragt, braucht die Grafikkarte. Diese Marke sagt dem Massenlauf
 # Bescheid, damit Docling zurueck tritt. Sie ersetzt das starre

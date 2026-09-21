@@ -25,6 +25,8 @@ os.environ["KI4KI_PDFS"] = BAUM
 os.environ["KI4KI_EINGANG"] = BAUM
 os.environ["KI4KI_BESTAND"] = BESTAND
 os.environ.setdefault("KI4KI_API_KEY", "")
+MDABLAGE = tempfile.mkdtemp(prefix="ki4ki-wege-md-")
+os.environ["KI4KI_MD_ABLAGE"] = MDABLAGE
 KATALOGORT = tempfile.mkdtemp(prefix="ki4ki-wege-katalog-")
 KATALOG = os.path.join(KATALOGORT, "verzeichnis" + ".json")
 os.environ["KI4KI_BESTANDS" + "INDEX"] = KATALOG
@@ -573,6 +575,23 @@ def test_loeschweg():
     pruefe(nachher == vorher - 1,
            "genau EINE Datei weniger, gezaehlt %d nach %d" % (nachher, vorher))
 
+    # ⭐ Die erzeugte Markdown-Fassung ist der DRITTE Ablageort eines
+    #   Dokuments - und der einzige, den bis zum 21.09. niemand raeumte.
+    #   Loeschen in der Oberflaeche entfernte Textfassung und Vektoren, hier
+    #   blieb der Volltext liegen. Am laufenden System gefunden: Dateien
+    #   zurueck bis August, darunter vertrauliche Unterlagen.
+    kap_c = schluessel.schluessel("kap", "archiv/KundeB/Angebot.pdf")
+    meine = os.path.join(p.MD_ABLAGE, kap_c[:-4] + ".md")
+    fremde = os.path.join(p.MD_ABLAGE, "Ganz-anderes-Dokument.md")
+    open(meine, "w").write("Volltext")
+    open(fremde, "w").write("Volltext")
+    p._eigene_spuren_tilgen(kap_c, "Pruefung Markdown")
+    pruefe(not os.path.exists(meine),
+           "die Markdown-Fassung des geloeschten Dokuments ist weg")
+    pruefe(os.path.exists(fremde),
+           "die eines anderen Dokuments bleibt UNANGETASTET")
+    os.remove(fremde)
+
     # Gegenprobe: Ein Schluessel, den es nicht gibt, darf GAR NICHTS loeschen.
     # Ohne diese Zeile waere "KundeB unangetastet" auch dann gruen, wenn die
     # Funktion ueberhaupt nichts mehr taete.
@@ -685,6 +704,7 @@ def main():
         shutil.rmtree(BAUM, ignore_errors=True)
         shutil.rmtree(BESTAND, ignore_errors=True)
         shutil.rmtree(KATALOGORT, ignore_errors=True)
+        shutil.rmtree(MDABLAGE, ignore_errors=True)
     print("\n%d Fehler" % len(FEHLER))
     return 1 if FEHLER else 0
 
