@@ -233,6 +233,98 @@ und gleicht ab, was n8n **wirklich geladen** hat. Aufruf auf dem Host:
 2. **`LESBAR_BYTE`** (siehe oben), gehört zu Teil 3.
 3. **Die Protokoll-Wiederholung** bei jedem Minutentakt (§3, Punkt 2).
 
+## 3e - Teil 3 laeuft: 8 von 14 Aufgaben gebaut (21.09., spaeter Abend)
+
+Plan: `/home/runlvl89/.claude/plans/ki4ki-wissensdatenbank-des-snazzy-willow.md`
+(14 Aufgaben, 92 Schritte). Gebaut wird in einem Klon, gepusht auf
+`pfad-identitaet`; **Emrach macht `./aktualisiere.sh`**.
+
+### Was steht
+
+| Aufgabe | Commit | Was |
+|---|---|---|
+| 1 | `336036b` | `abdruck_finden()` im Schluesselmodul - Mitgliedschaft statt Herausschneiden |
+| 2 | `f9dda5a` | Pruefbaum enthaelt die Fehlerklasse (sonst beweist er nichts) |
+| 3 | `f1e43ec` | `bau/abdruck-messung.py` - sechs Zahlen am echten Bestand |
+| 4 | `cde53f4` | `POST /schluessel` am mkmd-Dienst - eine Rechnung, zwei Leser |
+| 5 | `5bb4a41` | PDF-Index auf den Schluessel, `_pdf_schluessel` loest ueber den Abdruck auf |
+| 6 | `6e2866f` | Zweitindex `pdfstelle.py` (beide Kopien) |
+| 6b | `dfc47f2` | Belegvorrat - keine gleichnamige Fassung wird mehr verworfen |
+| 6c | `b500ecd` | Anzeigetitel in `kennung()`, `angaben()`, `metadaten._grund()` |
+
+### Die Messung am echten Bestand (21.09., `bau/abdruck-messung.py`)
+
+```
+4.321 Dateien = 4.321 Kennpfade, 0 unzerlegbar, 0 Doppelablagen
+echte Kollisionen (zwei Kennpfade, ein Abdruck):            0
+Fehlzuordnungen ueber Fenster:                    0 von 4.321
+PDF mit gleichnamigem Office-Original daneben:     293 von 779
+Gegenprobe - heutiger Schluessel kollidiert:     1.593 Dateien
+```
+
+⭐ **293 von 779 PDF sind gewandelte Office-Dokumente.** Ohne die Office-Regel
+bekaemen 293 Dokumente zwei Abdruecke, und jeder Beleg eines Word-Dokuments
+spraenge ins Leere. Die Regel ist damit am Bestand belegt, nicht angenommen.
+
+⚠ Aufruf **ohne** `KI4KI_PDFS`: Der erste Versuch lief mit dem Pfad aus dem
+Container, den es auf dem Host nicht gibt. Container-innen ist nicht Host.
+
+### Was noch aussteht
+
+| Aufgabe | Was | Gate |
+|---|---|---|
+| 7 | Belegvergleich `mit_verweisen` auf den Abdruck | ⛔ danach **Belegmessung am laufenden System**, bevor irgendetwas neu eingelesen wird |
+| 8 | Rechtepruefung `dokument_erlaubt`, fail-closed | braucht 6c (das K3-Tor ist die erste Zeile darin) |
+| 9 | Loeschweg - dreifach nachgesehen | |
+| 10 | Aufnahmekette in n8n + die zwei Unterordner-Fehler | |
+| 11 | `bau/ablauf_pruefen.py` erweitern | |
+| 12 | Ausrollen, neu einlesen, Uebergangsstuetze entfernen | |
+
+### Die Uebergangsstuetze und wann sie weg darf
+
+Der nackte Dateiname loest weiter auf, damit die Dokumente aus der Zeit vor dem
+Umbau waehrend des Neu-Einlesens nicht unauffindbar werden. Sie ist an ihre
+Begruendung **gekoppelt**: `curl localhost:3001/pruef-status` zeigt
+`nur_altweg` und `altweg_aktiv`. Sinkt `nur_altweg` auf 0 und steht
+`altweg_aktiv` weiter auf `true`, wird die Pruefung in
+`schluesselwege_test.py` **von selbst rot** - das ist das Startsignal fuer den
+Rueckbau (Aufgabe 12). `-1` heisst "Bestand nicht lesbar", nicht "darf weg".
+
+### Pruefreihen (alle ohne Server lauffaehig)
+
+```
+cd pruef-proxy
+KI4KI_PRUEFBAUM=<baum> python3 schluesseltest.py    71 Pruefungen
+python3 schluesselwege_test.py                      33 Pruefungen
+python3 dialogtest.py                              519 Pruefungen
+python3 wegabgleich.py                               0 Loecher
+python3 ../bau/abdruck-messung.py                  sechs Zahlen
+```
+`<baum>` legt `python3 bau/kunstbaum.py <baum>` an.
+⚠ `absichttest.py` braucht Ollama und laeuft nur auf der A40.
+
+### Vier Fallen, die beim Bauen aufgefallen sind - nicht beim Lesen
+
+1. **Der Abdruck steht NICHT am Ende des Schluessels** - dahinter kommt noch
+   die Endung. Wer das Abdruckverzeichnis mit "die letzten zehn Zeichen"
+   fuellt, legt jeden Eintrag falsch an. Beim Suchen faellt das nicht auf
+   (das Fensterverfahren findet ihn trotzdem), beim Loeschen und bei den
+   Rechten schon.
+2. **`eintragen()` schrieb an `angaben()` vorbei** - Katalog unter dem rohen
+   Schluessel abgelegt, gesucht ueber den Anzeigetitel. Der Katalog haette
+   sich gefuellt und die Bibliothek waere ohne Angaben geblieben.
+3. **`nur_ueber_altweg()` zaehlte jede `.json`** im Bestandsordner. Eine
+   einzige fremde Datei haette die Uebergangsstuetze fuer immer am Leben
+   gehalten - das Versagen, das die Kopplung verhindern soll.
+4. **Eine Pruefung war aus dem falschen Grund gruen**: Sie verglich zwei
+   Aufrufe, die beide `None` lieferten - gruen also gerade dann, wenn gar
+   nichts mehr gefunden wird.
+
+⭐ Und die Mutationsprobe hat eine fuenfte gefunden: `ohne_uuid()` liess sich
+entfernen, ohne dass eine Pruefung ausschlug. Wozu es da ist, zeigt jetzt ein
+gebauter Fall - ein Abdruck INNERHALB der AnythingLLM-Kennung, der den echten
+sonst ueberholt.
+
 ## 4 · Stand der Anlage
 
 ```
