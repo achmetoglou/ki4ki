@@ -61,11 +61,24 @@ löscht**. Darauf baut man nichts. Und ein Fehlerkatalog für UC 1 liefe in
 denselben Namenskonflikt: ein Fehlercode wie `E42` kommt bei jedem Kunden und
 jeder Linie vor.
 
-1. **Die zweite Ursache hinter „Aufnahme unvollständig" finden** (siehe §6.2).
-   `/debug` bzw. `sp-systematic-debugging` ist dafür das richtige Werkzeug —
-   ein Symptom, das reproduzierbar ist. Vorher wird nicht gebaut.
+1. ✅ **ERLEDIGT 21.09.** Die zweite Ursache gibt es nicht (siehe §6.2).
+   Die Sperre „nicht bauen, bevor das gemessen ist" ist damit **aufgehoben**.
 2. **Pfad + Fingerabdruck bauen** (siehe §5), mit Prüfungen, die **Verhalten**
    messen, nicht Zeichenketten im Quelltext (siehe §7).
+   ⭐ **Zwei Anforderungen laufen mit**, ohne Zusatzaufwand, und sie machen die
+   Beweisführung in Schritt 3 überhaupt erst möglich:
+   - Die Meldung muss zwischen „nie hochgeladen" und „hochgeladen, aber nicht
+     wiedergefunden" **unterscheiden**. Heute prüft der Ablaufplan nur, ob der
+     Name in der Antwort des Einbetten-Aufrufs steht — und der baut seine Liste
+     aus der **Antwort des Uploads** (`adds: ($json.documents || []).map(d =>
+     d.location)`). Scheitert der Upload, ist die Liste leer und das Einbetten
+     meldet trotzdem Erfolg. Dazwischen liegen sieben Knoten, **alle auf „bei
+     Fehler weitermachen", keiner mit Wiederholung** (gesamter Ablaufplan: 20
+     von 30 Knoten so, genau einer wiederholt).
+   - Eine gescheiterte Datei darf **einmal** protokolliert werden, nicht bei
+     jedem Minutentakt erneut. ⛔ **Solange das nicht gilt, ist die Forderung
+     „der Fehlerzähler muss nach dem Fix stillstehen" nicht durchführbar** — er
+     kann per Konstruktion nie stillstehen.
 3. **KAP vollständig neu einspielen und messen**, dass der Fehlerzähler
    **stillsteht** — nicht nur, dass der Bestand steigt.
 4. **Dann UC 1.** Dafür braucht es zuerst eine Entscheidung über den Bestand:
@@ -121,18 +134,17 @@ neu aufgebaut.
 1. **Wie AnythingLLM Uploadnamen wirklich umschreibt** (Sonderzeichen, Umlaute,
    über 200 Byte). Nirgends gemessen, trägt aber den ganzen Entwurf. Test mit
    fünf Dateien in einem Wegwerf-Bereich.
-2. **Die zweite Ursache hinter „Aufnahme unvollständig" ist weiter unbekannt.**
-   Herkunft der Zahlen: Am 18.09. zählte das Aussortier-Protokoll des
-   KAP-Bereichs **107** Zeilen mit dieser Meldung; nach dem Ablage-Fix
-   (`5650806`) und dem Neustart waren es **147** — also 40 neue Fälle *nach*
-   dem Fix. Beide Zahlen stammen aus einer Live-Messung, die Emrach in den Chat
-   kopiert hat; im Repo sind sie nirgends festgehalten.
-   ⚠ **Korrektur (21.09.):** Eine frühere Fassung dieser Datei sprach von „vier
-   belegten Kandidaten in `BUGS_UND_FIXES.md` Punkt 7". Das stimmt nicht —
-   Punkt 7 nennt **zwei** Befunde, beide zu Unterordnern, beide ohne Bezug zu
-   diesen Zahlen. Wer die Messung angeht, fängt bei **null** an. Der Umfang ist
-   damit größer als die alte Fassung suggerierte.
-   Nicht bauen, bevor das gemessen ist.
+2. ~~Die zweite Ursache hinter „Aufnahme unvollständig"~~ — **ERLEDIGT 21.09.:
+   es gibt keine zweite Ursache.** Die Zahlen 107 und 147 zählen
+   **Protokollzeilen, nicht Dokumente**. Betroffen waren **17 Dateien**,
+   dieselben 17 vor wie nach dem Fix, null neue. Der Ablage-Fix `5650806` hat
+   gewirkt. Gegenprobe gegen eine blockierte Warteschlange: 7 der 8
+   Archivdateien wurden am 18.09. **im Fehlerfenster** abgelegt — neue Dateien
+   liefen also durch. Damit ist „null neue" aussagekräftig.
+   ⚠ **Die Fehlsuche entstand aus einer Messung am falschen Artefakt:** eine
+   Protokolldatei, die je *Versuch* eine Zeile anhängt, wurde als *Dokument*-
+   zähler gelesen. Dritter Fall dieser Fehlerklasse in diesem Projekt.
+
 3. **Löschweg, Rechteprüfung, Belegprüfung und `pdfstelle.py` gehören in den
    Umfang.** „Nicht anfassen" war eine Fehlannahme — alle vier hängen am
    Dateinamen.

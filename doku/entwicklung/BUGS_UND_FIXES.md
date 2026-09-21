@@ -162,6 +162,47 @@ Dokumente in Unterordnern des Eingangs liegen:
 
 ---
 
+## 8 · Das Aufnahmeprotokoll zählt Versuche, nicht Dokumente (21.09.2026, OFFEN)
+
+**Symptom.** Nach einem Fix stieg der Fehlerzähler im Aussortier-Protokoll
+weiter — 107 Zeilen davor, 147 danach. Daraus wurde geschlossen, der Fix habe
+nicht gewirkt, und das gesamte Projekt darauf gesperrt.
+
+**Ursache.** Die 147 Zeilen verteilen sich auf **17 Dateien** (4×5, 3×9, 10×10).
+Keine Datei kommt nur einmal vor. Eine gescheiterte Datei bleibt im Eingang
+liegen und wird bei **jedem Minutentakt** erneut aufgegriffen und erneut
+protokolliert. Das Protokoll zählt **Versuche**, nicht Dokumente. Der Fix hatte
+gewirkt: dieselben 17 vor wie nach ihm, null neue — belegt durch eine Gegenprobe,
+die zeigt, dass die Warteschlange nicht blockiert war (7 von 8 Archivdateien
+wurden im Fehlerfenster abgelegt, neue Dateien liefen also durch).
+
+**Zwei Mängel, die daraus folgen:**
+
+1. **Die Meldung ist irreführend.** „Im Arbeitsbereich nicht wiedergefunden"
+   klingt nach „hochgeladen, aber nicht angekommen". Geprüft wird aber nur, ob
+   der Name in der Antwort des Einbetten-Aufrufs steht — und dieser Aufruf baut
+   seine Liste aus der **Antwort des Uploads**
+   (`adds: ($json.documents || []).map(d => d.location)`). Scheitert der Upload,
+   ist die Liste leer und das Einbetten meldet trotzdem Erfolg. Die Meldung
+   trifft also auch zu, wenn die Datei **nie hochgeladen wurde**. Dazwischen
+   liegen sieben Knoten, alle auf „bei Fehler weitermachen", keiner mit
+   Wiederholung. Im gesamten Ablaufplan: **20 von 30 Knoten** laufen bei Fehler
+   weiter, **genau einer** wiederholt.
+2. **Es gibt keine Kennzeichnung „schon versucht".** Damit ist jede Zählung, die
+   auf dem Protokoll beruht, verfälscht — und die Forderung „der Fehlerzähler
+   muss nach einem Fix stillstehen" ist **nicht durchführbar**.
+
+**Lösung (noch nicht gebaut).** Beides gehört in den Umfang des Pfad-Umbaus:
+die Meldung muss zwischen „nie hochgeladen" und „hochgeladen, nicht
+wiedergefunden" unterscheiden, und eine gescheiterte Datei wird einmal
+protokolliert, nicht bei jedem Takt erneut.
+
+⚠ **Lehre.** Eine Protokolldatei, die je Versuch anhängt, ist kein Dokument-
+zähler. Bevor eine Zahl aus einem Protokoll als Mengenangabe gilt: **eindeutige
+Namen zählen, nicht Zeilen.**
+
+---
+
 ## Offen / vor einer Vermarktung zu klären
 
 - **Erste vollständige Installation von null** auf der Zielumgebung — erst damit
