@@ -252,6 +252,57 @@ gezählt: **an rund 20 Dokumenten, wie viele Abbildungen unter 8 % Seitenfläche
 liegen.** Ohne diese Zahl ist die Laufzeit des Neu-Einlesens nicht abschätzbar —
 ein Dokument mit 285 Bildern (Punkt 1) wären allein 15 Minuten.
 
+### 9a-2 · Die Zahlen dazu, gemessen am ganzen Bestand (21.09.)
+
+Der erste Befund stammte aus **einer** PDF mit drei Abbildungen. Inzwischen
+sind **772 von 788 PDF** durchgemessen (`bau/bildflaechen_docling.py`, Docling
+selbst befragt, Bildbeschreibung und Texterkennung abgeschaltet, 4 s je
+Dokument):
+
+```
+21.708 Abbildungen insgesamt
+  wird heute beschrieben    9.507   43,8 %
+  faellt heute weg         12.201   56,2 %
+
+Verteilung nach Doclings eigener Rechnung:
+  unter 1 %      7.848   ##############
+  1 bis 2 %      1.668   ###
+  2 bis 4 %      1.070   ##
+  4 bis 8 %      1.615   ###
+  8 bis 16 %     2.355   ####
+  16 % und mehr  7.152   #############
+
+Verteilung auf die Dokumente: Median 3, groesstes Dokument 588
+```
+
+**Was ein Absenken der Schwelle kostet** (Gesamtlaufzeit eines Neu-Einlesens
+mit Bildbeschreibung, 3,3 s je Abbildung):
+
+| Schwelle | zusaetzlich beschrieben | Gesamtlaufzeit |
+|---|---|---|
+| heute 0,08 | — | 8,7 h |
+| 0,04 | +1.615 | 10,2 h |
+| 0,02 | +2.685 | 11,2 h |
+| **0,01** | **+4.353** | **12,7 h** |
+| 0,00 | +12.201 | 19,9 h |
+
+⭐ **Empfohlen: 0,01.** Die Gruppe unter 1 % (7.848 Abbildungen) besteht
+ueberwiegend aus Trennlinien, Logos und Bildschnipseln — sie kostet 7 Stunden
+und bringt nichts. Die Gruppe 1–2 % dagegen enthaelt die kleinen Bildelemente
+aus 9e, und die sind inhaltlich relevant.
+
+⚠ **Zum Endlosschleifen-Risiko aus Punkt 1:** Das schlimmste Dokument hat 588
+Abbildungen unter der Schwelle. Selbst bei Schwelle 0 waeren das 32 Minuten
+fuer dieses eine Dokument — die 180-Minuten-Sicherung aus Fix 2 greift nicht.
+Die Gefahr von damals ist abgedeckt.
+
+⛔ **Nebenbefund, unabhaengig von der Schwelle: 16 von 788 PDF (2 %) konnte
+Docling gar nicht umwandeln.** Diese Dateien haetten im Betrieb weder Text
+noch Bildbeschreibung — und nach Punkt 10 wuerden sie trotzdem als
+aufgenommen im Archiv landen. Eigener Punkt, noch nicht untersucht.
+
+---
+
 ### 9b · Freistehende Bilddateien erkennt Docling gar nicht als Abbildung
 
 ```
@@ -301,6 +352,51 @@ Dateien, deren Bildbeschreibung übersprungen wurde, werden dort vermerkt. Es gi
 einzige zweite Fundstelle im Code überspringt sie beim Auflisten. Der Eintrag ist
 folgenlos. Damit ist „später nachholen" keine Rückfallebene, sondern ein
 stiller Verlust.
+
+---
+
+### 9e · Was Docling als EINE Abbildung sieht (Versuch, 21.09.)
+
+Die Schwelle rechnet mit der Flaeche einer **erkannten** Abbildung. Emrach hat
+darauf hingewiesen, dass daran zwei Annahmen haengen, die nie geprueft wurden:
+Ein Bild kann im PDF aus vielen kleinen Kacheln bestehen — faellt es dann
+komplett durch? Und eine Infografik kann kleine Icons enthalten — fallen die
+einzeln durch?
+
+Vier PDF mit exakt bekannten Groessen (`bau/bildfaelle.py`):
+
+| Fall | eingebaut | Docling sieht | beschrieben |
+|---|---|---|---|
+| Kachelbild | ein 36-%-Bild in 36 Kacheln zu je 1 % | **1** Abbildung, 36,3 % | ja |
+| Infografik | Block mit 3 Icons zu je 1 % | **3** Abbildungen, je 1,0 % | **nein** |
+| Verstreut *(Gegenprobe)* | 5 Icons zu je 1 % zwischen Absaetzen | 5 Abbildungen | nein |
+| Einzelgross *(Kontrolle)* | ein Bild zu 30 % | 1 Abbildung, 30,1 % | ja |
+
+**Ergebnis 1 — Entwarnung:** Ein gekacheltes Bild faellt **nicht** durch.
+Docling arbeitet auf der gerenderten Seite, nicht an den PDF-Objekten, und
+sieht das Bild so, wie ein Mensch es sieht. Bestaetigt am Bestand: ein Dokument
+mit 5.110 eingebetteten Bildobjekten ergab 89 Abbildungen, davon 85 ueber der
+Schwelle.
+
+**Ergebnis 2 — bestaetigt:** Icons in einer Infografik werden **einzeln**
+erkannt und fallen durch. Docling fasst sie nicht mit dem Block zusammen.
+Entscheidend ist der visuelle Abstand, nicht die inhaltliche Zusammengehoerigkeit.
+Das ist der Grund fuer die Empfehlung 0,01 statt 0,02 in 9a-2.
+
+⚠ **Die erste Fassung dieses Versuchs war ungueltig, und nur die Gegenprobe hat
+es aufgedeckt.** Dort bestanden die Bilder aus einfarbigem Grau und die Seite
+aus drei Zeilen Text; Docling machte daraus jedes Mal *eine* Abbildung — auch
+im Fall mit den fuenf verstreuten Icons, wo Trennen offensichtlich richtig war.
+Das Ergebnis "1 Abbildung mit 36,3 %" beim Kachelbild sah wie ein Befund aus,
+war aber dasselbe Artefakt. Erst mit strukturierten Bildern und 400 Woertern
+Fliesstext je Seite trennte die Gegenprobe korrekt.
+
+⭐ **Daraus die Regel, die in `NAECHSTE-SITZUNG.md` §7 gehoert:** Ein Versuch
+braucht eine Gegenprobe, bei der das erwartete Ergebnis das **umgekehrte** ist.
+Ohne den Fall "hier waere Zusammenfassen falsch" haette der Versuch jede
+Antwort bestaetigt, die man von ihm hoeren wollte. Das Skript prueft Kontrolle
+und Gegenprobe jetzt selbst und schreibt "DER VERSUCH IST UNGUELTIG", bevor es
+irgendetwas deutet.
 
 ---
 

@@ -262,6 +262,14 @@ verstümmelt werden. Keine Codestelle darf den ganzen Schlüssel vergleichen.
   s.startswith(bereich)`, wenn der lesbare Teil stets mit dem Bereich beginnt.
   ⭐ **Regel: Zu jeder Prüfung gehört der Nachweis, mit welcher Eingabe sie
   fehlschlägt. Steht der nicht dabei, ist die Prüfung nicht fertig.**
+- ⛔ **Ein Versuch ohne Gegenprobe, deren erwartetes Ergebnis das umgekehrte
+  ist.** Am 21.09. sollte geklärt werden, ob Docling ein gekacheltes Bild als
+  eine große Abbildung erkennt. Es tat es — aber die Gegenprobe (fünf getrennte
+  Icons, wo Trennen richtig gewesen wäre) lieferte ebenfalls *eine* Abbildung.
+  Der Versuch hätte also **jede** Antwort bestätigt, die man von ihm hören
+  wollte; die Vorlagen waren zu unrealistisch. Mit besseren Vorlagen trennte die
+  Gegenprobe korrekt, und erst dann war das Ergebnis etwas wert
+  (`BUGS_UND_FIXES.md` §9e).
 
 **Was zählt:** Prüfsummenvergleich statt Namensvergleich, gezielte Proben in der
 Kollisionsgruppe, eine Löschprobe, bei der die **anderen** nachgezählt werden —
