@@ -81,6 +81,22 @@ def pruefe(bedingung, text):
         FEHLER.append(text)
 
 
+def ausschnitt(quelle, von, bis, wofuer):
+    """Codeblock zwischen zwei Markern - oder eine rote Pruefung.
+
+    ⛔ Vorher stand hier quelle.index(...). Verschiebt jemand die Markerzeile,
+      bricht das Skript mit ValueError ab. Ein Absturz ist kein
+      Pruefergebnis: Beim Ueberfliegen sieht er aus wie "ging nicht", nicht
+      wie "die Pruefung greift nicht mehr".
+    """
+    a, b = quelle.find(von), quelle.find(bis)
+    if a < 0 or b < 0 or b <= a:
+        pruefe(False, "Marker fuer %s nicht gefunden (%r / %r) - dieser Teil "
+                      "ist NICHT geprueft" % (wofuer, von, bis))
+        return None
+    return quelle[a:b]
+
+
 def knoten(datei, name):
     d = json.load(io.open(os.path.join(PLAENE, datei), encoding="utf-8"))
     for k in d["nodes"]:
@@ -106,6 +122,10 @@ def test_nichtdokumente():
     print("Filter fuer Nichtdokumente")
     quelle = knoten("1_KI4KI-Masse-Ingest.json",
                     "Nur ein Bereich je Durchgang")["parameters"]["jsCode"]
+    kern = ausschnitt(quelle, "const NICHTDOKUMENT", "const ersterBereich",
+                      "Nichtdokumente")
+    if kern is None:
+        return
     anfang = quelle.index("const NICHTDOKUMENT")
     ende = quelle.index("const ersterBereich")
     js = quelle[anfang:ende] + """
@@ -138,9 +158,10 @@ def test_leere_aussortieren():
     print("\nArchiv oder Aussortiert")
     quelle = knoten("1_KI4KI-Masse-Ingest.json",
                     "Ablage entscheiden")["parameters"]["jsCode"]
-    anfang = quelle.index("const MINDESTZEICHEN")
-    ende = quelle.index("  const quelle = d.source_path;")
-    kern = quelle[anfang:ende]
+    kern = ausschnitt(quelle, "const MINDESTZEICHEN",
+                      "  const quelle = d.source_path;", "Ablage entscheiden")
+    if kern is None:
+        return
     # Die Schleife durch eine Funktion ersetzen, die einen Fall entscheidet.
     kern = kern.replace("const abgelegt = dokumente.map((d) => {",
                         "function entscheide(d, gefunden, grund) {")
@@ -154,14 +175,22 @@ const grund = (s) => String(s)
 """ + kern + """
   return { drin, leer, laenge };
 }
+// Entschieden wird ueber den ABDRUCK, nicht ueber den Namen. Die gemeldeten
+// Namen sind so geschrieben, wie der Arbeitsbereich sie zurueckgibt - mit
+// umgeformtem Namen drumherum, damit die Pruefung den Teilstring wirklich
+// misst und nicht nur einen Gleichheitsvergleich.
+const A = "ab12cd34ef";
+const gemeldet = ["kap-kundeb-bericht-" + A + "-md"];
+const fremd = ["kap-kundea-anderes-zz99zz99zz-md"];
 const faelle = [
-  ["Text da, Name gefunden",      {filename:"Bericht.pdf", text_length:5000}, ["bericht"]],
-  ["Text LEER, Name gefunden",    {filename:"Bericht.pdf", text_length:0},    ["bericht"]],
-  ["Text 5 Zeichen, Name gef.",   {filename:"Bericht.pdf", text_length:5},    ["bericht"]],
-  ["Text 20 Zeichen, Name gef.",  {filename:"Bericht.pdf", text_length:20},   ["bericht"]],
-  ["Text da, Name NICHT gefunden",{filename:"Bericht.pdf", text_length:5000}, ["anderes"]],
-  ["Text leer, Name nicht gef.",  {filename:"Bericht.pdf", text_length:0},    ["anderes"]],
-  ["text_length fehlt ganz",      {filename:"Bericht.pdf"},                   ["bericht"]],
+  ["Text da, Name gefunden",      {filename:"Bericht.pdf", abdruck:A, text_length:5000}, gemeldet],
+  ["Text LEER, Name gefunden",    {filename:"Bericht.pdf", abdruck:A, text_length:0},    gemeldet],
+  ["Text 5 Zeichen, Name gef.",   {filename:"Bericht.pdf", abdruck:A, text_length:5},    gemeldet],
+  ["Text 20 Zeichen, Name gef.",  {filename:"Bericht.pdf", abdruck:A, text_length:20},   gemeldet],
+  ["Text da, Name NICHT gefunden",{filename:"Bericht.pdf", abdruck:A, text_length:5000}, fremd],
+  ["Text leer, Name nicht gef.",  {filename:"Bericht.pdf", abdruck:A, text_length:0},    fremd],
+  ["text_length fehlt ganz",      {filename:"Bericht.pdf", abdruck:A},                   gemeldet],
+  ["OHNE Abdruck, Name gefunden", {filename:"Bericht.pdf", text_length:5000},            gemeldet],
 ];
 console.log(JSON.stringify(faelle.map(([t, d, g]) => [t, entscheide(d, g, grund)])));
 """
@@ -181,6 +210,10 @@ console.log(JSON.stringify(faelle.map(([t, d, g]) => [t, entscheide(d, g, grund)
     # "alles unter Verdacht" das Ergebnis und die Pruefung wertlos.
     pruefe(ziel("Text 20 Zeichen, Name gef.") == "archiv",
            "20 Zeichen (Mindestmass) -> archiv")
+    # ⛔ Ohne Abdruck darf nichts ins Archiv: Ein Dokument ohne Schluessel
+    #   ist im Bestand nicht wiederzufinden, gaelte aber als aufgenommen.
+    pruefe(ziel("OHNE Abdruck, Name gefunden") == "aussortiert",
+           "ohne Abdruck -> aussortiert, nie ins Archiv")
     pruefe(ziel("Text da, Name NICHT gefunden") == "aussortiert",
            "Name nicht gefunden -> aussortiert (unveraendert)")
     pruefe(ziel("text_length fehlt ganz") == "aussortiert",
@@ -262,6 +295,47 @@ def test_was_n8n_wirklich_geladen_hat():
            "n8n hat die Schwelle 0.01 geladen")
 
 
+def test_bereichserkennung():
+    """BUGS_UND_FIXES.md 7.2: 'Nur ein Bereich je Durchgang' las das
+    VORLETZTE Pfadsegment. Bei einer Datei in einem Unterordner ergab das
+    'Normen' oder 'input' - Dokumente landeten im falschen Arbeitsbereich,
+    weil die Ablage der ersten Datei fuer alle galt."""
+    print("\nBereichserkennung bei Unterordnern")
+    quelle = knoten("1_KI4KI-Masse-Ingest.json",
+                    "Nur ein Bereich je Durchgang")["parameters"]["jsCode"]
+    kern = ausschnitt(quelle, "const bereichVon", "const nameVon", "bereichVon")
+    if kern is None:
+        return
+    js = kern + """
+const f = (dir) => bereichVon({binary:{data:{directory:dir}}});
+console.log(JSON.stringify([
+  f('/files/dokumente/kap/input'),
+  f('/files/dokumente/kap/input/Normen'),
+  f('/files/dokumente/kap/input/Normen/Kleben'),
+  f('/files/dokumente/auw/input/Normen')]));
+"""
+    erg = json.loads(node_lauf(js))
+    pruefe(erg == ["kap", "kap", "kap", "auw"],
+           "Bereich stimmt auf jeder Ordnertiefe, ist %r" % (erg,))
+    # ⛔ Gegenprobe: Die ALTE Zeile muss an denselben Faellen scheitern -
+    #   sonst prueft das hier nichts.
+    alt = """
+const bereichVon = (item) => {
+  const b = (item.binary && item.binary.data) || {};
+  const teile = String(b.directory || '').split('/').filter(Boolean);
+  return teile[teile.length - 2] || '';
+};
+const f = (dir) => bereichVon({binary:{data:{directory:dir}}});
+console.log(JSON.stringify([
+  f('/files/dokumente/kap/input'),
+  f('/files/dokumente/kap/input/Normen')]));
+"""
+    alt_erg = json.loads(node_lauf(alt))
+    pruefe(alt_erg != ["kap", "kap"],
+           "Gegenprobe: die alte Zeile liefert %r statt ['kap','kap'] - die "
+           "Pruefung trifft die Fehlerklasse" % (alt_erg,))
+
+
 def test_plaene_unversehrt():
     """Die Plaene muessen ladbar und vollstaendig bleiben."""
     print("\nAblaufplaene unversehrt")
@@ -281,6 +355,7 @@ if __name__ == "__main__":
     test_nichtdokumente()
     test_leere_aussortieren()
     test_docling_einstellungen()
+    test_bereichserkennung()
     test_plaene_unversehrt()
     test_was_n8n_wirklich_geladen_hat()
     print("\nGeprueft wurden die Plaene in: %s" % PLAENE)
