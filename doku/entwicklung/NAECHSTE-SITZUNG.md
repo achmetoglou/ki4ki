@@ -233,7 +233,7 @@ und gleicht ab, was n8n **wirklich geladen** hat. Aufruf auf dem Host:
 2. **`LESBAR_BYTE`** (siehe oben), gehört zu Teil 3.
 3. **Die Protokoll-Wiederholung** bei jedem Minutentakt (§3, Punkt 2).
 
-## 3e - Teil 3 laeuft: 13 von 14 Aufgaben gebaut (21.09., spaeter Abend)
+## 3e - Teil 3: GEBAUT, die Abnahme steht noch aus (21.09., spaeter Abend)
 
 Plan: `/home/runlvl89/.claude/plans/ki4ki-wissensdatenbank-des-snazzy-willow.md`
 (14 Aufgaben, 92 Schritte). Gebaut wird in einem Klon, gepusht auf
@@ -255,6 +255,8 @@ Plan: `/home/runlvl89/.claude/plans/ki4ki-wissensdatenbank-des-snazzy-willow.md`
 | 8 | `af7d146` | Rechtepruefung am Abdruck, fail-closed |
 | 9 | `3d1611b` | Loeschweg - ein Klick loescht ein Dokument, nicht 99 |
 | 10+11 | `3883505` | Aufnahmekette in n8n, beide Unterordner-Fehler, Ablaufpruefung |
+| Probe | `ebc78e2` | zwei Fehler am laufenden System gefunden (siehe unten) |
+| Loeschen | `964c59c` | der dritte Ablageort wird mitgeraeumt (BUGS 14) |
 
 ### Die Messung am echten Bestand (21.09., `bau/abdruck-messung.py`)
 
@@ -279,6 +281,34 @@ Container, den es auf dem Host nicht gibt. Container-innen ist nicht Host.
 |---|---|---|
 | 12 | Ausrollen, neu einlesen, Uebergangsstuetze entfernen | ⛔ **der einzige noch offene Schritt - er gehoert Emrach** |
 
+### ⛔ Was die erste Probe am laufenden System aufgedeckt hat (21.09.)
+
+Vier erfundene Dokumente (`bau/probedokumente.py`) in einen Testbereich - und
+**drei Fehler, bevor KAP durchlief.** Genau dafuer war die kleine Probe da.
+
+1. **Der Uploadname kam nie vom Schluessel.** Er entsteht in Ablaufplan 3
+   (`basisname`), nicht im Knoten "JSON-Datei fuer Dokumente vorbereiten".
+   Die Aenderung dort war wirkungslos; in AnythingLLM standen weiter die
+   alten Dateinamen. Behoben in `ebc78e2`.
+2. **`$json` in einer `.map()`-Schleife ist immer das ERSTE Element.** Der
+   Waechter haette allen Dateien eines Durchgangs den Schluessel der ersten
+   gegeben - genau die Dublettenfalle, die der Umbau beseitigt. Jetzt
+   `doc.schluessel` je Element.
+3. ⛔ **`mv: Permission denied`.** Ordner, die ein Mensch per SFTP anlegt,
+   gehoeren ihm und haben oft kein Gruppen-Schreibrecht. Die Aufnahme darf
+   die Datei dann nicht herausbewegen; sie bleibt im Eingang und wird bei
+   JEDEM Minutentakt erneut aufgenommen. Aus einer Datei wurden fuenf
+   Eintraege. ⭐ **Regel, die damit dazukommt: nach jedem Einspielen per
+   SFTP `docker compose up -d rechte-init`.** Steht in `doku/BETRIEB.md` 5.
+
+⭐ **Und ein vierter beim Aufraeumen:** Ein Dokument hat DREI Ablageorte -
+Original, Textfassung in AnythingLLM und die erzeugte Markdown-Fassung im
+Volume `austausch-md`. Den dritten raeumte niemand; dort lagen Volltexte
+zurueck bis August, darunter dem Namen nach vertrauliche Unterlagen.
+`BUGS_UND_FIXES.md` 14, behoben in `964c59c`. Die Altlast ist am 21.09. von
+Hand geraeumt worden (74 Dateien, `bestand` blieb dabei bei 67 - Beweis, dass
+nichts daran hing).
+
 ### ⛔ Aufgabe 12: die Reihenfolge, in der eingelesen wird
 
 **Nicht mit KAP anfangen.** Ein Neu-Einlesen von KAP dauert 12,7 Stunden; geht
@@ -286,8 +316,19 @@ dabei etwas schief, ist die Zeit weg. Deshalb in dieser Reihenfolge:
 
 1. `./aktualisiere.sh` - baut Proxy und mkmd-Dienst neu und spielt die
    Ablaufplaene ein.
-2. **Ein kleiner Bereich zuerst** (FAQ): Dateien nach `input/`, einen
-   Durchgang abwarten, dann nachsehen:
+2. **Ein kleiner Bereich zuerst**: Arbeitsbereich in der Oberflaeche anlegen,
+   die vier Dokumente aus `bau/probedokumente.py` MIT ihren Unterordnern nach
+   `input/`, **dann `docker compose up -d rechte-init`**, einen Durchgang
+   abwarten, dann nachsehen:
+   - ⭐ **`nur_altweg` muss BLEIBEN, wo es war** (67). Steigt es mit, trägt
+     das neue Dokument keinen Abdruck - dann ist der Schluessel wieder nicht
+     angekommen, und nichts wird neu eingelesen, bevor das geklaert ist.
+   - In der Oberflaeche muessen Namen wie
+     `<bereich>-KundeAlpha-Pruefbericht--a1b2c3d4e5.md` stehen, und **zwei**
+     Pruefberichte statt einem.
+   - Die Frage "Welche Zugfestigkeit steht in den Pruefberichten?" muss
+     **beide** Zahlen bringen (412 und 287), mit zwei verschiedenen blauen
+     Belegen. Das ist der eigentliche Beweis des ganzen Umbaus.
    - `curl localhost:3001/pruef-status` - `bestand` steigt, `nur_altweg`
      sinkt
    - eine Fachfrage an diesen Bereich: kommt ein **blauer** Beleg? Springt
