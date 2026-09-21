@@ -213,6 +213,55 @@ def test_docling_einstellungen():
            "Zweitversuch bleibt ohne Bildbeschreibung")
 
 
+def test_was_n8n_wirklich_geladen_hat():
+    """Die Repo-Datei ist nicht der Betrieb.
+
+    Alle Pruefungen oben lesen die JSON-Dateien im Repo. Dass die stimmen,
+    heisst nicht, dass n8n sie auch benutzt - der Import kann scheitern,
+    waehrend aktualisiere.sh "eingespielt und aktiviert" meldet.
+
+    ⛔ Und NICHT per grep in database.sqlite nachsehen. Frisch Importiertes
+    steht zunaechst im Write-Ahead-Log (database.sqlite-wal) und noch gar
+    nicht in der Datenbankdatei. Am 21.09. ergab so ein grep: der eine
+    Marker gefunden, der andere nicht - beide aus demselben Commit. Die
+    Datenbank war nur nicht auf dem Stand, den sie zu haben schien.
+    (Dieselbe Falle wie beim n8n-Dauerneustart am 12.09.)
+
+    Richtig ist, n8n selbst exportieren zu lassen: Das liest die Daten
+    ueber die Datenbankschicht, also samt WAL.
+    """
+    print("\nWas n8n WIRKLICH geladen hat")
+    befehl = ["docker", "exec", "ki4ki-n8n", "sh", "-c",
+              "rm -rf /tmp/ist; mkdir -p /tmp/ist;"
+              " n8n export:workflow --all --separate --output=/tmp/ist"
+              " >/dev/null 2>&1; cat /tmp/ist/*.json"]
+    try:
+        e = subprocess.run(befehl, capture_output=True, text=True, timeout=180)
+    except (OSError, subprocess.SubprocessError) as f:
+        print("  uebersprungen: n8n nicht erreichbar (%s)" % f.__class__.__name__)
+        return
+    if e.returncode != 0 or not e.stdout.strip():
+        print("  uebersprungen: kein Export moeglich - dieser Teil ist damit"
+              " NICHT geprueft")
+        return
+    geladen = e.stdout
+
+    # Erst die Kontrolle: Findet der Abgleich ueberhaupt etwas? Ohne sie
+    # wuerde ein leerer Export als "alles in Ordnung" durchgehen.
+    pruefe("VERLUST-WAECHTER" in geladen,
+           "Kontrolle: unveraenderter Knoten ist im Export enthalten")
+    if "VERLUST-WAECHTER" not in geladen:
+        print("  -> Ohne Kontrolle sagen die naechsten Zeilen nichts.")
+        return
+    pruefe("macOS-Metadatei" in geladen,
+           "n8n kennt den Filter fuer Nichtdokumente")
+    pruefe("MINDESTZEICHEN" in geladen,
+           "n8n kennt die Mindestzeichen-Regel")
+    pruefe('"picture_description_area_threshold","value":"0.01"' in
+           geladen.replace(", ", ",").replace('" :', '":'),
+           "n8n hat die Schwelle 0.01 geladen")
+
+
 def test_plaene_unversehrt():
     """Die Plaene muessen ladbar und vollstaendig bleiben."""
     print("\nAblaufplaene unversehrt")
@@ -233,6 +282,7 @@ if __name__ == "__main__":
     test_leere_aussortieren()
     test_docling_einstellungen()
     test_plaene_unversehrt()
+    test_was_n8n_wirklich_geladen_hat()
     print("\nGeprueft wurden die Plaene in: %s" % PLAENE)
     print("%d Fehler" % len(FEHLER))
     sys.exit(1 if FEHLER else 0)
