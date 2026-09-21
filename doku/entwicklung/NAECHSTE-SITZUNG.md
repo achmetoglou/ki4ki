@@ -233,7 +233,7 @@ und gleicht ab, was n8n **wirklich geladen** hat. Aufruf auf dem Host:
 2. **`LESBAR_BYTE`** (siehe oben), gehört zu Teil 3.
 3. **Die Protokoll-Wiederholung** bei jedem Minutentakt (§3, Punkt 2).
 
-## 3e - Teil 3 laeuft: 8 von 14 Aufgaben gebaut (21.09., spaeter Abend)
+## 3e - Teil 3 laeuft: 9 von 14 Aufgaben gebaut (21.09., spaeter Abend)
 
 Plan: `/home/runlvl89/.claude/plans/ki4ki-wissensdatenbank-des-snazzy-willow.md`
 (14 Aufgaben, 92 Schritte). Gebaut wird in einem Klon, gepusht auf
@@ -251,6 +251,7 @@ Plan: `/home/runlvl89/.claude/plans/ki4ki-wissensdatenbank-des-snazzy-willow.md`
 | 6 | `6e2866f` | Zweitindex `pdfstelle.py` (beide Kopien) |
 | 6b | `dfc47f2` | Belegvorrat - keine gleichnamige Fassung wird mehr verworfen |
 | 6c | `b500ecd` | Anzeigetitel in `kennung()`, `angaben()`, `metadaten._grund()` |
+| 7 | `bb3817d` | Belegvergleich am Abdruck - vier realistische Modell-Abweichungen gepruegt |
 
 ### Die Messung am echten Bestand (21.09., `bau/abdruck-messung.py`)
 
@@ -273,12 +274,31 @@ Container, den es auf dem Host nicht gibt. Container-innen ist nicht Host.
 
 | Aufgabe | Was | Gate |
 |---|---|---|
-| 7 | Belegvergleich `mit_verweisen` auf den Abdruck | ⛔ danach **Belegmessung am laufenden System**, bevor irgendetwas neu eingelesen wird |
 | 8 | Rechtepruefung `dokument_erlaubt`, fail-closed | braucht 6c (das K3-Tor ist die erste Zeile darin) |
 | 9 | Loeschweg - dreifach nachgesehen | |
 | 10 | Aufnahmekette in n8n + die zwei Unterordner-Fehler | |
 | 11 | `bau/ablauf_pruefen.py` erweitern | |
 | 12 | Ausrollen, neu einlesen, Uebergangsstuetze entfernen | |
+
+### ⛔ Der naechste Halt: die Belegmessung (Gate vor Aufgabe 8+)
+
+Aufgabe 7 beweist, dass der PROXY einen Abdruck erkennt - nicht, dass das
+MODELL ihn mitschreibt. Das kann nur am laufenden System gemessen werden:
+
+1. Vor dem Umstellen aus `/kpi` notieren: Anteil Antworten mit mindestens
+   einem blauen (geprueften) Beleg.
+2. Nach dem Ausrollen drei Fachfragen stellen, denselben Anteil ablesen,
+   dazu `altweg_belege` aus `/pruef-status`.
+
+| Ergebnis | Folge |
+|---|---|
+| Belegquote nachher etwa wie vorher | traegt, weiter im Plan |
+| Belegquote bricht ein | ⛔ **anhalten** - das Modell schreibt den Abdruck nicht mit. Dann wird der Anzeigename-Weg gebaut, BEVOR irgendetwas neu eingelesen wird |
+
+⭐ Gegenprobe, ohne die die Zahl nichts sagt: Mindestens eine der drei
+Antworten muss ueberhaupt eine Fundstelle gehabt haben. Kommt die Suche in
+allen dreien leer zurueck, ist die Belegquote aus einem anderen Grund 0 und
+die Messung ungueltig.
 
 ### Die Uebergangsstuetze und wann sie weg darf
 
@@ -295,7 +315,7 @@ Rueckbau (Aufgabe 12). `-1` heisst "Bestand nicht lesbar", nicht "darf weg".
 ```
 cd pruef-proxy
 KI4KI_PRUEFBAUM=<baum> python3 schluesseltest.py    71 Pruefungen
-python3 schluesselwege_test.py                      33 Pruefungen
+python3 schluesselwege_test.py                      52 Pruefungen
 python3 dialogtest.py                              519 Pruefungen
 python3 wegabgleich.py                               0 Loecher
 python3 ../bau/abdruck-messung.py                  sechs Zahlen
