@@ -163,8 +163,13 @@ abnehmbar.** Es braucht eine Verzweigung vor dem Upload.
 
 ### ✅ Teil 1: das Schlüsselmodul steht
 
-`pruef-proxy/schluessel.py` und `schluesseltest.py`, **48 Prüfungen**, am echten
+`pruef-proxy/schluessel.py` und `schluesseltest.py`, **71 Prüfungen**, am echten
 Bestand gemessen:
+
+⚠ **Die Zahl 48 war falsch** — nachgezählt am 21.09.: Es waren **46** (45 grün
+plus die rote Zeile „Prüfbaum fehlt"), mit Prüfbaum 51. Seit dem Abdruck-Leser
+aus Teil 3 sind es **71 mit Prüfbaum, 66 ohne**. Gemessen, nicht gerechnet:
+`python3 schluesseltest.py | grep -c "^  ok"`.
 
 ```
 4.484 Dokumente = 4.484 Kennpfade = 4.484 Schlüssel

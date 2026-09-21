@@ -73,6 +73,62 @@ def fingerabdruck(kpfad):
     return "".join(aus)
 
 
+ABDRUCK_LAENGE = 10
+
+# Was AnythingLLM anhaengt: '-<uuid>.json' auf den Uploadnamen '<schluessel>.md'.
+# Die Bindestriche der Kennung ueberleben die Normalisierung nicht, die 32
+# Hexzeichen schon - deshalb sind die Striche hier alle freigestellt.
+_UUID = re.compile(
+    r"-?[0-9a-f]{8}-?[0-9a-f]{4}-?[0-9a-f]{4}-?[0-9a-f]{4}-?[0-9a-f]{12}$", re.I)
+
+
+def ohne_uuid(name):
+    """Den von AnythingLLM angehaengten Kennungsteil abschneiden.
+
+    Ohne diesen Schritt stuenden am Ende des Namens die Hexzeichen der
+    Kennung - und die letzten zehn alphanumerischen Zeichen waeren ihre,
+    nicht die des Abdrucks.
+    """
+    n = str(name or "")
+    for endung in (".json", ".md"):
+        if n.lower().endswith(endung):
+            n = n[:-len(endung)]
+    return _UUID.sub("", n)
+
+
+def abdruck_kandidaten(name):
+    """Alle Abdruck-Kandidaten eines geschriebenen Namens, von RECHTS.
+
+    Warum Kandidaten und nicht ein Abdruck: Neun Normalisierungen laufen im
+    Haus, und jede behandelt die Endung anders - aus '.pdf' wird '-pdf',
+    'pdf' oder gar nichts. Ein einzelnes Herausschneiden muesste alle neun
+    nachbauen; das ist das Spiel, das der naechste Dateiname gewinnt.
+
+    Warum von rechts: Der echte Abdruck steht am Ende. Ein zufaellig
+    passendes Fenster im lesbaren Teil wird dadurch nie zuerst gefunden.
+
+    ⛔ Ein Rueckgabewert ist KEIN Beweis, dass ein Abdruck vorliegt - jeder
+       Name mit zehn alphanumerischen Zeichen liefert Kandidaten. Erst die
+       Mitgliedschaft in einem Verzeichnis entscheidet. Deshalb ist
+       abdruck_finden() die Funktion, die benutzt wird, und nicht diese.
+    """
+    nur = re.sub(r"[^A-Za-z0-9]", "", ohne_uuid(name)).lower()
+    return tuple(nur[i:i + ABDRUCK_LAENGE]
+                 for i in range(len(nur) - ABDRUCK_LAENGE, -1, -1))
+
+
+def abdruck_finden(name, verzeichnis):
+    """Der erste Kandidat, den das Verzeichnis kennt - sonst None.
+
+    `verzeichnis` ist alles, was `in` beantwortet (dict, set, frozenset).
+    Das ist die EINZIGE Art, in der im Haus ein Abdruck erkannt wird.
+    """
+    for a in abdruck_kandidaten(name):
+        if a in verzeichnis:
+            return a
+    return None
+
+
 LESBAR_BYTE = 120
 GRENZE_BYTE = 200   # 255 (ext4) - 3 (".md" beim Upload) - 42 (Aufschlag), abgerundet
 

@@ -8,7 +8,9 @@ Eingabe sie rot wird. Eine Pruefung, die per Konstruktion immer gruen ist,
 beweist nichts - in vier Planfassungen standen vier solche Pruefungen.
 """
 import os
+import re
 import sys
+import unicodedata
 
 import schluessel
 
@@ -133,6 +135,92 @@ def test_schluessel():
            "lateinischer Name behaelt dagegen seinen lesbaren Teil")
 
 
+def test_abdruck_lesen():
+    """Findet die Anlage den Abdruck wieder, nachdem ein Name durch eine der
+    neun Normalisierungen des Hauses gelaufen ist?
+
+    Die Formen unten sind die echten Funktionen, nachgebaut - je EINZELN,
+    damit beim Fehlschlag dasteht, WELCHE den Abdruck frisst.
+    """
+    print("\nAbdruck wiederfinden")
+    S, K, F = schluessel.schluessel, schluessel.kennpfad, schluessel.fingerabdruck
+    pfad = "archiv/KundeA/Angebot 2024/Bericht.pdf"
+    s = S("kap", pfad)
+    echt = F(K("kap", pfad))
+
+    def _nfkd(t):
+        n = unicodedata.normalize("NFKD", t)
+        return "".join(c for c in n if not unicodedata.combining(c))
+
+    def _umlaute(t):
+        for alt, neu in (("ä", "ae"), ("ö", "oe"),
+                         ("ü", "ue"), ("ß", "ss")):
+            t = t.replace(alt, neu)
+        return t
+
+    formen = {
+        "roh": lambda t: t,
+        "_loesch_grund": lambda t: re.sub(
+            r"[^a-z0-9]", "", _nfkd(t).lower().replace("ß", "ss")),
+        "_grundform": lambda t: re.sub(r"[^a-z0-9]", "", t.lower()),
+        "_flach_stamm": lambda t: re.sub(r"[^a-z0-9]", "", _umlaute(t.lower())),
+        "assistent._flach": lambda t: re.sub(
+            r"[^a-z0-9]", "", _umlaute(t.lower())),
+        "bestand._grund": lambda t: re.sub(r"[^a-z0-9]", "", t.lower()),
+        "metadaten._grund": lambda t: re.sub(
+            r"[^a-z0-9]", "",
+            t.lower().replace(".pdf", "").replace(".md", "")),
+        "_wie_anythingllm": lambda t: re.sub(
+            r"[^A-Za-z0-9]+", "-", _nfkd(t).replace("ß", "ss")).strip("-").lower(),
+        "n8n grund()": lambda t: re.sub(
+            r"[^A-Za-z0-9]+", "-", _nfkd(t).replace("ß", "ss")).strip("-").lower(),
+        "AnythingLLM-Ablage": lambda t: (
+            t + ".md-11111111-2222-3333-4444-555555555555.json"),
+    }
+    for wie, f in formen.items():
+        gefunden = schluessel.abdruck_finden(f(s), {echt: "x"})
+        pruefe(gefunden == echt,
+               "Abdruck ueberlebt %s: gefunden %r, erwartet %r"
+               % (wie, gefunden, echt))
+
+    # Die Gegenprobe, ohne die alles oben wertlos waere: Ein Name OHNE
+    # Abdruck darf NICHTS treffen. Sonst ordnet die Anlage jedem alten
+    # Dokumentnamen still ein fremdes Dokument zu.
+    for alt in ("DS-24-005.pdf", "Pruefbericht Ultraschall 2024.pdf",
+                "LE Klangpruefung.md", "Angebot.pdf"):
+        pruefe(schluessel.abdruck_finden(alt, {echt: "x"}) is None,
+               "alter Name %r trifft nichts" % alt)
+
+    # Richtung: der ECHTE Abdruck steht rechts. Ein zufaellig passendes
+    # Fenster im lesbaren Teil darf ihn nicht ueberholen. Dieser Fall ist
+    # gebaut, nicht gefunden - genau deshalb kann die Pruefung rot werden:
+    # Sucht abdruck_kandidaten von LINKS, liefert sie hier den falschen.
+    fremd = F(K("auw", "archiv/Fremd.pdf"))
+    gebastelt = "kap-" + fremd + "-Bericht--" + echt + ".pdf"
+    pruefe(schluessel.abdruck_finden(gebastelt, {echt: "a", fremd: "b"}) == echt,
+           "der Abdruck RECHTS gewinnt (links steckt %r)" % fremd)
+
+    # ⛔ ohne_uuid ist NICHT Kosmetik - und die erste Fassung dieser Datei
+    #   konnte das nicht zeigen: Wird ohne_uuid unschaedlich gemacht, bleibt
+    #   "Abdruck ueberlebt AnythingLLM-Ablage" gruen, weil das Fensterverfahren
+    #   den Abdruck auch weiter links noch findet (gemessen 21.09.).
+    #   Wozu ohne_uuid also da ist, zeigt erst dieser Fall: Die 32 Hexzeichen
+    #   der Kennung sind alphanumerisch und werden von RECHTS zuerst geprueft -
+    #   rund 23 Fenster vor dem echten Abdruck. Faellt eines davon mit dem
+    #   Abdruck eines anderen Dokuments zusammen, gewinnt das falsche.
+    in_kennung = "abcdef0123"
+    kennung = "-11111111-2222-3333-4444-9" + in_kennung + "9"
+    pruefe(schluessel.abdruck_finden(s + ".md" + kennung + ".json",
+                                     {echt: "richtig", in_kennung: "falsch"})
+           == echt,
+           "ein Abdruck IN der AnythingLLM-Kennung ueberholt den echten nicht")
+
+    # Zu kurz, leer, None: kein Absturz, kein Treffer.
+    for nichts in ("", None, "abc.pdf", "---"):
+        pruefe(schluessel.abdruck_finden(nichts, {echt: "x"}) is None,
+               "zu kurz/leer trifft nichts: %r" % nichts)
+
+
 STEUER = {"bereich.json", "metadaten.json", "prompt.md", "kategorien.txt",
           "bilder-nachholen.txt", "aussortiert.log"}
 
@@ -250,6 +338,7 @@ if __name__ == "__main__":
     test_kennpfad()
     test_fingerabdruck()
     test_schluessel()
+    test_abdruck_lesen()
     test_invariante_am_bestand()
     print("\n%d Fehler" % len(FEHLER))
     sys.exit(1 if FEHLER else 0)
