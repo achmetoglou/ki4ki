@@ -102,6 +102,37 @@ ZWEITVERSUCH = [
 ]
 
 
+# Erste Bytes gaengiger Formate. "keine PDF" allein ist keine Diagnose -
+# erst der Typ sagt, ob hier Muell, ein falsch benanntes Dokument oder ein
+# Nebenprodukt des Kopierens liegt. Jeder Fall braucht eine andere Massnahme.
+KENNUNGEN = (
+    (b"\x00\x05\x16\x07", "macOS-Metadatei (AppleDouble, kein Dokument)"),
+    (b"PK\x03\x04", "ZIP-Format - docx/xlsx/pptx, falsch benannt"),
+    (b"\xd0\xcf\x11\xe0", "altes Office-Format - doc/xls/ppt, falsch benannt"),
+    (b"\xff\xd8\xff", "JPEG-Bild, falsch benannt"),
+    (b"\x89PNG", "PNG-Bild, falsch benannt"),
+    (b"II*\x00", "TIFF-Bild, falsch benannt"),
+    (b"MM\x00*", "TIFF-Bild, falsch benannt"),
+    (b"%!PS", "PostScript, kein PDF"),
+    (b"{\\rtf", "RTF-Text, falsch benannt"),
+    (b"<?xml", "XML, falsch benannt"),
+    (b"\x1f\x8b", "gzip-Archiv"),
+)
+
+
+def _was_denn_dann(kopf):
+    """Wenn es keine PDF ist - was ist es dann?"""
+    for kennung, name in KENNUNGEN:
+        if kopf.startswith(kennung):
+            return name
+    if not kopf.strip():
+        return "nur Nullbytes oder Leerzeichen"
+    druckbar = sum(1 for b in kopf if 32 <= b < 127 or b in (9, 10, 13))
+    if druckbar > len(kopf) * 0.9:
+        return "reiner Text, keine PDF"
+    return "unbekanntes Format, PDF-Kennung fehlt"
+
+
 def _beschaffenheit(pfad):
     """Was ist das fuer eine Datei? Nur Art und Groesse, kein Name, kein Inhalt.
 
@@ -123,7 +154,7 @@ def _beschaffenheit(pfad):
     except OSError:
         return "Datei nicht lesbar (%d Byte)" % groesse
     if not kopf.startswith(b"%PDF"):
-        return "keine PDF - Kennung fehlt (%d Byte)" % groesse
+        return "%s (%d Byte)" % (_was_denn_dann(kopf), groesse)
     try:
         ergebnis = subprocess.run(["pdfinfo", pfad], capture_output=True,
                                   text=True, timeout=30)
