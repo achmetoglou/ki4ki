@@ -8,7 +8,13 @@ Warum ueberhaupt: Am 20.09. kippte ein zwanzigzeiliges Skript einen bereits
 abgenommenen Plan - nach zwei Minuten Laufzeit. Haengt der Nutzen eines
 Umbaus an einer Eigenschaft der echten Daten, wird sie ZUERST ausgerechnet.
 
-  KI4KI_PDFS=<dokumentenwurzel> python3 bau/abdruck-messung.py
+  python3 bau/abdruck-messung.py                      (auf dem HOST)
+  KI4KI_PDFS=<wurzel> python3 bau/abdruck-messung.py  (anderer Ort)
+
+⚠ NICHT den Pfad aus dem Container einsetzen. Das Compose haengt den
+  Dokumentenordner dort unter einem anderen Namen ein; auf dem Host gibt es
+  ihn nicht, und die Messung faellt aus. Ohne KI4KI_PDFS trifft der
+  Vorgabewert den richtigen Ordner.
 
 Rueckgabe 0 = Messung gueltig, 1 = ungueltig (dann sagt die letzte Zeile,
 warum). Eine ungueltige Messung sieht beim Ueberfliegen aus wie ein Befund -
@@ -35,6 +41,15 @@ def main():
     wurzel = os.environ.get("KI4KI_PDFS") or os.path.expanduser("~/ki4ki/dokumente")
     if not os.path.isdir(wurzel):
         print("Bestandswurzel nicht gefunden.")
+        if wurzel.startswith(os.sep + "daten" + os.sep):
+            # Klassiker: der Pfad IM Container, auf dem Host eingegeben.
+            # Dieselbe Fehlerklasse wie "127.0.0.1:3001 im Container gemessen"
+            # - Container-innen ist nicht Host.
+            print("   Das ist der Pfad IM Container. Das Compose haengt den")
+            print("   Dokumentenordner dorthin ein; auf dem Host liegt er")
+            print("   woanders.")
+        print("   Auf dem Host OHNE KI4KI_PDFS aufrufen - der Vorgabewert")
+        print("   trifft den richtigen Ordner.")
         print("\n⛔ DIE MESSUNG IST UNGUELTIG - es wurde nichts gemessen.")
         return 1
 
