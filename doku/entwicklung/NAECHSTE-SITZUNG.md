@@ -45,6 +45,19 @@ Abgleichstabelle: 67 Zeilen gegen den heutigen Code nachprüfen, die 24 gelben u
 Mit mehreren Opus-Prüfern parallel, jeder mit einer eigenen Frage und den
 Regeln aus Abschnitt 1 im Auftrag. Ergebnis: Mängelliste mit Belegstellen.
 
+## 3b · Sofort erledigbar (Durchsicht 21.09., am laufenden System gemessen)
+
+- ⛔ **Der Hauptbereich `wissensdatenbank` steht auf Modus `chat`, nicht `query`.**
+  `BUGS_UND_FIXES.md` §3 nennt das als eine der drei Einstellungen, an denen die
+  Belegprüfung hängt. `auw`, `kap` und der FAQ-Bereich stehen korrekt.
+  ⚠ Die Selbstheilung greift nicht: sie berührt nur **neu angelegte** Bereiche.
+- ⛔ **`KI4KI_KONTAKT` ist leer.** Der „Weg zum Menschen" und die für UC 1
+  geforderte Eskalation laufen ins Nichts — die Anforderung ist im Abgleich als
+  ✅ geführt und im Betrieb wirkungslos.
+- ⚠ **Der Server hängt zwei Commits zurück** (nur Markdown, kein Code). Wer dort
+  `BUGS_UND_FIXES.md` liest, sieht die Punkte 6 und 7 **nicht**.
+  `./aktualisiere.sh` ist seit dem 20.09. nicht gelaufen.
+
 ## 4 · Stand der Anlage
 
 ```
@@ -82,17 +95,37 @@ neu aufgebaut.
 1. **Wie AnythingLLM Uploadnamen wirklich umschreibt** (Sonderzeichen, Umlaute,
    über 200 Byte). Nirgends gemessen, trägt aber den ganzen Entwurf. Test mit
    fünf Dateien in einem Wegwerf-Bereich.
-2. **Die zweite Ursache hinter „Aufnahme unvollständig" 107 → 147** ist weiter
-   unbekannt. Vier belegte Kandidaten in `BUGS_UND_FIXES.md` Punkt 7. Nicht
-   bauen, bevor das gemessen ist.
+2. **Die zweite Ursache hinter „Aufnahme unvollständig" ist weiter unbekannt.**
+   Herkunft der Zahlen: Am 18.09. zählte das Aussortier-Protokoll des
+   KAP-Bereichs **107** Zeilen mit dieser Meldung; nach dem Ablage-Fix
+   (`5650806`) und dem Neustart waren es **147** — also 40 neue Fälle *nach*
+   dem Fix. Beide Zahlen stammen aus einer Live-Messung, die Emrach in den Chat
+   kopiert hat; im Repo sind sie nirgends festgehalten.
+   ⚠ **Korrektur (21.09.):** Eine frühere Fassung dieser Datei sprach von „vier
+   belegten Kandidaten in `BUGS_UND_FIXES.md` Punkt 7". Das stimmt nicht —
+   Punkt 7 nennt **zwei** Befunde, beide zu Unterordnern, beide ohne Bezug zu
+   diesen Zahlen. Wer die Messung angeht, fängt bei **null** an. Der Umfang ist
+   damit größer als die alte Fassung suggerierte.
+   Nicht bauen, bevor das gemessen ist.
 3. **Löschweg, Rechteprüfung, Belegprüfung und `pdfstelle.py` gehören in den
    Umfang.** „Nicht anfassen" war eine Fehlannahme — alle vier hängen am
    Dateinamen.
 
 ## 7 · Was als Beweis NICHT zählt
 
-- `dialogtest.py` grün — von 44 Szenarien behandelt keines Pfade, Namen, Archiv
-  oder Dubletten; viele Prüfungen vergleichen Zeichenketten im eigenen Quelltext.
+- `dialogtest.py` grün — aber **anders, als eine frühere Fassung dieser Datei
+  behauptete.** Ausgezählt am 21.09. über alle 415 Prüfstellen: **79 % prüfen
+  echtes Verhalten**, nur 15 % vergleichen Zeichenketten im eigenen Quelltext.
+  Die Testreihe ist besser als ihr alter Ruf hier.
+  ⛔ **Die Zeichenketten-Prüfungen ballen sich aber genau dort, wo es zählt:**
+  Szenario 43 (Hochladen nur mit Rolle) **10 von 10 = 100 %**, Szenario 44
+  (Ablage wird angelegt) **8 von 8 = 100 %**. Zu diesen beiden Themen beweist
+  ein grüner Lauf ausschließlich, dass bestimmte Zeilen in einer bestimmten
+  Reihenfolge im File stehen. Szenario 44 ist ausgerechnet das, was nach dem
+  teuersten stillen Fehler des Projekts gebaut wurde.
+  ⚠ Und **kein einziges Szenario führt einen Zug durch `_chat`** — die Testreihe
+  kann strukturell nicht bemerken, wenn ein deterministischer Weg unerreichbar
+  geworden ist.
 - `pdfs:` in `/pruef-status` — zählt Schlüssel, nicht Dokumente. Bei Kollision
   steigt die Zahl, obwohl Dokumente fehlen.
 - Ein leeres Aussortier-Protokoll — die Übersicht liest nicht rekursiv und sieht
