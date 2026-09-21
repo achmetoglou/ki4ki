@@ -556,9 +556,40 @@ Treffer        :  False
 
 **Folge.** `angaben()` liefert für **jedes** Dokument `None`. Damit fehlen
 **Titel, Verfasser, Jahr, Band, Art, Kategorie und Schlagworte** in der ganzen
-Bibliothek. Betroffen sind **11 Aufrufstellen in `assistent.py`**, 4 in
-`pruef_proxy.py` und mehrere in `bestand.py` selbst. Zwei Nachschlagestellen:
-`bestand.py:153` und `:618`.
+Bibliothek. Betroffen sind **14 Aufrufstellen**: 11 in `assistent.py`, **3** im
+Proxy (`:8296`, `:8329`, `:8388`), dazu 8 intern in `bestand.py`. Zwei
+Nachschlagestellen: `bestand.py:153` und `:618`.
+
+⚠ *Berichtigt am 21.09. beim Nachzählen:* Es sind **3** Proxy-Stellen, nicht 4 —
+`pruef_proxy.py:7403` ruft `art_von()`, nicht `angaben()`. Und `metadaten.py`
+hat ein **eigenes** `angaben(kennung, wurzel)` mit anderer Signatur und eigenem
+Verzeichnis; seine drei Aufrufe gehören **nicht** dazu.
+
+### ⛔ Der dritte Nachschlagepunkt — und der gefährlichste
+
+`metadaten._grund()` (`metadaten.py:38`) normalisiert genauso, und die Schlüssel
+in `metadaten.json` sind **von Menschen geschriebene Dokumentnamen**. Mit
+Pfad-Schlüssel trifft der Nachschlag nichts, `m` bleibt `{}` — und `fuer_ki()`
+entscheidet dann **je nach Bereichseinstellung in zwei entgegengesetzte
+Richtungen falsch**:
+
+| Bereich | Zeile | Ergebnis | Schaden |
+|---|---|---|---|
+| `nur_freigegebene: true` | `:114` | `freigabe` ≠ `freigegeben` → **False** | erste Zeile in `dokument_erlaubt` (`:1938`) → **kein Dokument mehr zugänglich** |
+| ohne die Einstellung | `:110` | `ki` fällt auf `"ja"` zurück → **True** | ausdrücklich „für KI ausgeschlossene" Dokumente werden **wieder sichtbar** |
+
+⚠ **Heute ist das latent:** Die Durchsicht zählte 11 Bereiche, **0× mit
+`metadaten.json`**. Scharf wird es beim ersten Partner, der die Metadatenebene
+benutzt — dann aber sofort und in einer der beiden Richtungen unbemerkt.
+
+**Reparatur:** dieselbe Handschrift wie oben — **eine Zeile in `_grund()`**.
+Davon erben `fuer_ki()`, `grund_ausschluss()`, `status_zeile()`, `warnung()`
+und `angaben()`.
+
+⭐ **Drei Prüfungen, die in BEIDE Richtungen greifen müssen:** „ausgeschlossen
+sperrt" · „freigegeben bleibt zugänglich" · „unbekannt bleibt bei
+Freigabepflicht gesperrt". Fehlt eine, prüft keine etwas: Eine Rechteprüfung,
+die alles sperrt, besteht die erste; eine, die alles durchlässt, die zweite.
 
 **Lösung (Teil 3, Aufgabe 6c).** Ein `anzeigetitel()` bildet aus dem Schlüssel
 wieder `DS-24-005` — Bereichsvorspann und Abdruck fallen weg.
