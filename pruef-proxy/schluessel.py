@@ -17,6 +17,9 @@ ueberleben die Normalisierung und verschieben den Namen - Ziffern und
 Buchstaben nie.
 """
 import hashlib
+import os
+import re
+import unicodedata
 
 STUFEN = ("input", "parkplatz", "archiv", "aussortiert", "loeschen")
 ALPHABET = "abcdefghijklmnopqrstuvwxyz0123456789"
@@ -68,3 +71,62 @@ def fingerabdruck(kpfad):
         zahl, rest = divmod(zahl, len(ALPHABET))
         aus.append(ALPHABET[rest])
     return "".join(aus)
+
+
+LESBAR_BYTE = 120
+GRENZE_BYTE = 200   # 255 (ext4) - 3 (".md" beim Upload) - 42 (Aufschlag), abgerundet
+
+_ENDUNG = re.compile(r"^\.[A-Za-z0-9]{1,8}$")
+RUECKFALL = "dok"   # wenn vom lesbaren Teil nichts uebrigbleibt
+
+
+def _bereinigen(text):
+    """Auf A-Za-z0-9- bringen.
+
+    Nicht Kosmetik: Solange Sonderzeichen drin sind, ist die Laenge nicht
+    berechenbar, weil AnythingLLM sie unterschiedlich lang ersetzt
+    ('&' -> 'and' waechst, der Winkel-Pfeil schrumpft von 3 Byte auf 1).
+    Gemessen wurden +39, +40, +42 und +14 Byte bei vier Testnamen.
+    """
+    n = unicodedata.normalize("NFKD", text)
+    n = "".join(c for c in n if not unicodedata.combining(c)).replace("ß", "ss")
+    return re.sub(r"[^A-Za-z0-9]+", "-", n).strip("-")
+
+
+def _kuerzen(text, hoechstens):
+    roh = text.encode("utf-8")
+    return text if len(roh) <= hoechstens else roh[:hoechstens].decode("utf-8", "ignore")
+
+
+def _endung_von(kpfad):
+    """Nur echte Endungen. os.path.splitext allein macht aus
+    'Angebot Nr. 4711' die Endung '.4711' und aus '2024.09.20 Protokoll'
+    die Endung '.20 Protokoll' - in Kundenordnern keine Ausnahme,
+    sondern die Regel."""
+    e = os.path.splitext(kpfad)[1]
+    return e.lower() if _ENDUNG.match(e) else ""
+
+
+def schluessel(bereich, unterpfad):
+    """Lesbarer Teil + '--' + Fingerabdruck + Endung.
+
+    Verglichen wird ausschliesslich der Fingerabdruck. Der lesbare Teil
+    ist fuer Menschen und darf verstuemmelt werden.
+    """
+    kpfad = kennpfad(bereich, unterpfad)
+    endung = _endung_von(kpfad)
+    stamm = kpfad[:-len(endung)] if endung else kpfad
+    schwanz = "--%s%s" % (fingerabdruck(kpfad), endung)
+    # ⛔ Die 200-Byte-Zusicherung haengt AN _ENDUNG, nicht an diesem max(0, ...).
+    # Solange eine Endung hoechstens 8 Zeichen hat, ist schwanz hoechstens
+    # 21 Byte, platz nie negativ und die Grenze sicher. Weicht jemand _ENDUNG
+    # auf, rettet das max(0, ...) die Zusicherung NICHT: platz wird 0, der
+    # Rueckfall haengt sich an einen ueberlangen schwanz, und heraus kommen
+    # 216 Byte (gemessen 21.09. mit einer 250-Zeichen-Endung).
+    # Das max(0, ...) verhindert nur das Schlimmere - _kuerzen wuerde bei
+    # negativer Laenge von HINTEN schneiden und den Abdruck zerstoeren.
+    # Bewacht wird die eigentliche Bedingung von der Pruefung
+    # "eine 200-Zeichen-Punkt-Kette gilt NICHT als Endung" in schluesseltest.py.
+    platz = max(0, min(LESBAR_BYTE, GRENZE_BYTE - len(schwanz.encode("utf-8"))))
+    lesbar = _kuerzen(_bereinigen(stamm), platz) or RUECKFALL
+    return lesbar + schwanz
