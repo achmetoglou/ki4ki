@@ -39,11 +39,37 @@ Stand prüfen oder archivieren.
 
 ## 3 · Was als Nächstes dran ist
 
-**Zuerst die vollständige Durchsicht, dann der Umbau.** Rückgrat ist die
-Abgleichstabelle: 67 Zeilen gegen den heutigen Code nachprüfen, die 24 gelben und
-12 roten zuerst, und die Frage beantworten, ob die Anlage UC 1 bedient.
-Mit mehreren Opus-Prüfern parallel, jeder mit einer eigenen Frage und den
-Regeln aus Abschnitt 1 im Auftrag. Ergebnis: Mängelliste mit Belegstellen.
+**Die Durchsicht ist am 21.09. gelaufen** (67 Zeilen, fünf Opus-Prüfer). Ergebnis:
+drei Zeilen echt grün geworden, drei verschlechtert, der Rest gelb oder rot. Zwei
+Befunde überlagern alles andere:
+
+- **S1 — der Regel-Router ist im Betrieb toter Code.** `pruef_proxy.py:4891`
+  greift bei `KI4KI_GESPRAECH=1` (gemessen: aktiv) fast jede Frage vor dem Router
+  ab; `_gespraech_antwort` hat genau ein `return False` (leerer Bereich).
+  Mindestens acht ✅ berufen sich auf deterministische Wege **dahinter**.
+  ⭐ **Für jedes ✅, das auf einen deterministischen Weg verweist, gilt: liegt er
+  vor oder hinter Zeile 4891?**
+- **UC 1 wird nicht bedient** — nicht am Code, sondern am Bestand. Gefordert sind
+  strukturierte Datensätze mit Feldern; die Aufnahmekette erzeugt ausschließlich
+  Fließtext.
+
+### Die Reihenfolge (entschieden von Emrach, 21.09.)
+
+Die Anlage muss **beides** können. Erst die saubere Dokumentaufnahme, dann UC 1 —
+nicht aus Ordnungsliebe, sondern weil die Aufnahme heute **still Dokumente
+löscht**. Darauf baut man nichts. Und ein Fehlerkatalog für UC 1 liefe in
+denselben Namenskonflikt: ein Fehlercode wie `E42` kommt bei jedem Kunden und
+jeder Linie vor.
+
+1. **Die zweite Ursache hinter „Aufnahme unvollständig" finden** (siehe §6.2).
+   `/debug` bzw. `sp-systematic-debugging` ist dafür das richtige Werkzeug —
+   ein Symptom, das reproduzierbar ist. Vorher wird nicht gebaut.
+2. **Pfad + Fingerabdruck bauen** (siehe §5), mit Prüfungen, die **Verhalten**
+   messen, nicht Zeichenketten im Quelltext (siehe §7).
+3. **KAP vollständig neu einspielen und messen**, dass der Fehlerzähler
+   **stillsteht** — nicht nur, dass der Bestand steigt.
+4. **Dann UC 1.** Dafür braucht es zuerst eine Entscheidung über den Bestand:
+   Störfalldaten als Datensätze mit Feldern, nicht als Dokumente.
 
 ## 3b · Sofort erledigbar (Durchsicht 21.09., am laufenden System gemessen)
 
