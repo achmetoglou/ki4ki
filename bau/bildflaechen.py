@@ -93,8 +93,14 @@ def main():
         print("Keine PDF gefunden - nichts gemessen.")
         return 1
 
-    random.seed(20260921)   # feste Auswahl, damit die Messung wiederholbar ist
-    probe = random.sample(alle, min(ANZAHL, len(alle)))
+    # Praefix-stabil mischen statt sample(): So ist die Auswahl bei ANZAHL=10
+    # garantiert der Anfang der Auswahl bei ANZAHL=200, und zwei Laeufe mit
+    # verschiedener Groesse bleiben vergleichbar. random.sample(alle, k) gibt
+    # diese Zusicherung NICHT - bei anderem k kommt eine andere Menge heraus.
+    gemischt = sorted(alle)          # stabile Ausgangsordnung, unabhaengig vom Dateisystem
+    random.seed(20260921)
+    random.shuffle(gemischt)
+    probe = gemischt[:ANZAHL]
 
     mit_bild = ohne_bild = unlesbar = 0
     ueber = unter = 0

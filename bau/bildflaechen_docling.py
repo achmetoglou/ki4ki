@@ -142,8 +142,14 @@ def main():
         print("Keine PDF gefunden - nichts gemessen.")
         return 1
 
-    random.seed(20260921)          # DIESELBE Auswahl wie bildflaechen.py
-    probe = random.sample(alle, min(20, len(alle)))[:ANZAHL]
+    # Praefix-stabil mischen statt sample(): So ist die Auswahl bei ANZAHL=10
+    # garantiert der Anfang der Auswahl bei ANZAHL=200, und zwei Laeufe mit
+    # verschiedener Groesse bleiben vergleichbar. random.sample(alle, k) gibt
+    # diese Zusicherung NICHT - bei anderem k kommt eine andere Menge heraus.
+    gemischt = sorted(alle)          # stabile Ausgangsordnung, unabhaengig vom Dateisystem
+    random.seed(20260921)
+    random.shuffle(gemischt)
+    probe = gemischt[:ANZAHL]
 
     print("Docling-Sicht auf %d Dokumente (von %d PDF im Bestand)"
           % (len(probe), len(alle)))
