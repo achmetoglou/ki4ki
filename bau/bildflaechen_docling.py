@@ -43,6 +43,7 @@ WURZEL = os.environ.get("WURZEL", "/daten/pdfs")
 ANZAHL = int(os.environ.get("ANZAHL", "10"))
 SCHWELLE = float(os.environ.get("SCHWELLE", "0.08"))
 ZEITLIMIT = int(os.environ.get("ZEITLIMIT", "300"))
+LAUT = os.environ.get("LAUT", "") not in ("", "0", "nein")
 DOCLING = os.environ.get("DOCLING", "http://docling:5001/v1/convert/file")
 SEKUNDEN_JE_BILD = 3.3
 
@@ -103,7 +104,19 @@ def docling_bilder(pfad):
 
     dok = (roh.get("document") or {}).get("json_content")
     if not isinstance(dok, dict):
-        return None, dauer, "keine JSON-Fassung in der Antwort"
+        # Aussagekraeftig melden, WARUM nichts kam: docling-serve antwortet
+        # auch bei einer gescheiterten Umwandlung mit HTTP 200 und legt den
+        # Grund in status/errors. "keine JSON-Fassung" allein verschweigt das.
+        zustand = str(roh.get("status") or "ohne Status")
+        pannen = roh.get("errors") or []
+        text = ""
+        if isinstance(pannen, list) and pannen:
+            erste = pannen[0]
+            text = (erste.get("error_message") or erste.get("error_type") or "")\
+                if isinstance(erste, dict) else str(erste)
+        vorhanden = ",".join(sorted((roh.get("document") or {}).keys())) or "nichts"
+        return None, dauer, "Status %s · %s · Antwort enthielt: %s" % (
+            zustand, (text[:120] or "kein Fehlertext"), vorhanden)
 
     seiten = {}
     for nr, seite in (dok.get("pages") or {}).items():
@@ -186,15 +199,26 @@ def main():
                     break
             else:
                 treppe[5] += 1
-        print("  %2d/%d  %5.0f s · Docling sieht %4d Abbildungen · pdfimages"
-              " %4d Rasterbilder · davon unter der Schwelle %4d"
-              % (i, len(probe), dauer, len(anteile),
-                 raster if raster is not None else -1, klein))
+        # Standardmaessig NUR Auffaelliges zeigen. Bei 788 Dokumenten geht die
+        # Zusammenfassung sonst in der Zeilenflut unter - genau das ist beim
+        # ersten Lauf passiert.
+        if LAUT or dauer >= 20 or len(anteile) >= 200:
+            print("  %4d/%d  %5.0f s · Docling %5d Abbildungen · pdfimages %5d"
+                  " · unter der Schwelle %5d%s"
+                  % (i, len(probe), dauer, len(anteile),
+                     raster if raster is not None else -1, klein,
+                     "" if LAUT else "   <- Ausreisser"))
+        elif i % 100 == 0:
+            print("  ... %d von %d" % (i, len(probe)))
 
     gesamt = ueber + unter
-    print("\n%d Dokumente gemessen, %d Fehler, im Schnitt %.0f s je Dokument"
-          % (len(probe) - fehler, fehler,
-             sum(zeiten) / len(zeiten) if zeiten else 0))
+    print("\n%d Dokumente gemessen, im Schnitt %.0f s je Dokument"
+          % (len(probe) - fehler, sum(zeiten) / len(zeiten) if zeiten else 0))
+    if fehler:
+        print("⛔ %d Dokumente (%.1f %%) konnte Docling NICHT umwandeln."
+              " Diese Dateien haetten heute im Betrieb keinen Text und keine"
+              " Bildbeschreibung - eigener Befund, unabhaengig von der Schwelle."
+              % (fehler, 100.0 * fehler / len(probe)))
     if gesamt == 0:
         print("Docling hat keine Abbildungen gefunden.")
         return 0
@@ -233,18 +257,35 @@ def main():
             print("  ⛔ Vom Ausreisser getrieben - mit dem Mittelwert"
                   " hochzurechnen waere nicht belastbar.")
 
-    print("\nWas die einzelnen Schwellen braechten:")
+    # Ausreisser benennen: sie entscheiden ueber die Laufzeit, nicht der
+    # Durchschnitt. Ein Dokument mit ueber 1.000 Abbildungen wiegt so viel
+    # wie hunderte normale.
+    dicke = sorted((n for n in je_dokument if n >= 100), reverse=True)
+    if dicke:
+        print("\n⛔ %d Dokumente haben 100 oder mehr Abbildungen unter der"
+              " Schwelle. Zusammen %d von %d - das sind %.0f %% der Arbeit"
+              " in %.1f %% der Dokumente."
+              % (len(dicke), sum(dicke), unter, 100.0 * sum(dicke) / max(1, unter),
+                 100.0 * len(dicke) / max(1, len(je_dokument))))
+        print("   Die groessten: %s"
+              % ", ".join(str(n) for n in dicke[:8]))
+        print("   ⚠ Fuer diese Dokumente war die Schwelle gedacht (Punkt 1)."
+              " Eine Schwelle von 0 wuerde genau hier wieder Stunden kosten.")
+
+    vollstaendig = len(probe) >= len(alle)
+    print("\nWas die einzelnen Schwellen braechten%s:"
+          % (" - GEMESSEN am ganzen Bestand, nicht hochgerechnet"
+             if vollstaendig else " (hochgerechnet)"))
     kanten = (0.0, 0.01, 0.02, 0.04)
     namen = ("unter 1 %", "1 bis 2 %", "2 bis 4 %", "4 bis 8 %")
     dazu = 0
     n_dok = max(1, len(probe) - fehler)
     for k in range(3, -1, -1):
         dazu += treppe[k]
-        print("  Schwelle %.2f: +%-5d Abbildungen -> +%5.1f Stunden fuer %d PDF"
-              "   (Gruppe %s)"
-              % (kanten[k], dazu,
-                 1.0 * dazu / n_dok * SEKUNDEN_JE_BILD * len(alle) / 3600.0,
-                 len(alle), namen[k]))
+        stunden = (dazu * SEKUNDEN_JE_BILD / 3600.0 if vollstaendig
+                   else 1.0 * dazu / n_dok * SEKUNDEN_JE_BILD * len(alle) / 3600.0)
+        print("  Schwelle %.2f: +%-6d Abbildungen -> +%6.1f Stunden   (Gruppe %s)"
+              % (kanten[k], dazu, stunden, namen[k]))
     return 0
 
 
