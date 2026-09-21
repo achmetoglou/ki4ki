@@ -1328,6 +1328,10 @@ PDFS_GRUND = {}
 #   ausser A-Za-z0-9 weg, der Abdruck besteht nur aus solchen). Verglichen
 #   wird ausschliesslich hierueber; der lesbare Teil darf verstuemmelt sein.
 PDFS_ABDRUCK = {}
+# Wie oft ein Beleg NICHT ueber den Abdruck, sondern ueber den alten
+# Namensvergleich zustande kam. Steht der Zaehler ueber eine Woche
+# normalen Betriebs auf 0, wird der Altweg nicht mehr gebraucht.
+_ALTWEG_BELEG = [0]
 # Ollama vertraegt keine zehn gleichzeitigen Pruefungen; die Pruefung selbst
 # ist schnell, aber der Bestand soll nicht mehrfach parallel geladen werden.
 PRUEFSPERRE = threading.Lock()
@@ -4024,6 +4028,9 @@ def _themenfremde_nennungen_tilgen(text):
         return text
 
 
+_NAME_VOR_SEITE = re.compile(r"([^\s(\[\],;]{1,240})$")
+
+
 def mit_verweisen(text, pruefungen=None, quellen=None):
     """Fundstellen in anklickbare Verweise auf die Fundstellen-Ansicht.
 
@@ -4060,19 +4067,47 @@ def mit_verweisen(text, pruefungen=None, quellen=None):
         if any(a <= m.start() < b for a, b in verlinkt):
             continue
         davor = text[:m.start()]
-        name = None
-        for kandidat in PDFS:
-            if davor.endswith(kandidat) and (name is None
-                                             or len(kandidat) > len(name)):
-                name = kandidat
-        if name and quellen is not None and name not in quellen:
-            name = None   # genannt, aber nicht unter den Quellen -> nicht belegt
+        name, spanne = None, 0
+        # ⭐ Erkannt wird der ABDRUCK, nicht der ganze Name. Mit dem
+        #   Pfad-Schluessel muesste das Modell sonst 137 Zeichen woertlich
+        #   abschreiben - und bei jedem Vertipper waere der Beleg weg, ohne
+        #   Meldung. Gemessen an vier realistischen Abweichungen (Endung
+        #   weggelassen, '--' zu '-' gezogen, klein geschrieben, .md statt
+        #   .pdf): alle vier scheitern am reinen Namensvergleich, der
+        #   Abdruck traegt sie.
+        wort = _NAME_VOR_SEITE.search(davor)
+        if wort:
+            treffer = schluessel.abdruck_finden(wort.group(1), PDFS_ABDRUCK)
+            if treffer:
+                name = PDFS_ABDRUCK[treffer]
+                spanne = len(wort.group(1))
+        if name is None:
+            # ⚠ UEBERGANGSSTUETZE fuer Dokumente aus der Zeit vor dem Umbau.
+            #   Sie kann das falsche gleichnamige Dokument treffen - genau
+            #   die Fehlerklasse, die dieser Umbau beseitigt. Deshalb steht
+            #   sie HINTER dem Abdruck und wird gezaehlt.
+            for kandidat in PDFS:
+                if davor.endswith(kandidat) and (name is None
+                                                 or len(kandidat) > len(name)):
+                    name = kandidat
+            if name:
+                spanne = len(name)
+                _ALTWEG_BELEG[0] += 1
+        # ⚠ Beide Seiten auf Schluessel bringen: `name` ist jetzt ein
+        #   Schluessel, die Quellen tragen den Titel aus AnythingLLM.
+        #   Unveraendert waere die Bedingung IMMER wahr und jeder Beleg
+        #   fiele weg - lautlos.
+        if name and quellen is not None:
+            erlaubte = {_pdf_schluessel(q) for q in quellen}
+            if name not in erlaubte:
+                name = None   # genannt, aber nicht unter den Quellen
         if name and not _dok_hat_aussage(
                 name, text[max(0, m.start() - 260):m.start()]):
             name = None   # Dok deckt die Aussage nicht -> Modell halluziniert
-        if not name or m.start() - len(name) < bis:
+        if not name or m.start() - spanne < bis:
             continue
-        ergebnis.append(text[bis:m.start() - len(name)])
+        geschrieben = text[m.start() - spanne:m.start()]
+        ergebnis.append(text[bis:m.start() - spanne])
         # Kontext = der Fliesstext dieses Belegs (vom Ende des vorigen Links
         # bis hierher). Enthaelt das Zitat, das das Modell direkt vor die
         # Seitenangabe geschrieben hat - so lassen sich mehrere Zitate auf
@@ -4085,7 +4120,7 @@ def mit_verweisen(text, pruefungen=None, quellen=None):
         # zerlegt der Markdown-Darsteller "[[Ehr06] ...](...)" an der
         # inneren Klammer und es bleibt kein Link uebrig. Genau solche
         # Namen kommen aus der Fachliteratur.
-        sichtbar = (name + m.group(0)).replace("[", "\\[").replace("]", "\\]")
+        sichtbar = (geschrieben + m.group(0)).replace("[", "\\[").replace("]", "\\]")
         ergebnis.append("[%s](%s)" % (sichtbar, ziel))
         bis = m.end()
     ergebnis.append(text[bis:])
@@ -9344,6 +9379,7 @@ class Griff(BaseHTTPRequestHandler):
                                 # Rueckbau faellig (-1 = Bestand nicht lesbar).
                                 "nur_altweg": nur_ueber_altweg(),
                                 "altweg_aktiv": altweg_aktiv(),
+                                "altweg_belege": _ALTWEG_BELEG[0],
                                 "gpu": {"modelle": GPU_STAND.get("modelle") if _voll else len(GPU_STAND.get("modelle") or []),
                                         "warnung": GPU_STAND.get("warnung")}},
                                ensure_ascii=False).encode("utf-8")

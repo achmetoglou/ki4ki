@@ -348,6 +348,118 @@ def test_metadaten_tor():
         shutil.rmtree(w, ignore_errors=True)
 
 
+def test_belegvergleich():
+    """Der Belegvergleich ist die Stelle, an der der Umbau still scheitern
+    kann.
+
+    Heute endet der Modelltext woertlich auf einen Dateinamen. Mit dem
+    Pfad-Schluessel muesste das Modell 137 Zeichen fehlerfrei abschreiben -
+    bei jedem Vertipper waere der Beleg weg, ohne Meldung. Entschieden am
+    21.09.: Erkannt wird der ABDRUCK, zehn Zeichen aus a-z0-9.
+    """
+    from urllib.parse import quote
+    import schluessel
+    import pruef_proxy as p
+    print("\nBelegvergleich am Abdruck")
+    p.pdfs_einlesen()
+    kap_a = schluessel.schluessel("kap", "archiv/KundeA/Angebot.pdf")
+    kap_b = schluessel.schluessel("kap", "archiv/KundeB/Angebot.pdf")
+
+    erg = p.mit_verweisen("Die Presse stand still (%s, S. 12)." % kap_b,
+                          quellen=[kap_b])
+    pruefe("/stelle?dok=" in erg, "es entsteht ueberhaupt ein Belegsprung")
+    pruefe("seite=12" in erg, "die Seite steht im Sprungziel")
+
+    # Die eigentliche Zusicherung: Der Sprung trifft KundeB, nicht KundeA -
+    # und das laesst sich nur am Abdruck unterscheiden, weil beide Dateien
+    # gleich heissen.
+    # ⛔ Geprueft wird das SPRUNGZIEL, nicht die blosse Anwesenheit des
+    #   Namens: Der Schluessel steht ohnehin im Eingabetext und ueberlebt
+    #   auch dann, wenn gar kein Link entsteht. Genau so war die erste
+    #   Fassung dieser Zeilen gruen, waehrend der Quellen-Waechter jeden
+    #   Beleg verwarf (gemessen 21.09.).
+    pruefe(("/stelle?dok=" + quote(kap_b)) in erg
+           and ("/stelle?dok=" + quote(kap_a)) not in erg,
+           "der Sprung trifft den RICHTIGEN der zwei gleichnamigen Kunden")
+
+    # Gegenprobe 1: Schreibt das Modell nur den lesbaren Teil OHNE Abdruck,
+    # darf KEIN Beleg entstehen. Ein Beleg, der dann doch entsteht, zeigt
+    # zwangslaeufig auf ein geratenes Dokument.
+    lesbar = kap_b.split("--")[0]
+    ohne = p.mit_verweisen("Die Presse stand still (%s, S. 12)." % lesbar,
+                           quellen=[kap_b])
+    pruefe("/stelle?dok=" not in ohne,
+           "ohne Abdruck entsteht KEIN Beleg statt eines geratenen")
+
+    # Gegenprobe 2: Ein Abdruck, den es nicht gibt, darf nichts treffen.
+    keiner = p.mit_verweisen("Behauptung (Bericht--zzzz999999, S. 3).",
+                             quellen=[kap_b])
+    pruefe("/stelle?dok=" not in keiner, "erfundener Abdruck trifft nichts")
+
+    # Gegenprobe 3: Der Quellen-Waechter muss weiter greifen. Sie ist das
+    # Gegenstueck zur ersten Zeile: Steht der Waechter zu scharf, faellt
+    # JEDER Beleg weg und "es entsteht ueberhaupt ein Belegsprung" wird rot.
+    # Erst beide zusammen schliessen die Stelle ein.
+    fremd = p.mit_verweisen("Behauptung (%s, S. 3)." % kap_a, quellen=[kap_b])
+    pruefe("/stelle?dok=" not in fremd,
+           "genannt, aber nicht unter den Quellen -> kein Beleg")
+
+    # Schon fertige Verweise duerfen nicht ein zweites Mal verlinkt werden.
+    doppelt = p.mit_verweisen("[%s, S. 1](/stelle?dok=x&seite=1)" % kap_b,
+                              quellen=[kap_b])
+    pruefe(doppelt.count("/stelle?") == 1,
+           "fertige Verweise bleiben unangetastet")
+
+    # Der sichtbare Linktext bleibt das, was das Modell geschrieben hat -
+    # nicht der aufgeloeste Schluessel. Sonst stuende im Text ploetzlich ein
+    # anderer Name als in der Antwort des Modells.
+    mit_md = p.mit_verweisen("Siehe (%s.md, S. 7)." % kap_b, quellen=[kap_b])
+    pruefe("%s.md" % kap_b in mit_md,
+           "der sichtbare Linktext bleibt der geschriebene Name")
+
+    # ⛔ HIER liegt das eigentliche Risiko, und die Faelle oben treffen es
+    #   nicht: Sie schreiben den Schluessel EXAKT, und das kann der alte
+    #   endswith-Weg auch. Ein Modell, das 137 Zeichen abschreibt, vertippt
+    #   sich aber - es laesst die Endung weg, zieht '--' zu '-' zusammen oder
+    #   schreibt klein. Jeder dieser Faelle war vor der Umstellung rot.
+    for wie, geschrieben in (
+            ("ohne Endung", kap_b.rsplit(".", 1)[0]),
+            ("'--' zu '-' gezogen", kap_b.replace("--", "-")),
+            ("alles klein", kap_b.lower()),
+            ("mit .md statt .pdf", kap_b.rsplit(".", 1)[0] + ".md")):
+        erg2 = p.mit_verweisen("Aussage (%s, S. 5)." % geschrieben,
+                               quellen=[kap_b])
+        pruefe(("/stelle?dok=" + quote(kap_b)) in erg2,
+               "Modell schreibt den Schluessel %s -> Beleg trifft trotzdem"
+               % wie)
+
+    # ⛔ Der Quellen-Waechter braucht einen Fall, der die AUFLOESUNG noetig
+    #   macht: AnythingLLM meldet seine Dokumente nicht als blanken
+    #   Schluessel, sondern mit Endung. Verglich man beide Seiten roh, waere
+    #   die Bedingung immer wahr und JEDER Beleg fiele weg - lautlos. Ohne
+    #   diese Zeile blieb der Waechter ungeprueft (gemessen: die Mutation
+    #   "ohne Aufloesung" liess alles gruen).
+    anders = p.mit_verweisen("Aussage (%s, S. 9)." % kap_b,
+                             quellen=[kap_b + ".md"])
+    pruefe(("/stelle?dok=" + quote(kap_b)) in anders,
+           "Quelle in anderer Schreibweise (.md) laesst den Beleg zu")
+    verboten = p.mit_verweisen("Aussage (%s, S. 9)." % kap_b,
+                               quellen=[kap_a + ".md"])
+    pruefe("/stelle?dok=" not in verboten,
+           "aber eine FREMDE Quelle in derselben Schreibweise nicht")
+
+    # Und die Gegenprobe dazu, damit die vier Zeilen oben nicht einfach
+    # "irgendetwas verlinken" belohnen: Ein Name, der dem Schluessel aehnelt,
+    # aber einen ANDEREN Abdruck traegt, darf nicht auf kap_b zeigen.
+    fremder_abdruck = schluessel.fingerabdruck("kap/gibt-es-nicht.pdf")
+    aehnlich = kap_b.split("--")[0] + "--" + fremder_abdruck + ".pdf"
+    erg3 = p.mit_verweisen("Aussage (%s, S. 5)." % aehnlich, quellen=[kap_b])
+    pruefe(("/stelle?dok=" + quote(kap_b)) not in erg3,
+           "ein aehnlicher Name mit fremdem Abdruck zeigt NICHT auf kap_b")
+
+
+
+
 def test_stuetze_laeuft_ab():
     """Die Uebergangsstuetze darf sich NICHT selbst schuetzen.
 
@@ -410,6 +522,7 @@ def main():
     baum_bauen()
     pruefungen = [test_index, test_pdfstelle, test_belegvorrat,
                   test_anzeigetitel, test_metadaten_tor,
+                  test_belegvergleich,
                   test_stuetze_laeuft_ab]
     try:
         for t in pruefungen:
