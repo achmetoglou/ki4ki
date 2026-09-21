@@ -527,6 +527,91 @@ def test_rechtepruefung():
         p.erlaubte_dokumente = echt
 
 
+def _dateien_im_baum():
+    """Nur Dokumente zaehlen, keine Protokolle.
+
+    ⚠ Der Loeschweg LEGT eine Protokolldatei AN. Wer alles zaehlt, sieht
+      "eine weg, eine dazu" und haelt das fuer "nichts geloescht" - Messung
+      am falschen Gegenstand, genau die Klasse, die in diesem Projekt schon
+      dreimal teuer war.
+    """
+    return sum(1 for _o, _u, ds in os.walk(BAUM)
+               for d in ds if not d.endswith(".log"))
+
+
+def test_loeschweg():
+    """Heute reisst ein Loeschklick ALLE Namensvettern in ALLEN Bereichen mit.
+
+    Drei Ausgaenge muss diese Pruefung unterscheiden koennen:
+      richtig  - genau dieses eine Dokument verschwindet
+      zu viel  - Namensvettern werden mitgerissen (der Zustand von heute)
+      zu wenig - gar nichts wird geloescht, aber GELOESCHT protokolliert
+                 (der Datenschutzschaden nach einem halben Umbau)
+    """
+    import schluessel
+    import pruef_proxy as p
+    print("\nLoeschweg")
+    p.pdfs_einlesen()
+    kap_a = schluessel.schluessel("kap", "archiv/KundeA/Angebot.pdf")
+    vorher = _dateien_im_baum()
+
+    p._eigene_spuren_tilgen(kap_a, "Pruefung")
+
+    def da(*teile):
+        return os.path.exists(os.path.join(BAUM, *teile))
+
+    # 1) richtig
+    pruefe(not da("kap", "archiv", "KundeA", "Angebot.pdf"),
+           "das gemeinte Dokument ist weg")
+    # 2) zu viel - genau der Schaden von heute
+    pruefe(da("kap", "archiv", "KundeB", "Angebot.pdf"),
+           "der gleichnamige KundeB ist UNANGETASTET")
+    pruefe(da("auw", "archiv", "KundeA", "Angebot.pdf"),
+           "der gleichnamige im Bereich auw ist UNANGETASTET")
+    # 3) zu wenig
+    nachher = _dateien_im_baum()
+    pruefe(nachher == vorher - 1,
+           "genau EINE Datei weniger, gezaehlt %d nach %d" % (nachher, vorher))
+
+    # Gegenprobe: Ein Schluessel, den es nicht gibt, darf GAR NICHTS loeschen.
+    # Ohne diese Zeile waere "KundeB unangetastet" auch dann gruen, wenn die
+    # Funktion ueberhaupt nichts mehr taete.
+    stand = _dateien_im_baum()
+    p._eigene_spuren_tilgen("Gibtsnicht--zzzz999999.pdf", "Gegenprobe")
+    pruefe(_dateien_im_baum() == stand,
+           "ein unbekannter Schluessel loescht nichts")
+
+    # Und der Umzug: Dieselbe Datei in jeder Stufe ergibt DENSELBEN
+    # Schluessel. Waere die Stufe Teil der Kennung, bekaeme dasselbe Dokument
+    # bei jedem Umzug eine neue - genau der Kettenbruch, der behoben wird.
+    for stufe in ("input", "parkplatz", "archiv", "aussortiert", "loeschen"):
+        pruefe(schluessel.schluessel("kap", stufe + "/KundeB/Angebot.pdf")
+               == schluessel.schluessel("kap", "archiv/KundeB/Angebot.pdf"),
+               "Stufe %s ergibt denselben Schluessel" % stufe)
+
+    # ⭐ Archiv und Aussortiert spiegeln die Unterordner des Eingangs. Flach
+    #   passten zwei gleichnamige Dateien nicht nebeneinander - daran ging
+    #   die Kundenzuordnung verloren. Geprueft am erzeugten Pfad, nicht an
+    #   einer Zeichenkette im Quelltext.
+    eingang = os.path.join(BAUM, "kap", "input")
+    quelle = os.path.join(eingang, "KundeC", "Angebot.pdf")
+    os.makedirs(os.path.dirname(quelle), exist_ok=True)
+    open(quelle, "wb").write(b"%PDF-1.4\nE\n")
+    unter = os.path.relpath(quelle, eingang)
+    pruefe(unter == os.path.join("KundeC", "Angebot.pdf"),
+           "der Unterpfad unterhalb des Eingangs bleibt erhalten, ist %r"
+           % unter)
+    pruefe(os.path.join(BAUM, "kap", "archiv", unter).endswith(
+               os.path.join("archiv", "KundeC", "Angebot.pdf")),
+           "das Archivziel spiegelt den Kundenordner")
+    os.remove(quelle)
+
+    # Datei wieder herstellen, damit die folgenden Pruefungen den Baum
+    # unveraendert vorfinden.
+    lege_an("kap", "archiv", "KundeA", "Angebot.pdf", inhalt=b"%PDF-1.4\nA\n")
+    p.pdfs_einlesen()
+
+
 def test_stuetze_laeuft_ab():
     """Die Uebergangsstuetze darf sich NICHT selbst schuetzen.
 
@@ -591,6 +676,7 @@ def main():
                   test_anzeigetitel, test_metadaten_tor,
                   test_belegvergleich,
                   test_rechtepruefung,
+                  test_loeschweg,
                   test_stuetze_laeuft_ab]
     try:
         for t in pruefungen:

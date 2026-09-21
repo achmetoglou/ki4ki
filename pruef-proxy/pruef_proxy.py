@@ -475,19 +475,49 @@ def _loesch_protokoll(wurzel, text):
         pass
 
 
+def _trifft_ziel(name, ziel, alt_ziel, abdruck=None):
+    """Gehoert dieser Name zum Loeschziel?
+
+    Ein Vergleich, nicht zwei: Der Abdruck entscheidet, und nur solange es
+    keinen gibt, greift der alte Namensvergleich. Dieselbe Rechnung an allen
+    vier Stellen des Loeschwegs - sonst loeschen sie verschieden viel, und
+    das faellt erst auf, wenn Daten fehlen.
+    """
+    if ziel is not None:
+        if abdruck is not None:
+            return abdruck == ziel
+        return schluessel.abdruck_finden(name, {ziel: 1}) == ziel
+    if alt_ziel is not None:
+        return _loesch_grund(_stamm(name)) == alt_ziel
+    return False
+
+
 def _eigene_spuren_tilgen(stamm, grund_log="geloescht"):
     """Alles, was DIE ANLAGE selbst ueber ein Dokument fuehrt, entfernen:
     Katalogeintrag, Volltext-Vorrat, Vormerkliste, Archiv-PDF - in jedem
     Bereich, in dem das Dokument liegt. Liefert die betroffenen Bereiche."""
-    ziel = _loesch_grund(stamm)
+    # ⭐ Verglichen wird der ABDRUCK. Bis zum 21.09. verglich diese Funktion
+    #   normalisierte NAMEN - ein Loeschklick riss damit alle Namensvettern
+    #   in ALLEN Bereichen mit (groesste Gruppe im Bestand: 99 Dateien).
+    ziel = schluessel.abdruck_finden(stamm, PDFS_ABDRUCK)
+    # ⚠ UEBERGANGSSTUETZE: Dokumente aus der Zeit vor dem Umbau tragen keinen
+    #   Abdruck und waeren sonst nicht mehr loeschbar. Faellt mit Aufgabe 12.
+    alt_ziel = _loesch_grund(stamm) if (ziel is None and altweg_aktiv()) else None
+    if ziel is None and alt_ziel is None:
+        # ⛔ Weder Abdruck noch Altweg: NICHTS loeschen - und das sagen. Ein
+        #   stilles "nichts getan" mit der Quittung "GELOESCHT" waere der
+        #   schlimmere der beiden Fehler.
+        print("[Loeschen] kein Abdruck zu %r - es wird NICHTS geloescht"
+              % str(stamm)[:60], file=sys.stderr, flush=True)
+        return []
     try:
         import bestand as _bst
         _bst.entfernen(stamm)
     except Exception:
         pass
     try:
-        for t in [t for t in list(BESTAND._pfade)
-                  if _loesch_grund(t[:-3] if t.endswith(".md") else t) == ziel]:
+        for t in [t for t in list(BESTAND._pfade) if _trifft_ziel(
+                t[:-3] if t.endswith(".md") else t, ziel, alt_ziel)]:
             BESTAND._pfade.pop(t, None)
             BESTAND._geladen.pop(t, None)
             if t in BESTAND._reihe:
@@ -509,7 +539,8 @@ def _eigene_spuren_tilgen(stamm, grund_log="geloescht"):
         try:
             if os.path.exists(vormerk):
                 alt = open(vormerk, encoding="utf-8").read().splitlines()
-                neu = [z for z in alt if _loesch_grund(_stamm(z.strip())) != ziel]
+                neu = [z for z in alt
+                       if not _trifft_ziel(z.strip(), ziel, alt_ziel)]
                 if len(neu) != len(alt):
                     with open(vormerk, "w", encoding="utf-8") as fh:
                         fh.write("\n".join(neu) + ("\n" if neu else ""))
@@ -517,9 +548,17 @@ def _eigene_spuren_tilgen(stamm, grund_log="geloescht"):
         except Exception:
             pass
         try:
-            for d in os.listdir(os.path.join(wurzel, "archiv")):
-                if not d.startswith(".") and _loesch_grund(_stamm(d)) == ziel:
-                    os.remove(os.path.join(wurzel, "archiv", d))
+            # os.walk statt listdir: Das Archiv spiegelt seit dem Umbau die
+            # Unterordner des Eingangs. Ein flaches listdir saehe die
+            # Kundenordner gar nicht und loeschte nichts - lautlos.
+            for ordner, _u, dateien in os.walk(os.path.join(wurzel, "archiv")):
+                for d in dateien:
+                    if d.startswith("."):
+                        continue
+                    sl, ab = _schluessel_der_datei(ordner, d)
+                    if not _trifft_ziel(sl or d, ziel, alt_ziel, abdruck=ab):
+                        continue
+                    os.remove(os.path.join(ordner, d))
                     getan = True
         except Exception as e:
             _loesch_protokoll(wurzel, "%s: Archiv-PDF nicht loeschbar (%s)" % (stamm, str(e)[:80]))
@@ -540,7 +579,10 @@ def _nach_ui_loeschung(names):
     for docpath in names or []:
         if os.path.exists(os.path.join(BESTAND_ORDNER, docpath)):
             continue
-        stamm = os.path.basename(str(docpath)).split(".md-")[0]
+        # ohne_uuid statt split(".md-"): Der Uploadname ist jetzt der
+        # Schluessel, und der traegt selbst Bindestriche. Ein Split an
+        # ".md-" schnitte bei einem Schluessel ohne Endung zu frueh.
+        stamm = schluessel.ohne_uuid(os.path.basename(str(docpath)))
         if stamm:
             _eigene_spuren_tilgen(stamm, "aus der Oberflaeche geloescht")
 
@@ -551,13 +593,19 @@ def _dokument_loeschen(pdf):
     wurzel = os.path.dirname(os.path.dirname(pdf))
     name = os.path.basename(pdf)
     stamm = _stamm(name)
-    ziel = _loesch_grund(stamm)
+    # Der Schluessel dieser Datei, nicht ihr Name: Erst damit trifft der
+    # Vergleich genau EIN Dokument statt aller Namensvettern.
+    sl, abdruck = _schluessel_der_datei(os.path.dirname(pdf), os.path.basename(pdf))
+    ziel = abdruck if abdruck else schluessel.abdruck_finden(stamm, PDFS_ABDRUCK)
+    alt_ziel = _loesch_grund(stamm) if (ziel is None and altweg_aktiv()) else None
 
     # 1) Textfassungen in AnythingLLM finden (ueber alle Ablageordner).
     docpaths = []
     for w, _, dateien in os.walk(BESTAND_ORDNER):
         for d in dateien:
-            if d.endswith(".json") and _loesch_grund(d.split(".md-")[0]) == ziel:
+            if not d.endswith(".json"):
+                continue
+            if _trifft_ziel(schluessel.ohne_uuid(d), ziel, alt_ziel):
                 docpaths.append(os.path.relpath(os.path.join(w, d), BESTAND_ORDNER))
     # 2) Aus allen Arbeitsbereichen austragen (Vektoren weg), dann aus dem System.
     if docpaths:
@@ -584,7 +632,7 @@ def _dokument_loeschen(pdf):
     else:
         _loesch_protokoll(wurzel, "%s: keine Textfassung im Bestand (war nie aufgenommen oder schon weg)" % name)
     # 3) Eigene Spuren ueberall tilgen (Katalog, Vorrat, Vormerkliste, Archiv-PDF).
-    _eigene_spuren_tilgen(stamm, "ueber loeschen/")
+    betroffen = _eigene_spuren_tilgen(sl or stamm, "ueber loeschen/")
     # 4) Zuletzt die Datei im Loesch-Ordner selbst.
     try:
         if os.path.exists(pdf):
@@ -592,7 +640,21 @@ def _dokument_loeschen(pdf):
     except Exception as e:
         _loesch_protokoll(wurzel, "%s: %s nicht loeschbar (%s)" % (name, pdf, str(e)[:80]))
     _pdfs_erneuern_wenn_faellig()
-    _loesch_protokoll(wurzel, "%s: GELOESCHT (Bereich %s)" % (name, os.path.basename(wurzel)))
+    # ⛔ Die Quittung muss sagen, was WIRKLICH geschah. Bis hierher stand
+    #   "GELOESCHT" bedingungslos da - auch wenn weder eine Textfassung noch
+    #   eine Archivdatei gefunden wurde. Dann verschwand nur die Datei aus
+    #   loeschen/, das Dokument blieb im Bestand, und die Quittung behauptete
+    #   das Gegenteil. Fuer einen Loeschauftrag ist das der gefaehrlichste
+    #   aller Ausgaenge: Er sieht erledigt aus.
+    if docpaths or betroffen:
+        _loesch_protokoll(wurzel, "%s: GELOESCHT (Bereich %s, %d Textfassung(en), "
+                          "%d Bereich(e) bereinigt)"
+                          % (name, os.path.basename(wurzel), len(docpaths),
+                             len(betroffen)))
+    else:
+        _loesch_protokoll(wurzel, "%s: NICHTS GELOESCHT - weder Textfassung noch "
+                          "Archivdatei gefunden. Die Datei aus loeschen/ ist weg, "
+                          "das Dokument NICHT. Bitte nachsehen." % name)
     return True
 
 
@@ -646,7 +708,7 @@ def _liegengebliebene_einraeumen():
         except Exception:
             pass
         try:
-            im_bestand = {_loesch_grund(d.split(".md-")[0])
+            im_bestand = {schluessel.ohne_uuid(d)
                           for d in os.listdir(os.path.join(BESTAND_ORDNER, ablage))
                           if d.endswith(".json")}
         except Exception:
@@ -658,7 +720,13 @@ def _liegengebliebene_einraeumen():
         for d, pfad in sorted(dateien):
             if d.startswith(".") or _stamm(d) == d:
                 continue          # keine Dokumentdatei
-            if _loesch_grund(_stamm(d)) not in im_bestand:
+            # ⭐ Der Unterpfad unterhalb des Eingangs - Archiv und
+            #   Aussortiert spiegeln ihn. Flach ("archiv/<name>") passten
+            #   zwei gleichnamige Dateien nicht nebeneinander, und genau
+            #   daran ging die Kundenzuordnung verloren (BUGS 6).
+            unter = os.path.relpath(pfad, eingang)
+            sl, abdruck = _schluessel_der_datei(os.path.dirname(pfad), d)
+            if not any(_trifft_ziel(b, abdruck, None) for b in im_bestand):
                 continue
             # ⭐ NEUE FASSUNG (26.08., T4 hatte dafuer ersetzen.py): Liegt im Archiv
             #   eine Datei gleichen Namens mit ANDEREM Inhalt, ist das eine neue
@@ -666,10 +734,10 @@ def _liegengebliebene_einraeumen():
             #   Wache raeumt Bestand + Archiv binnen einer Minute), und die
             #   Aufnahme nimmt die neue beim naechsten Durchgang. Ein Handgriff
             #   statt zwei. Sofort, ohne die Stunde Karenz.
-            ziel_archiv = os.path.join(wurzel, "archiv", d)
+            ziel_archiv = os.path.join(wurzel, "archiv", unter)
             if os.path.exists(ziel_archiv) and not _gleicher_inhalt(pfad, ziel_archiv):
                 try:
-                    lo = os.path.join(wurzel, "loeschen")
+                    lo = os.path.join(wurzel, "loeschen", os.path.dirname(unter))
                     os.makedirs(lo, exist_ok=True)
                     os.replace(ziel_archiv, os.path.join(lo, d))
                     zeit = time.strftime("%Y-%m-%d %H:%M:%S")
@@ -688,7 +756,7 @@ def _liegengebliebene_einraeumen():
             except OSError:
                 continue
             zeit = time.strftime("%Y-%m-%d %H:%M:%S")
-            ziel_archiv = os.path.join(wurzel, "archiv", d)
+            ziel_archiv = os.path.join(wurzel, "archiv", unter)
             log = os.path.join(wurzel, "aussortiert", "aussortiert.log")
             try:
                 os.makedirs(os.path.dirname(log), exist_ok=True)
@@ -698,7 +766,11 @@ def _liegengebliebene_einraeumen():
                     zeile = ("[%s] %s | war schon im Bestand (eingebettet, aber nie abgelegt) - "
                              "PDF ins Archiv gelegt, Belege funktionieren" % (zeit, d))
                 else:
-                    ziel_aus = os.path.join(wurzel, "aussortiert", d)
+                    ziel_aus = os.path.join(wurzel, "aussortiert", unter)
+                    # Der Unterordner muss da sein - os.replace legt ihn
+                    # nicht an, und ein Fehlschlag hier liesse die Datei
+                    # stumm im Eingang liegen.
+                    os.makedirs(os.path.dirname(ziel_aus), exist_ok=True)
                     os.replace(pfad, ziel_aus)
                     zeile = ("[%s] %s | Dokument gleichen Namens ist schon im Bestand und im "
                              "Archiv - eine zweite Fassung nimmt die Aufnahme nicht. Neue "
@@ -2709,8 +2781,9 @@ def _seitenzahl_schnell(pfad):
 def _archivdatei(name):
     """Die Originaldatei zu einem Stamm in irgendeinem <bereich>/archiv/ -
     fuer Dokumente ohne PDF (Excel, Word ...). None, wenn es keine gibt."""
-    ziel = _loesch_grund(_stamm(name))
-    if not ziel:
+    ziel = schluessel.abdruck_finden(name, PDFS_ABDRUCK)
+    alt_ziel = _loesch_grund(_stamm(name)) if (ziel is None and altweg_aktiv()) else None
+    if ziel is None and not alt_ziel:
         return None
     try:
         bereiche = sorted(os.listdir(EINGANG_ORDNER))
@@ -2719,10 +2792,15 @@ def _archivdatei(name):
     for bereich in bereiche:
         archiv = os.path.join(EINGANG_ORDNER, bereich, "archiv")
         try:
-            # Die Nicht-PDF-Datei zuerst (Original neben einer gewandelten PDF)
-            for d in sorted(os.listdir(archiv), key=lambda x: x.lower().endswith(".pdf")):
-                if not d.startswith(".") and _loesch_grund(_stamm(d)) == ziel:
-                    return os.path.join(archiv, d)
+            # os.walk, weil das Archiv die Unterordner des Eingangs spiegelt.
+            for ordner, _u, dateien in os.walk(archiv):
+                # Die Nicht-PDF-Datei zuerst (Original neben gewandelter PDF)
+                for d in sorted(dateien, key=lambda x: x.lower().endswith(".pdf")):
+                    if d.startswith("."):
+                        continue
+                    sl, ab = _schluessel_der_datei(ordner, d)
+                    if _trifft_ziel(sl or d, ziel, alt_ziel, abdruck=ab):
+                        return os.path.join(ordner, d)
         except Exception:
             continue
     return None
