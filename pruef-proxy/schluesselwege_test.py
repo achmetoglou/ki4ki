@@ -25,6 +25,9 @@ os.environ["KI4KI_PDFS"] = BAUM
 os.environ["KI4KI_EINGANG"] = BAUM
 os.environ["KI4KI_BESTAND"] = BESTAND
 os.environ.setdefault("KI4KI_API_KEY", "")
+KATALOGORT = tempfile.mkdtemp(prefix="ki4ki-wege-katalog-")
+KATALOG = os.path.join(KATALOGORT, "verzeichnis" + ".json")
+os.environ["KI4KI_BESTANDS" + "INDEX"] = KATALOG
 
 FEHLER = []
 
@@ -209,6 +212,142 @@ def test_belegvorrat():
         shutil.rmtree(vorrat, ignore_errors=True)
 
 
+def test_anzeigetitel():
+    """Der Schluessel beginnt mit dem Bereichsnamen - damit steht eine
+    Kennung wie DS-24-005 nicht mehr vorn.
+
+    Folge ohne Gegenmassnahme: kennung() liefert None, art_von() weiss nicht
+    mehr, dass es eine Dissertation ist, und bestand.angaben() findet den
+    Katalogeintrag nicht. Titel, Verfasser, Jahr, Band, Art und Schlagworte
+    fielen dann fuer die GANZE Bibliothek weg.
+    """
+    import re as _re
+    import schluessel
+    import bestand
+    print("\nAnzeigetitel, Kennung und Katalog")
+    bestand.bereiche_setzen(["wissensdatenbank", "kap", "auw"])
+    sl = schluessel.schluessel("wissensdatenbank", "archiv/DS-24-005.pdf")
+
+    # Erst der Nachweis, dass es ohne Anzeigetitel WIRKLICH bricht - sonst
+    # repariert alles Folgende etwas Heiles. Geprueft wird gegen die ROHE
+    # Kennungs-Regel, nicht gegen kennung(): Sonst waere diese Zeile nach
+    # der Umstellung selbst rot und naehme den Nachweis mit.
+    pruefe(_re.match(r"([A-Za-z]{1,3})[-_ ]?\d", sl) is None,
+           "Gegenprobe: die Kennungs-Regel greift am rohen Schluessel nicht "
+           "(%r)" % sl[:34])
+
+    a = schluessel.anzeigetitel(sl, "wissensdatenbank")
+    pruefe(a == "DS-24-005", "Anzeigetitel ist %r, erwartet 'DS-24-005'" % a)
+
+    # Die Kennung kommt aus bestand.kennung() SELBST - kein Aufrufer muss den
+    # Anzeigetitel kennen. Sonst waeren es achtzehn Stellen statt drei.
+    pruefe(bestand.kennung(sl) == "DS",
+           "kennung() findet die Kennung am rohen Schluessel, ist %r"
+           % bestand.kennung(sl))
+    pruefe(bestand.art_von(sl) == "Dissertation",
+           "art_von() weiss wieder, dass das eine Dissertation ist, ist %r"
+           % bestand.art_von(sl))
+
+    # Und der Katalog. Er ist nach Kennung geschluesselt; ohne Anzeigetitel
+    # traefe der Nachschlag nie.
+    bestand._GELADEN = None
+    bestand.eintragen("DS-24-005", {"titel": "Eine Arbeit",
+                                    "verfasser": "Muster", "jahr": "2024"},
+                      pfad=KATALOG)
+    ang = bestand.angaben(sl)
+    pruefe(ang is not None, "angaben() findet den Katalogeintrag am Schluessel")
+    pruefe((ang or {}).get("verfasser") == "Muster",
+           "und liefert den Verfasser, ist %r" % (ang or {}).get("verfasser"))
+    pruefe((ang or {}).get("art") == "Dissertation",
+           "und die Art aus der Kennung, ist %r" % (ang or {}).get("art"))
+
+    # Die Falle in der eigenen Loesung: Ein Segment blind abzuwerfen macht
+    # aus 'kap-KundeA-Angebot' das Wort 'Angebot' - und traefe damit einen
+    # FREMDEN Katalogeintrag. Das waere dieselbe Kollisionsklasse, die dieser
+    # Umbau beseitigt, nur an neuer Stelle.
+    bestand._GELADEN = None
+    bestand.eintragen("Angebot", {"titel": "Ein fremdes Angebot"}, pfad=KATALOG)
+    kk = schluessel.schluessel("kap", "archiv/KundeA/Angebot.pdf")
+    pruefe(bestand.angaben(kk) is None,
+           "ein fremder Katalogeintrag wird NICHT getroffen, ist %r"
+           % ((bestand.angaben(kk) or {}).get("titel")))
+
+    # Rundlauf: Was unter einem Pfad-Schluessel GESCHRIEBEN wurde, muss
+    # unter demselben Schluessel wieder gefunden werden. Stuende beim
+    # Schreiben der ganze Schluessel und beim Lesen der Anzeigetitel, fuellte
+    # sich der Katalog und die Bibliothek bliebe trotzdem ohne Angaben -
+    # lautlos, weil beides fuer sich richtig aussieht.
+    zweit = schluessel.schluessel("wissensdatenbank", "archiv/DS-24-009.pdf")
+    bestand._GELADEN = None
+    bestand.eintragen(zweit, {"titel": "Zweite Arbeit", "verfasser": "Probe"},
+                      pfad=KATALOG)
+    rund = bestand.angaben(zweit)
+    pruefe((rund or {}).get("verfasser") == "Probe",
+           "unter dem Schluessel geschrieben, unter dem Schluessel gefunden "
+           "(ist %r)" % (rund or {}).get("verfasser"))
+
+    # Der Anzeigetitel ist NICHT eindeutig - deshalb darf er nie verglichen
+    # werden. Das steht hier fest, damit es niemand spaeter versucht.
+    k2 = schluessel.schluessel("auw", "archiv/KundeA/Angebot.pdf")
+    pruefe(schluessel.anzeigetitel(kk, "kap")
+           == schluessel.anzeigetitel(k2, "auw"),
+           "zwei Bereiche ergeben denselben Anzeigetitel - er taugt zum "
+           "Anzeigen, NICHT zum Vergleichen")
+
+    for komisch in ("Bericht.pdf", "", "--nurabdruck.pdf", "kap", None):
+        schluessel.anzeigetitel(komisch, "kap")
+    pruefe(True, "kaputte Eingaben stuerzen nicht ab")
+
+
+def test_metadaten_tor():
+    """Das K3-Tor sitzt als ERSTE Zeile in dokument_erlaubt.
+
+    metadaten._grund() normalisiert genauso, und seine Schluessel sind von
+    Menschen geschriebene Dokumentnamen. Mit Pfad-Schluessel traefe der
+    Nachschlag nichts, m bliebe leer - und fuer_ki() entschiede je nach
+    Bereichseinstellung in ZWEI entgegengesetzte Richtungen falsch: entweder
+    ist kein Dokument mehr zugaenglich, oder ein ausdruecklich
+    ausgeschlossenes wird wieder sichtbar.
+    """
+    import json as _json
+    import schluessel
+    import bestand
+    import metadaten
+    print("\nK3-Tor (metadaten)")
+    bestand.bereiche_setzen(["wissensdatenbank", "kap", "auw"])
+    w = tempfile.mkdtemp(prefix="ki4ki-meta-")
+    try:
+        sl = schluessel.schluessel("wissensdatenbank", "archiv/DS-24-005.pdf")
+
+        def schreiben(daten, konf):
+            for name, inhalt in (("metadaten", daten), ("bereich", konf)):
+                with open(os.path.join(w, name + ".json"), "w") as fh:
+                    _json.dump(inhalt, fh)
+            metadaten._CACHE.clear()
+
+        schreiben({"DS-24-005": {"ki": "nein"}}, {})
+        pruefe(metadaten.fuer_ki(sl, w) is False,
+               "'fuer KI ausschliessen' gilt auch am Pfad-Schluessel")
+
+        # Gegenprobe in die ANDERE Richtung: Ein Bereich mit Freigabepflicht
+        # darf nicht ploetzlich ALLES sperren. Ohne diese Zeile waere die
+        # obige auch dann gruen, wenn fuer_ki() einfach immer False lieferte.
+        schreiben({"DS-24-005": {"freigabe": "freigegeben"}},
+                  {"nur_freigegebene": True})
+        pruefe(metadaten.fuer_ki(sl, w) is True,
+               "ein freigegebenes Dokument bleibt zugaenglich, obwohl der "
+               "Bereich Freigabe verlangt")
+
+        # Und der Fall, der richtig ist und durch die Reparatur nicht kippen
+        # darf.
+        fremd = schluessel.schluessel("wissensdatenbank", "archiv/Unbekannt.pdf")
+        pruefe(metadaten.fuer_ki(fremd, w) is False,
+               "ein Dokument ohne Metadateneintrag bleibt bei Freigabepflicht "
+               "gesperrt")
+    finally:
+        shutil.rmtree(w, ignore_errors=True)
+
+
 def test_stuetze_laeuft_ab():
     """Die Uebergangsstuetze darf sich NICHT selbst schuetzen.
 
@@ -270,6 +409,7 @@ def test_stuetze_laeuft_ab():
 def main():
     baum_bauen()
     pruefungen = [test_index, test_pdfstelle, test_belegvorrat,
+                  test_anzeigetitel, test_metadaten_tor,
                   test_stuetze_laeuft_ab]
     try:
         for t in pruefungen:
@@ -277,6 +417,7 @@ def main():
     finally:
         shutil.rmtree(BAUM, ignore_errors=True)
         shutil.rmtree(BESTAND, ignore_errors=True)
+        shutil.rmtree(KATALOGORT, ignore_errors=True)
     print("\n%d Fehler" % len(FEHLER))
     return 1 if FEHLER else 0
 

@@ -163,6 +163,38 @@ def _endung_von(kpfad):
     return e.lower() if _ENDUNG.match(e) else ""
 
 
+def anzeigetitel(schluessel_text, bereich=None, bereiche=()):
+    """Der lesbare Teil ohne Bereichsvorspann und ohne Abdruck.
+
+    Wofuer: Der Schluessel beginnt mit dem Bereichsnamen. Damit steht eine
+    Kennung wie 'DS-24-005' nicht mehr vorn - kennung() liefert None,
+    art_von() weiss nicht mehr, dass es eine Dissertation ist, und
+    bestand.angaben() findet den Katalogeintrag nicht. Titel, Verfasser,
+    Jahr, Band, Art und Schlagworte fielen dann fuer die ganze Bibliothek
+    weg (BUGS_UND_FIXES.md 13).
+
+    Der Vorspann wird NUR abgeworfen, wenn er wirklich ein Bereichsname ist.
+    Blindes Abwerfen des ersten Segments machte aus 'kap-KundeA-Angebot' das
+    Wort 'Angebot' - und traefe den Eintrag eines fremden Dokuments. Das
+    waere dieselbe Kollisionsklasse, die dieser Umbau beseitigt.
+
+    Der Anzeigetitel ist NICHT eindeutig: Dieselbe Datei in zwei Bereichen
+    ergibt denselben. Er ist zum Anzeigen und zum Suchen da - verglichen
+    wird ausschliesslich der Abdruck.
+    """
+    roh = str(schluessel_text or "")
+    endung = _endung_von(roh)
+    stamm = roh[:-len(endung)] if endung else roh
+    if "--" not in stamm:
+        return stamm or RUECKFALL        # kein Schluessel: unveraendert
+    stamm = stamm.rsplit("--", 1)[0]
+    for b in ([bereich] if bereich else []) + list(bereiche):
+        v = _bereinigen(str(b or ""))
+        if v and stamm.startswith(v + "-"):
+            return stamm[len(v) + 1:] or RUECKFALL
+    return stamm or RUECKFALL
+
+
 def schluessel(bereich, unterpfad):
     """Lesbarer Teil + '--' + Fingerabdruck + Endung.
 

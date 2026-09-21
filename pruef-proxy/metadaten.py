@@ -35,6 +35,19 @@ FREIGABEN = ("entwurf", "geprueft", "freigegeben", "archiviert")
 
 
 def _grund(name):
+    # Der Anzeigetitel ZUERST: Die Schluessel hier sind von Menschen
+    # geschriebene Dokumentnamen ("DS-24-005"), der Proxy reicht aber den
+    # Pfad-Schluessel herein. Ohne diese Zeile traefe der Nachschlag nie -
+    # und fuer_ki() entschiede je nach Bereichseinstellung in zwei
+    # entgegengesetzte Richtungen falsch: entweder ist KEIN Dokument mehr
+    # zugaenglich (bei Freigabepflicht), oder ein ausdruecklich "fuer KI
+    # ausgeschlossenes" wird wieder sichtbar. Das Tor sitzt als erste Zeile
+    # in dokument_erlaubt.
+    try:
+        import bestand as _bst
+        name = _bst._anzeige(name)
+    except Exception:
+        pass
     return re.sub(r"[^a-z0-9]", "", str(name or "").lower().replace(".pdf", "").replace(".md", ""))
 
 

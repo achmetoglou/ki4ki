@@ -130,9 +130,37 @@ def _grund(n):
     return re.sub(r"[^a-z0-9]", "", str(n).lower())
 
 
+_BEREICHE = []
+
+
+def bereiche_setzen(namen):
+    """Die Bereichsnamen, die als Vorspann eines Schluessels gelten duerfen.
+
+    Der Proxy fuellt die Liste einmal beim Start aus dem Eingangsordner.
+    Ohne sie wirft _anzeige() nichts ab - lieber keine Angaben als die
+    eines fremden Dokuments.
+    """
+    _BEREICHE[:] = [str(n) for n in (namen or []) if n]
+
+
+def _anzeige(name):
+    """Schluessel -> lesbarer Titel. Alles andere bleibt unveraendert.
+
+    Steht HIER und nicht bei den Aufrufern: angaben() und kennung() haben
+    zusammen 18 externe Aufrufstellen (11 in assistent.py, 3 im Proxy, dazu
+    interne). Jede einzeln umzustellen hiesse, eine davon zu vergessen -
+    und das faellt nicht auf, es fehlen nur Angaben.
+    """
+    try:
+        import schluessel as _s
+        return _s.anzeigetitel(name, bereiche=_BEREICHE)
+    except Exception:
+        return str(name or "")
+
+
 def kennung(name):
     """Buchstaben vor der Nummer: 'DS-00-000' -> 'DS'. Sonst None."""
-    m = re.match(r"([A-Za-z]{1,3})[-_ ]?\d", str(name).strip())
+    m = re.match(r"([A-Za-z]{1,3})[-_ ]?\d", _anzeige(name).strip())
     return m.group(1).upper() if m else None
 
 
@@ -147,7 +175,7 @@ def angaben(name):
     d = laden()
     if not d:
         return None
-    stamm = str(name)
+    stamm = _anzeige(name)
     if stamm.lower().endswith((".pdf", ".md")):
         stamm = stamm.rsplit(".", 1)[0]
     treffer = d["nach_grund"].get(_grund(stamm))
@@ -451,7 +479,11 @@ def eintragen(name, angabe, quelle="modell", pfad=VERZEICHNIS):
         # Immer OHNE Endung ablegen - so entstehen keine neuen unerreichbaren
         # Eintraege. Eine schon vorhandene Altlast mit Endung wird dabei
         # abgeraeumt, sonst stuenden zwei Eintraege fuer dasselbe Dokument da.
-        schluessel = _ohne_endung(name)
+        # Und ueber den Anzeigetitel, weil angaben() genauso nachschlaegt:
+        # Stuende hier der ganze Pfad-Schluessel und dort der Anzeigetitel,
+        # faende der Nachschlag den eben geschriebenen Eintrag nicht - der
+        # Katalog fuellte sich, und die Bibliothek bliebe ohne Angaben.
+        schluessel = _ohne_endung(_anzeige(name))
         for k in [x for x in d if x != schluessel and _grund(_ohne_endung(x)) == _grund(schluessel)]:
             d.pop(k, None)
         d[schluessel] = eintrag
@@ -611,7 +643,7 @@ def _band_nachruesten(namen, hoechstens=40):
             # steht: Der Katalog fuehrt "DS-23-004", gefragt wird oft
             # "DS-23-004.md". Mit dem uebergebenen Namen entstuende ein
             # zweiter Eintrag, und der alte behielte seine fehlende Nummer.
-            stamm = str(n)
+            stamm = _anzeige(n)
             if stamm.lower().endswith((".pdf", ".md")):
                 stamm = stamm.rsplit(".", 1)[0]
             d = laden() or {}

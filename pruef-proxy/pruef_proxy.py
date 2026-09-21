@@ -2464,6 +2464,20 @@ def _schluessel_der_datei(wurzel, dateiname):
         return None, None
 
 
+def _bereiche_melden():
+    """Die Bereichsnamen an bestand.py geben - einmal je Index-Lauf.
+
+    Ohne sie kann _anzeige() den Bereichsvorspann nicht erkennen und wirft
+    nichts ab; Katalog und Kennung blieben dann leer. Absichtlich hier und
+    nicht beim Start: Ein neu angelegter Bereich ist damit sofort dabei.
+    """
+    try:
+        import bestand as _bst
+        _bst.bereiche_setzen(sorted(os.listdir(EINGANG_ORDNER)))
+    except Exception:
+        pass
+
+
 def pdfs_einlesen():
     """Alle Quell-PDFs einlesen - auch die in den Abteilungsordnern.
 
@@ -2476,6 +2490,7 @@ def pdfs_einlesen():
     "[Ehr06] Faserverbundkunststoffe..." liest glob die eckigen Klammern
     als Zeichenklasse.
     """
+    _bereiche_melden()
     PDFS.clear()
     PDFS_GRUND.clear()
     PDFS_ABDRUCK.clear()
@@ -2525,6 +2540,15 @@ def nur_ueber_altweg():
         for w, _u, dateien in os.walk(BESTAND_ORDNER):
             for d in dateien:
                 if not d.endswith(".json"):
+                    continue
+                # ⛔ NUR echte Ablage-Eintraege zaehlen. AnythingLLM haengt
+                #   an jeden Uploadnamen '-<kennung>.json'; wo nichts
+                #   abgeschnitten wird, ist es eine fremde Datei. Ohne diese
+                #   Zeile hielte eine einzige beliebige .json im Ordner die
+                #   Uebergangsstuetze fuer immer am Leben - genau das
+                #   Versagen, das die Kopplung verhindern soll. Gefunden,
+                #   weil die Pruefung ihren eigenen Katalog dort ablegte.
+                if schluessel.ohne_uuid(d) == d[:-len(".json")]:
                     continue
                 if not schluessel.abdruck_finden(schluessel.ohne_uuid(d),
                                                  PDFS_ABDRUCK):
