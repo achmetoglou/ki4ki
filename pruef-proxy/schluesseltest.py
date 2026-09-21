@@ -225,6 +225,34 @@ STEUER = {"bereich.json", "metadaten.json", "prompt.md", "kategorien.txt",
           "bilder-nachholen.txt", "aussortiert.log"}
 
 
+def test_baum_enthaelt_die_fehlerklasse():
+    """Taugt der Pruefbaum ueberhaupt als Grundlage?
+
+    Ein Baum, an dem alles gruen ist, beweist nur dann etwas, wenn der
+    HEUTIGE Schluessel (der nackte Dateiname) daran scheitert. Ist diese
+    Zahl 0, ist der Baum zu brav und jedes Gruen darauf ist geschenkt.
+    """
+    print("\nTaugt der Pruefbaum?")
+    wurzel = os.environ.get("KI4KI_PRUEFBAUM", "")
+    if not os.path.isdir(wurzel):
+        pruefe(False, "Pruefbaum fehlt - der Lauf ist NICHT gueltig")
+        return
+    heute, dateien = {}, 0
+    for ordner, _unter, namen in os.walk(wurzel):
+        for n in namen:
+            if n in STEUER or n.endswith(".log"):
+                continue
+            dateien += 1
+            k = re.sub(r"[^a-z0-9]", "", os.path.splitext(n)[0].lower())
+            heute[k] = heute.get(k, 0) + 1
+    kollidiert = sum(v for v in heute.values() if v > 1)
+    print("  heutiger Schluessel: %d von %d Dateien kollidieren"
+          % (kollidiert, dateien))
+    pruefe(kollidiert > 0,
+           "der Baum enthaelt die Fehlerklasse (kollidierende Dateien: %d) - "
+           "sonst ist jede gruene Zusicherung darauf wertlos" % kollidiert)
+
+
 def test_invariante_am_bestand():
     """Ueber einen echten Ordnerbaum. Gibt AUSSCHLIESSLICH Zahlen aus -
     keine Datei- und keine Ordnernamen. Mit der Datensperre vereinbar.
@@ -339,6 +367,7 @@ if __name__ == "__main__":
     test_fingerabdruck()
     test_schluessel()
     test_abdruck_lesen()
+    test_baum_enthaelt_die_fehlerklasse()
     test_invariante_am_bestand()
     print("\n%d Fehler" % len(FEHLER))
     sys.exit(1 if FEHLER else 0)
