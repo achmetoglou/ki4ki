@@ -44,6 +44,10 @@ ANZAHL = int(os.environ.get("ANZAHL", "10"))
 SCHWELLE = float(os.environ.get("SCHWELLE", "0.08"))
 ZEITLIMIT = int(os.environ.get("ZEITLIMIT", "300"))
 LAUT = os.environ.get("LAUT", "") not in ("", "0", "nein")
+# Rohzahlen je Dokument ablegen, damit weitere Fragen ohne neuen 26-Minuten-
+# Lauf beantwortbar sind. NUR Zahlen: laufende Nummer, Docling-Abbildungen,
+# Rasterbilder, davon unter der Schwelle, Sekunden. Keine Namen, keine Pfade.
+ROHDATEN = os.environ.get("ROHDATEN", "/tmp/bildmessung-roh.csv")
 DOCLING = os.environ.get("DOCLING", "http://docling:5001/v1/convert/file")
 SEKUNDEN_JE_BILD = 3.3
 
@@ -175,6 +179,8 @@ def main():
     fehler = 0
     zeiten = []
     je_dokument = []
+    roh = [("nr", "docling", "raster", "unter_schwelle", "sekunden")]
+    mehr_docling = mehr_raster = gleich = 0
 
     for i, p in enumerate(probe, 1):
         anteile, dauer, panne = docling_bilder(p)
@@ -188,6 +194,19 @@ def main():
         r_gesamt += raster or 0
         klein = sum(1 for a in anteile if a < SCHWELLE)
         je_dokument.append(klein)
+        roh.append((i, len(anteile), raster if raster is not None else -1,
+                    klein, round(dauer, 1)))
+        # Die Vektorfrage laesst sich NUR je Dokument beantworten. In der
+        # Summe ueberlagern sich zwei gegenlaeufige Effekte: Docling fasst
+        # Kacheln zusammen (senkt seine Zahl) und erkennt Vektorzeichnungen
+        # (hebt sie). Ein Summenvergleich sagt deshalb nichts.
+        if raster is not None:
+            if len(anteile) > raster:
+                mehr_docling += 1
+            elif len(anteile) < raster:
+                mehr_raster += 1
+            else:
+                gleich += 1
         for a in anteile:
             if a >= SCHWELLE:
                 ueber += 1
@@ -223,7 +242,29 @@ def main():
         print("Docling hat keine Abbildungen gefunden.")
         return 0
 
+    try:
+        with open(ROHDATEN, "w") as f:
+            for zeile in roh:
+                f.write(";".join(str(x) for x in zeile) + "\n")
+        print("Rohzahlen je Dokument abgelegt: %s (%d Zeilen, nur Zahlen)"
+              % (ROHDATEN, len(roh) - 1))
+    except OSError as fehlschlag:
+        print("Rohzahlen konnten nicht abgelegt werden: %s" % fehlschlag)
+
     print("\n⭐ Die Frage, um die es geht - sieht Docling mehr als pdfimages?")
+    print("  Je Dokument gezaehlt - nur so ist die Frage zu beantworten:")
+    n_verglichen = mehr_docling + mehr_raster + gleich
+    for bez, n in (("Docling sieht MEHR (Vektorzeichnungen)", mehr_docling),
+                   ("pdfimages sieht mehr (zerlegte Bilder)", mehr_raster),
+                   ("gleich viele", gleich)):
+        print("    %-42s %5d  (%4.1f %%)"
+              % (bez, n, 100.0 * n / max(1, n_verglichen)))
+    print("  ⭐ Bei %.0f %% der Dokumente erkennt Docling Abbildungen, die"
+          " pdfimages nicht findet. Das sind Zeichnungen ohne eingebettetes"
+          " Bild - fuer die Stoerfallassistenz die wichtigsten."
+          % (100.0 * mehr_docling / max(1, n_verglichen)))
+    print("\n  Zum Vergleich noch die Summen, die fuer sich genommen"
+          " NICHTS ueber Vektorgrafiken aussagen:")
     print("  Docling:   %5d Abbildungen" % d_gesamt)
     print("  pdfimages: %5d Rasterbilder" % r_gesamt)
     unterschied = d_gesamt - r_gesamt
