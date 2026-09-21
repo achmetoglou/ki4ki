@@ -182,6 +182,19 @@ verschwindet sein Ordner nur, wenn er leer ist — sonst wird er unter
 > waehrend unter dem alten Schluessel 1.593 Dateien kollidierten.
 > Einzelheiten in `doku/entwicklung/BUGS_UND_FIXES.md`, Punkte 6, 7 und 13.
 
+> ⛔ **Nach jedem Einspielen per SFTP/FileZilla: `docker compose up -d rechte-init`.**
+> Ordner, die ein Mensch anlegt, gehören ihm und haben oft kein
+> Gruppen-Schreibrecht. Die Aufnahme läuft als Benutzer 1000 und darf eine
+> Datei dann zwar lesen, aber nicht aus dem Ordner **herausbewegen** —
+> `mv: Permission denied`. Folge: Die Datei bleibt im Eingang, wird jede
+> Minute erneut aufgenommen und landet bei **jedem** Durchgang ein weiteres
+> Mal im Bestand. Gemessen am 21.09.: aus einer Datei wurden binnen Minuten
+> fünf Einträge.
+> `rechte-init` setzt Ordner auf `2775` (setgid) und Dateien auf `664` und
+> fasst dabei nur an, was wirklich falsch steht — die Uhren für
+> Claim-Garantie und Einräumen bleiben unberührt. Der Befehl ist gefahrlos
+> wiederholbar; `./aktualisiere.sh` führt ihn ohnehin mit aus.
+
 1. Jede Minute sieht n8n in `dokumente/*/input/` nach (auch in Unterordnern).
 2. Ein Durchgang nimmt bis zu 25 Dateien (`KI4KI_MENGE_JE_LAUF`) eines Bereichs; eine
    Laufsperre verhindert parallele Durchgänge. Liegen 6 oder mehr Dateien im Eingang

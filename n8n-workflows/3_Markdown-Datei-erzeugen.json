@@ -26,7 +26,7 @@
         "url": "http://mkmd-dienst:5055/markdown",
         "sendBody": true,
         "specifyBody": "json",
-        "jsonBody": "={{ JSON.stringify({ rohtext: $json.parsed_text || $json.text || $json.content || '', basisname: ($json.filename || 'dokument.pdf').replace(/\\.[^.]+$/, ''), tagging: { kategorie_vorgabe: $json.kategorie_vorgabe || '', themen_vorgabe: $json.themen_vorgabe || '', document_type: $json.document_type || $json.docType || '', language: $json.language || '', domain: $json.domain || '', subdomain: $json.subdomain || '', tags: $json.tags || [], keywords: $json.keywords || [], methods: $json.methods || [] } }) }}",
+        "jsonBody": "={{ JSON.stringify({ rohtext: $json.parsed_text || $json.text || $json.content || '', basisname: ($json.schluessel || '').replace(/\\.[^.]+$/, ''), tagging: { kategorie_vorgabe: $json.kategorie_vorgabe || '', themen_vorgabe: $json.themen_vorgabe || '', document_type: $json.document_type || $json.docType || '', language: $json.language || '', domain: $json.domain || '', subdomain: $json.subdomain || '', tags: $json.tags || [], keywords: $json.keywords || [], methods: $json.methods || [] } }) }}",
         "options": {
           "timeout": 300000
         }
@@ -38,7 +38,9 @@
         0
       ],
       "id": "717d3dfb-6b43-45f2-8ea8-11ef9fe7176e",
-      "name": "Markdown vom Dienst"
+      "name": "Markdown vom Dienst",
+      "notes": "basisname = SCHLUESSEL, nicht Dateiname. Der Name dieser Markdown-Datei wird der Uploadname in AnythingLLM; nur so traegt das Dokument seine Kennung bei sich. Fehlt der Schluessel, antwortet der mkmd-Dienst mit 400 'basisname fehlt' - ein Abbruch ist besser als ein Bestandseintrag, den niemand wiederfindet.",
+      "notesInFlow": true
     },
     {
       "parameters": {
