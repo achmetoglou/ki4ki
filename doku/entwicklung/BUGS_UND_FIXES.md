@@ -28,6 +28,10 @@ Bildern lief sauber durch (108 beschrieben, keine Schleife).
 protokolliert. Damit kann **kein** fehlgeschlagener Lauf mehr zur Endlosschleife
 werden, egal aus welchem Grund.
 
+⛔ **Nachtrag 21.09.: Fix 1 hat eine Nebenwirkung, die damals nicht gemessen
+wurde.** Die Schwelle 0,08 unterdrückt Bildbeschreibungen nicht nur bei
+bildreichen Ausreißern, sondern **im gesamten Bestand**. Siehe Punkt 9.
+
 ---
 
 ## 2 · Neue Arbeitsbereiche waren „blank"
@@ -200,6 +204,161 @@ protokolliert, nicht bei jedem Takt erneut.
 ⚠ **Lehre.** Eine Protokolldatei, die je Versuch anhängt, ist kein Dokument-
 zähler. Bevor eine Zahl aus einem Protokoll als Mengenangabe gilt: **eindeutige
 Namen zählen, nicht Zeilen.**
+
+---
+
+## 9 · Die Bildkette liefert im ganzen Bestand nichts (21.09.2026, OFFEN)
+
+**Symptom.** Für die Störfallassistenz sind Schadensfotos und Zeichnungen
+fachlich das Wertvollste. Im Bestand liegen **1.594 Bilddateien (37 %)**. Aus
+keiner davon entsteht durchsuchbarer Text — und auch aus Abbildungen **in**
+Dokumenten entsteht praktisch keiner.
+
+Die Kette wurde am 21.09. Glied für Glied durchgemessen. Das Können ist da, es
+fehlt an vier Stellen die Konfiguration:
+
+| Glied | Zustand |
+|---|---|
+| `gemma4:12b` in Ollama | ✓ vorhanden |
+| `nothink-proxy:11435` antwortet | ✓ (12,4 s beim ersten Aufruf, Modell wird geladen) |
+| Modell versteht **Bilder** | ✓ **160 Zeichen in 2,0 s** |
+| Docling reicht Abbildungen weiter | ✗ — siehe 9a und 9b |
+
+### 9a · Die Schwelle 0,08 unterdrückt Bildbeschreibungen im ganzen Bestand
+
+Kontrollierter Versuch mit dem echten Motor-Block aus dem Unter-Ablaufplan,
+**nur die Schwelle variiert**, alles andere gleich:
+
+```
+Schwelle 0.08   .pdf   HTTP 200    4,1 s   md 11.329   Bildmarken 3 | beschrieben 0
+Schwelle 0.0    .pdf   HTTP 200   14,1 s   md 12.507   Bildmarken 3 | beschrieben 3
+```
+
+Docling **erkennt** die Abbildungen zuverlässig. Bei 8 % Schwelle **überspringt**
+es alle, weil sie kleiner als 8 % der Seitenfläche sind. Das ist kein Fehler im
+Bildweg, sondern ein Bestandsproblem: Jedes heute aufgenommene Dokument bekommt
+Beschreibungen nur für Abbildungen über 8 % Seitenfläche. Detailzeichnungen,
+kleinere Messkurven, Schadensfotos im Fließtext — alle stillschweigend
+übersprungen, ohne Meldung, ohne Protokolleintrag.
+
+⚠ Die Schwelle war eine **bewusste** Entscheidung gegen die Endlosschleife
+(Punkt 1, Fix 1). Ein Absenken ist deshalb keine reine Verbesserung — es braucht
+die Abwägung gegen die Laufzeit und die Rückfallsicherung aus Fix 2.
+**Gemessene Kosten: rund 3,3 s je Abbildung.**
+
+⛔ **Der Befund ist am Mechanismus bewiesen, nicht am Bestand.** Eine PDF mit drei
+Abbildungen ist keine Stichprobe. Bevor die Schwelle gesenkt wird, gehört
+gezählt: **an rund 20 Dokumenten, wie viele Abbildungen unter 8 % Seitenfläche
+liegen.** Ohne diese Zahl ist die Laufzeit des Neu-Einlesens nicht abschätzbar —
+ein Dokument mit 285 Bildern (Punkt 1) wären allein 15 Minuten.
+
+### 9b · Freistehende Bilddateien erkennt Docling gar nicht als Abbildung
+
+```
+Schwelle 0.08   .jpg   HTTP 200   6,0 s   md 11 Zeichen   Bildmarken 0 | beschrieben 0
+Schwelle 0.0    .jpg   HTTP 200   6,0 s   md 11 Zeichen   Bildmarken 0 | beschrieben 0
+```
+
+Null Bildmarken bei **beiden** Schwellen. Docling behandelt eine `.jpg` als Seite
+mit Text und liefert 11 Zeichen OCR — es gibt keine Abbildung, die es beschreiben
+könnte. Die Schwelle ist hier ohne Wirkung.
+
+→ Für die 1.594 freistehenden Bilder führt **kein** Weg über Docling. Es führt
+aber ein direkter Weg zum Modell: gemessen **2,0 s je Bild**, rund **53 Minuten**
+für den ganzen Bestand.
+
+⚠ Frühere Fassung dieser Doku und von `NAECHSTE-SITZUNG.md` §3c behaupteten, die
+Beschreibung von Abbildungen **in** Dokumenten „funktioniert". Gemessen trifft
+das nur oberhalb 8 % Seitenfläche zu — im Bestand praktisch nie.
+
+### 9c · Der Massenlauf-Schalter schaltet die Beschreibung zusätzlich ab
+
+Im Knoten „Docling PDF-Extraktion" steht:
+
+```
+do_picture_description = massenlauf ? 'false' : 'true'
+do_formula_enrichment  = massenlauf ? 'false' : 'true'
+```
+
+Der erste Ablaufplan reicht `massenlauf` durch. **Wer den KAP-Bestand am Stück
+neu einliest, schaltet damit die Bildbeschreibung ab** — und die Formelerkennung
+gleich mit. Genau das ist für Schritt 3 des Umbaus geplant.
+
+**Entschieden von Emrach am 21.09.: Die Bildbeschreibung bleibt beim Einlesen AN.**
+Grundlage ist die Messung — der Zeitgewinn durch Abschalten ist gering, der
+Verlust wäre vollständig und dauerhaft (siehe 9d).
+
+⛔ **Einschalten allein genügt nicht.** Mit Beschreibung „an" **und** Schwelle
+0,08 werden weiterhin nur Abbildungen über 8 % beschrieben — bei der Probe null
+von drei. Der Bestand liefe durch, der Schalter stünde auf „an", und die
+Detailzeichnungen fehlten trotzdem, ohne Meldung. Schwelle und Schalter sind
+**gemeinsam** zu entscheiden.
+
+### 9d · Die Vormerkliste `bilder-nachholen.txt` hat keinen Leser
+
+Dateien, deren Bildbeschreibung übersprungen wurde, werden dort vermerkt. Es gibt
+**keinen Cron und keinen vierten Ablaufplan**, der die Liste abarbeitet; die
+einzige zweite Fundstelle im Code überspringt sie beim Auflisten. Der Eintrag ist
+folgenlos. Damit ist „später nachholen" keine Rückfallebene, sondern ein
+stiller Verlust.
+
+---
+
+## 10 · Formate: was wirklich durchkommt (21.09.2026, gemessen)
+
+`NAECHSTE-SITZUNG.md` §3c ließ zwei Fragen offen, weil sie am Code nicht zu
+entscheiden waren. Sie sind jetzt mit Testdateien beantwortet:
+
+```
+.msg    HTTP 200   1.244 Zeichen   → kommt über Tika durch
+.xlsm   HTTP 200     286 Zeichen   → kommt über Tika durch
+.jpg    HTTP 200       0 Zeichen   → stiller Erfolg
+.tif    HTTP 200       0 Zeichen   → stiller Erfolg
+```
+
+**`.msg` und `.xlsm` sind nicht ausgeschlossen** — beide laufen. Aber `.xlsm`
+läuft über Tika als **Fließtext**, während `.xlsx` über den **Tabellenweg**
+geht: gleiches Format, zwei Wege, Ursache ist eine Zeile in der Zuordnung.
+
+⛔ **Der eigentliche Fehler: HTTP 200 mit null Zeichen gilt als Erfolg.** Der
+Knoten „Nicht-PDF vereinheitlichen" setzt zwar
+`fehler: 'Aus der Datei liess sich kein Text gewinnen'`, aber „Ablage
+entscheiden" nutzt dieses Feld **nur zur Wahl des Begründungstextes** — über
+Archiv oder Aussortiert entscheidet allein der Namensvergleich. Eine leere Datei
+wandert also ins Archiv und gilt als aufgenommen.
+
+Das betrifft unmittelbar die Abnahme von Schritt 3: **ein Neu-Einlesen wäre durch
+leere Dokumente abnehmbar.** Es braucht eine **Verzweigung vor dem Upload**,
+sonst bleibt das Feld folgenlos.
+
+---
+
+## 11 · Der Fundstellen-Sprung scheitert an `&`, `%` und `€` (21.09.2026, OFFEN)
+
+**Symptom.** Belege springen bei manchen Dokumenten nicht an die richtige Stelle.
+
+**Ursache.** AnythingLLM schreibt Uploadnamen um und ersetzt dabei Zeichen durch
+**Wörter**: `&` → `and`, `%` → `percent`, `€` → `euro` (gemessen 21.09.).
+Die acht Normalisierungsfunktionen werfen alles außer `A-Za-z0-9` weg — eine
+**Wortersetzung überlebt das** und verschiebt den Namen dauerhaft. `pdfstelle.py`
+baut die Umformung in `_wie_anythingllm` (Zeilen 72–94) **nicht** nach.
+
+**Folge.** Bei jedem Dokument mit diesen Zeichen im Namen läuft der Sprung zur
+Fundstelle ins Leere. Ziffern und Buchstaben sind nie betroffen — deshalb ist ein
+**alphanumerischer** Fingerabdruck die Lösung (Punkt 6).
+
+**Nebenbefund, Grundlage des Umbaus — Namensgrenzen von AnythingLLM, gemessen:**
+
+- Es **kürzt nicht**; zu lange Namen führen zu HTTP 500.
+- Aufschlag **42 Byte** auf den bereits umgeschriebenen Namen (`-<uuid>.json`).
+- Bei 255 Byte: **HTTP 500**. Nutzbare Grenze: **200 Byte**.
+- Derselbe Name zweimal hochgeladen ergibt **zwei** Einträge, keine Ablösung.
+
+⚠ Solange der lesbare Teil eines Schlüssels Sonderzeichen enthalten darf, ist die
+Längenrechnung **grundsätzlich nicht exakt** — die Umschreibung ändert die Länge
+je nach Zeichen (Umlaute schrumpfen, `&`→`and` wächst, `›` fällt von 3 Byte auf
+1). Gemessen wurden +39, +40, +42 und +14 Byte bei vier Testnamen. Deshalb wird
+der lesbare Teil vor der Längenrechnung auf `A-Za-z0-9-` bereinigt.
 
 ---
 

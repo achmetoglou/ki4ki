@@ -115,21 +115,39 @@ doc/docx/odt/rtf · ppt/pptx/odp. Alles andere wird `unsupported`
 (`let fileType = 'unsupported'` als Vorgabe).
 
 ⭐ **Wichtige Unterscheidung bei Bildern — die Fähigkeit ist da, der Weg fehlt:**
-- Abbildungen **in** einem Dokument werden beim Aufnehmen beschrieben (Docling
-  mit `do_picture_description`, `do_picture_classification`) und wandern in die
-  Textfassung. Das funktioniert.
+- Abbildungen **in** einem Dokument werden beim Aufnehmen an Docling gereicht
+  (`do_picture_description`, `do_picture_classification`) und wandern in die
+  Textfassung.
+  ⛔ **Korrektur 21.09.: „Das funktioniert" war falsch.** Gemessen werden nur
+  Abbildungen über **8 % Seitenfläche** beschrieben — bei der Probe **null von
+  drei**. Die Schwelle 0,08 unterdrückt die Bildbeschreibung im **ganzen
+  Bestand**, ohne Meldung. Siehe `BUGS_UND_FIXES.md` §9a.
 - **Freistehende** Bilddateien erreichen Docling nie — sie scheitern schon an der
   Klassifizierung. Für die Störfallassistenz sind das ausgerechnet Schadensfotos
-  und Zeichnungen.
+  und Zeichnungen. Und selbst wenn man sie durchreicht, hilft Docling nicht: es
+  erkennt in einer `.jpg` **null Bildmarken** (§9b). Der Weg, der nachweislich
+  trägt, führt direkt zum Modell — **2,0 s je Bild**, rund 53 Minuten für alle
+  1.594.
 - `_bild_beschreiben` **zur Antwortzeit** (`pruef_proxy.py:8515`) arbeitet nur aus
   dem Seitentext. Das ist eine dritte, davon unabhängige Funktion — sie erklärt
   eine bereits aufgenommene Abbildung, sie nimmt keine auf.
 
-**Offen für Schritt 2:** Ob `.msg` und `.xlsm` über den Tika-Rückfall trotzdem
-durchkommen (der Unter-Ablaufplan hat einen Knoten „Tika-Text (Word, PowerPoint,
-sonstige)"), und ob freistehende Bilder aufgenommen werden können, indem die
-Klassifizierung sie wie ein PDF an Docling weiterreicht. **Beides ist am Code
-nicht sicher zu entscheiden — es braucht je eine Testdatei.**
+✅ **Mit Testdateien beantwortet (21.09.), Einzelheiten in `BUGS_UND_FIXES.md` §10:**
+
+```
+.msg    HTTP 200   1.244 Zeichen   → kommt über Tika durch
+.xlsm   HTTP 200     286 Zeichen   → kommt über Tika durch, aber als FLIESSTEXT
+                                     (.xlsx geht über den Tabellenweg)
+.jpg    HTTP 200       0 Zeichen   → stiller Erfolg
+.tif    HTTP 200       0 Zeichen   → stiller Erfolg
+```
+
+⛔ **Der Fund, der schwerer wiegt als die Formatfrage: HTTP 200 mit null Zeichen
+gilt als Erfolg.** „Nicht-PDF vereinheitlichen" setzt zwar ein Fehlerfeld, aber
+„Ablage entscheiden" nutzt es nur für den Begründungstext — über Archiv oder
+Aussortiert entscheidet allein der Namensvergleich. Eine leere Datei landet im
+Archiv und gilt als aufgenommen. **Damit wäre Schritt 3 durch leere Dokumente
+abnehmbar.** Es braucht eine Verzweigung vor dem Upload.
 
 ## 4 · Stand der Anlage
 
@@ -156,18 +174,47 @@ mit relativem Pfad                  386 Gruppen ·   785 Dateien · größte  4
 mit Pfad + Fingerabdruck              0       ·       0        ·       0
 ```
 
-Deshalb: **lesbarer Name auf 120 Byte gekürzt + zehnstelliger Fingerabdruck des
-vollen Pfades.** Der Fingerabdruck ist alphanumerisch und überlebt alle acht
-Normalisierungsfunktionen; Trennzeichen tun das nie. Längster Schlüssel 176 von
-255 Byte. **Dateien auf der Platte werden nicht umbenannt.** Dieselbe Datei bei
-zwei Kunden wird zweimal aufgenommen. Die bestehenden 66 Dokumente werden nicht
-neu aufgebaut.
+Deshalb: **lesbarer Name auf 120 Byte gekürzt + zehnstelliger Fingerabdruck.**
+Der Fingerabdruck ist alphanumerisch und überlebt alle acht
+Normalisierungsfunktionen; Trennzeichen tun das nie, und Wortersetzungen wie
+`&`→`and` ebenfalls nicht (`BUGS_UND_FIXES.md` §11).
+**Dateien auf der Platte werden nicht umbenannt.** Dieselbe Datei bei zwei
+Kunden wird zweimal aufgenommen. Die bestehenden 66 Dokumente werden nicht neu
+aufgebaut.
+
+⭐ **Entschieden am 21.09. — der Bezugspunkt, der seit dem 20.09. offen war:**
+Der Abdruck geht **nicht** über den vollen Pfad, sondern über
+**Bereichsname + Pfad unterhalb der Stufe**. Die fünf Stufenordner der Kette
+(Eingang, Parkplatz, Archiv, Aussortiert, Löschen) fallen heraus.
+
+Grund: Eine Datei wandert Eingang → Parkplatz → Archiv. Wäre die Stufe Teil der
+Kennung, bekäme **dasselbe Dokument bei jedem Umzug eine neue** — genau der
+Kettenbruch, der behoben werden soll. Erwünschte Nebenwirkung: dieselbe Datei in
+Parkplatz und Archiv ist **ein** Dokument, nicht zwei. Zwei Bereiche mit
+gleichem Unterpfad bleiben dagegen **getrennt**.
+
+**Zweite Festlegung, verbindlich:** Verglichen wird **ausschließlich der
+Fingerabdruck**. Der lesbare Teil ist Bequemlichkeit für Menschen und darf
+verstümmelt werden. Keine Codestelle darf den ganzen Schlüssel vergleichen.
+
+**Grenze 200 Byte:** 255 (ext4) − 3 (`.md` beim Upload) − 42 (Aufschlag
+`-<uuid>.json`), abgerundet.
 
 ## 6 · Offen, vor dem Bauen zu klären
 
-1. **Wie AnythingLLM Uploadnamen wirklich umschreibt** (Sonderzeichen, Umlaute,
-   über 200 Byte). Nirgends gemessen, trägt aber den ganzen Entwurf. Test mit
-   fünf Dateien in einem Wegwerf-Bereich.
+1. ~~Wie AnythingLLM Uploadnamen wirklich umschreibt~~ — **ERLEDIGT 21.09.,
+   gemessen** (Einzelheiten `BUGS_UND_FIXES.md` §11):
+   - Es ersetzt Zeichen durch **Wörter**: `&` → `and`, `%` → `percent`,
+     `€` → `euro`. ⛔ Solche Ersetzungen **überleben** die Normalisierung und
+     brechen den Fundstellen-Sprung bei jedem Dokument mit diesen Zeichen.
+     `pdfstelle.py:72-94` baut die Umformung nicht nach.
+   - Es **kürzt nicht**. Aufschlag **42 Byte** auf den umgeschriebenen Namen,
+     bei 255 Byte **HTTP 500**, nutzbare Grenze **200 Byte**.
+   - Gleicher Name zweimal → **zwei** Einträge, keine Ablösung.
+   - Der Aufschlag ist **nicht konstant** (+39/+40/+42/+14 bei vier Testnamen),
+     weil die Umschreibung selbst die Länge ändert. Daraus folgt: Der lesbare
+     Teil des Schlüssels muss **vor** der Längenrechnung bereinigt werden,
+     sonst ist sie nicht exakt.
 2. ~~Die zweite Ursache hinter „Aufnahme unvollständig"~~ — **ERLEDIGT 21.09.:
    es gibt keine zweite Ursache.** Die Zahlen 107 und 147 zählen
    **Protokollzeilen, nicht Dokumente**. Betroffen waren **17 Dateien**,
@@ -205,6 +252,16 @@ neu aufgebaut.
 - n8n „succeeded" — rund 20 Knoten stehen auf „bei Fehler weitermachen".
 - Stichproben über den Gesamtbestand — zu 98 % blind. Beweiskraft hat nur die
   Gruppe der 1.587 gleichnamigen Dateien.
+
+- ⛔ **Eine Prüfung, die nicht rot werden kann.** Neu am 21.09., und teuer
+  gelernt: In vier aufeinanderfolgenden Planfassungen standen vier Prüfungen,
+  die per Konstruktion **immer grün** waren — jede entstand beim Beheben der
+  vorigen, keine fiel beim Lesen auf, alle vier sofort beim Ausführen. Beispiele:
+  `dateien == schluessel`, wenn beide aus derselben Quelle stammen;
+  `pruefe(True, …)` in **beiden** Zweigen eines try/except; `… or
+  s.startswith(bereich)`, wenn der lesbare Teil stets mit dem Bereich beginnt.
+  ⭐ **Regel: Zu jeder Prüfung gehört der Nachweis, mit welcher Eingabe sie
+  fehlschlägt. Steht der nicht dabei, ist die Prüfung nicht fertig.**
 
 **Was zählt:** Prüfsummenvergleich statt Namensvergleich, gezielte Proben in der
 Kollisionsgruppe, eine Löschprobe, bei der die **anderen** nachgezählt werden —
