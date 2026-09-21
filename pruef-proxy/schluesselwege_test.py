@@ -110,6 +110,54 @@ def test_index():
            "eine PDF ohne Original behaelt ihren eigenen Schluessel")
 
 
+def test_pdfstelle():
+    """Der Zweitindex am Haupttrichter vorbei.
+
+    pdfstelle.py baut seinen eigenen os.walk ueber dieselbe Quelle. Ein
+    Umbau, der ihn vergisst, toetet jeden Belegsprung - und zwar lautlos,
+    weil der Sprung dann einfach auf die Seite fuehrt, die zufaellig unter
+    dem Namen gefunden wurde.
+    """
+    import schluessel
+    import pdfstelle
+    print("\nZweitindex pdfstelle")
+    pdfstelle._PFADE, pdfstelle._UMGEFORMT, pdfstelle._ABDRUECKE = {}, {}, {}
+    kap_b = schluessel.schluessel("kap", "archiv/KundeB/Angebot.pdf")
+    pfad = pdfstelle.pdf_pfad(kap_b)
+    pruefe(pfad is not None
+           and pfad.endswith(os.path.join("KundeB", "Angebot.pdf")),
+           "pdf_pfad findet ueber den Schluessel die RICHTIGE der drei "
+           "gleichnamigen Dateien, ist %r" % (pfad or "")[-30:])
+
+    # ⛔ Der Fehler aus BUGS_UND_FIXES.md §11: AnythingLLM macht aus '&' ein
+    #   'and', aus '%' 'percent'. Solche Wortersetzungen ueberleben die
+    #   Normalisierung und verschieben den Namen dauerhaft. Der Abdruck ist
+    #   alphanumerisch und uebersteht sie.
+    verbogen = kap_b.replace("-", "and").upper()
+    # ⚠ Das "pfad is not None" gehoert dazu: Ohne es waere die Zeile gruen,
+    #   sobald BEIDE Seiten None liefern - also gerade dann, wenn gar nichts
+    #   mehr gefunden wird. Genau so stand sie im ersten Entwurf und war
+    #   gruen, waehrend der Zweitindex noch gar nicht umgestellt war.
+    pruefe(pfad is not None and pdfstelle.pdf_pfad(verbogen) == pfad,
+           "auch ein verbogener Name findet ueber den Abdruck dasselbe "
+           "Dokument (gefunden: %r)" % (pdfstelle.pdf_pfad(verbogen) or "")[-30:])
+
+    # ⛔ Gegenprobe: Ein Name OHNE Abdruck darf NICHT ueber den Abdruck
+    #   treffen - sonst oeffnet ein Beleg die gleichnamige Datei eines
+    #   anderen Kunden. Er darf hoechstens die Uebergangsstuetze treffen.
+    nackt = pdfstelle.pdf_pfad("Angebot")
+    pruefe(nackt is None or nackt == pdfstelle._PFADE.get("Angebot"),
+           "ein nackter Name trifft hoechstens den Uebergangseintrag, nie "
+           "ueber den Abdruck")
+
+    # Und der Office-Fall auch hier: die gewandelte PDF haengt am Original.
+    original = schluessel.schluessel("kap", "archiv/KundeA/Bericht.docx")
+    op = pdfstelle.pdf_pfad(original)
+    pruefe(op is not None and os.path.basename(op) == "Bericht.pdf",
+           "der Schluessel des Office-Originals findet die gewandelte PDF, "
+           "ist %r" % os.path.basename(op or ""))
+
+
 def test_stuetze_laeuft_ab():
     """Die Uebergangsstuetze darf sich NICHT selbst schuetzen.
 
@@ -170,7 +218,7 @@ def test_stuetze_laeuft_ab():
 
 def main():
     baum_bauen()
-    pruefungen = [test_index, test_stuetze_laeuft_ab]
+    pruefungen = [test_index, test_pdfstelle, test_stuetze_laeuft_ab]
     try:
         for t in pruefungen:
             t()

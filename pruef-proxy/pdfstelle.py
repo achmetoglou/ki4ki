@@ -21,6 +21,8 @@ import subprocess
 import unicodedata
 import threading
 
+import schluessel as _schl
+
 EINGANG = (os.environ.get("KI4KI_PDFS")
            or os.path.expanduser("~/ki4ki/dokumente"))
 
@@ -32,6 +34,10 @@ _SPERRE = threading.Lock()
 _PFADE = {}
 # Derselbe Bestand, aber unter dem Namen, den AnythingLLM vergibt.
 _UMGEFORMT = {}
+# Drittes Verzeichnis nach ABDRUCK. Es ist das einzige, das traegt, wenn der
+# Name unterwegs umgeschrieben wurde - AnythingLLM macht aus '&' ein 'and'.
+_ABDRUECKE = {}
+_OFFICE_ORIGINAL = (".docx", ".doc", ".odt", ".rtf", ".pptx", ".ppt", ".odp")
 _PFADSPERRE = threading.Lock()
 
 
@@ -47,26 +53,52 @@ def _index_bauen():
     Dateinamen als Zeichenklasse liest - Namen wie "[Ehr06] ..." kommen
     in Fachliteratur staendig vor.
     """
-    neu, umgeformt, mehrdeutig = {}, {}, set()
+    neu, umgeformt, abdruecke, mehrdeutig = {}, {}, {}, set()
     for wurzel, _, dateien in os.walk(EINGANG):
         for d in dateien:
-            if d.lower().endswith(".pdf"):
-                stamm = d[:-4]
-                voll = os.path.join(wurzel, d)
-                # Bei gleichem Namen in mehreren Ordnern gewinnt der erste
-                # Fund; die oberste Ebene wird zuerst durchlaufen.
-                neu.setdefault(stamm, voll)
-                # Zweiter Schluessel, so geschrieben wie AnythingLLM ihn
-                # ablegt. Siehe _wie_anythingllm().
-                k = _wie_anythingllm(stamm)
-                if k in umgeformt and umgeformt[k] != voll:
-                    mehrdeutig.add(k)
-                umgeformt.setdefault(k, voll)
+            if not d.lower().endswith(".pdf"):
+                continue
+            stamm = d[:-4]
+            voll = os.path.join(wurzel, d)
+            # ⭐ Der Schluessel: eindeutig, kein "erster Fund gewinnt".
+            #   Die gewandelte PDF eines Office-Dokuments haengt am
+            #   Schluessel des ORIGINALS - sonst spraenge jeder Beleg eines
+            #   Word-Dokuments ins Leere (293 von 779 PDF betroffen,
+            #   gemessen 21.09.).
+            traeger = os.path.relpath(voll, EINGANG).replace(os.sep, "/")
+            for e in _OFFICE_ORIGINAL:
+                if os.path.exists(os.path.join(wurzel, stamm + e)):
+                    traeger = os.path.relpath(
+                        os.path.join(wurzel, stamm + e),
+                        EINGANG).replace(os.sep, "/")
+                    break
+            teile = traeger.split("/", 1)
+            if len(teile) == 2:
+                try:
+                    sl = _schl.schluessel(teile[0], teile[1])
+                    # ⛔ Der Abdruck kommt AUS DEM KENNPFAD. Im Schluessel
+                    #   steht dahinter noch die Endung - die letzten zehn
+                    #   Zeichen sind dort nicht der Abdruck.
+                    ab = _schl.fingerabdruck(_schl.kennpfad(teile[0], teile[1]))
+                except ValueError:
+                    sl = ab = None
+                if sl:
+                    neu[sl] = voll
+                    abdruecke[ab] = voll
+            # ⚠ UEBERGANGSSTUETZE bis zum Ende des Neu-Einlesens: nackter
+            #   Name und AnythingLLM-Grundform bleiben aufloesbar. Beide
+            #   fallen weg, sobald kein Dokument mehr ohne Abdruck im
+            #   Bestand liegt (siehe nur_ueber_altweg im Proxy).
+            neu.setdefault(stamm, voll)
+            k = _wie_anythingllm(stamm)
+            if k in umgeformt and umgeformt[k] != voll:
+                mehrdeutig.add(k)
+            umgeformt.setdefault(k, voll)
     # Was nicht eindeutig ist, fliegt raus: lieber kein Sprung als ein
     # Sprung in das falsche Dokument.
     for k in mehrdeutig:
         umgeformt.pop(k, None)
-    return neu, umgeformt
+    return neu, umgeformt, abdruecke
 
 
 def _wie_anythingllm(stamm):
@@ -106,22 +138,29 @@ def pdf_pfad(stamm):
     Fehlt der Stamm in beiden, wird einmal neu gesucht: So sind frisch
     hochgeladene Dokumente sofort anklickbar, ohne Neustart.
     """
-    global _PFADE, _UMGEFORMT
+    global _PFADE, _UMGEFORMT, _ABDRUECKE
 
     def nachsehen():
         p = _PFADE.get(stamm)
         if p and os.path.exists(p):
             return p
+        # ⭐ Der ABDRUCK vor der Grundform: Er ueberlebt, was AnythingLLM mit
+        #   Namen macht; die Grundform tut es nicht ('&' -> 'and').
+        treffer = _schl.abdruck_finden(stamm, _ABDRUECKE)
+        if treffer:
+            p = _ABDRUECKE.get(treffer)
+            if p and os.path.exists(p):
+                return p
         p = _UMGEFORMT.get(_wie_anythingllm(stamm))
         return p if p and os.path.exists(p) else None
 
     with _PFADSPERRE:
         if not _PFADE:
-            _PFADE, _UMGEFORMT = _index_bauen()
+            _PFADE, _UMGEFORMT, _ABDRUECKE = _index_bauen()
         pfad = nachsehen()
         if pfad:
             return pfad
-        _PFADE, _UMGEFORMT = _index_bauen()
+        _PFADE, _UMGEFORMT, _ABDRUECKE = _index_bauen()
         return nachsehen()
 
 
