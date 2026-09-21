@@ -7,6 +7,7 @@ Grundsatz dieser Datei: Zu jeder Pruefung gehoert der Nachweis, mit WELCHER
 Eingabe sie rot wird. Eine Pruefung, die per Konstruktion immer gruen ist,
 beweist nichts - in vier Planfassungen standen vier solche Pruefungen.
 """
+import os
 import sys
 
 import schluessel
@@ -132,9 +133,81 @@ def test_schluessel():
            "lateinischer Name behaelt dagegen seinen lesbaren Teil")
 
 
+STEUER = {"bereich.json", "metadaten.json", "prompt.md", "kategorien.txt",
+          "bilder-nachholen.txt", "aussortiert.log"}
+
+
+def test_invariante_am_bestand():
+    """Ueber einen echten Ordnerbaum. Gibt AUSSCHLIESSLICH Zahlen aus -
+    keine Datei- und keine Ordnernamen. Mit der Datensperre vereinbar.
+
+    Was hier NICHT geprueft wird: Kollisionsfreiheit. Der Abdruck geht ueber
+    den unbereinigten Kennpfad und wird immer vollstaendig angehaengt - zwei
+    verschiedene Kennpfade koennen deshalb gar nicht denselben Schluessel
+    ergeben. Das ist Arithmetik ueber SHA-256, keine Eigenschaft dieses
+    Entwurfs, und eine Pruefung darauf waere immer gruen. Die Zahl wird
+    ausgegeben, aber nicht als Zusicherung verkauft.
+    """
+    print("\nAm echten Bestand")
+    wurzel = os.environ.get("KI4KI_PRUEFBAUM", "/daten/pdfs")
+    if not os.path.isdir(wurzel):
+        pruefe(False, "Pruefbaum fehlt - der Lauf ist NICHT gueltig")
+        return
+    kennpfade, schluessel_menge, dokumente, tiefste = set(), set(), 0, 0
+    zu_lang, nicht_ascii, nur_bereich, uebersprungen, fehler = 0, 0, 0, 0, 0
+    for ordner, _unter, namen in os.walk(wurzel):
+        for n in namen:
+            if n in STEUER or n.endswith(".log"):
+                uebersprungen += 1
+                continue
+            rel = os.path.relpath(os.path.join(ordner, n), wurzel)
+            teile = rel.replace(os.sep, "/").split("/", 1)
+            if len(teile) < 2:
+                # Datei direkt in der Wurzel: kein Bereich, nicht zerlegbar.
+                fehler += 1
+                continue
+            try:
+                kp = schluessel.kennpfad_aus_bestandspfad(rel)
+                s = schluessel.schluessel(teile[0], teile[1])
+            except ValueError:
+                fehler += 1
+                continue
+            dokumente += 1
+            tiefste = max(tiefste, rel.count(os.sep) + 1)
+            kennpfade.add(kp)
+            schluessel_menge.add(s)
+            if len(s.encode("utf-8")) > 200:
+                zu_lang += 1
+            if any(ord(c) > 127 for c in s):
+                nicht_ascii += 1
+            # NICHT auf den Rueckfall pruefen: der Bereichsname ueberlebt die
+            # Bereinigung immer, der lesbare Teil wird deshalb nie leer und der
+            # Rueckfall nie erreicht. Ein Zaehler darauf meldete dauerhaft 0 und
+            # behauptete "kein Problem". Die Zahl, die wirklich etwas sagt:
+            if s.split("--")[0] == schluessel._bereinigen(kp.split("/")[0]):
+                nur_bereich += 1
+    print("  %d Dokumente (%d Steuerdateien uebersprungen, %d unzerlegbar)"
+          % (dokumente, uebersprungen, fehler))
+    print("  %d Kennpfade, %d Schluessel, tiefste Ebene %d"
+          % (len(kennpfade), len(schluessel_menge), tiefste))
+    print("  Doppelablagen (dieselbe Datei in zwei Stufen): %d"
+          % (dokumente - len(kennpfade)))
+    # Die vier Zusicherungen, die am Bestand WIDERLEGBAR sind:
+    pruefe(dokumente > 0, "der Pruefbaum enthaelt Dokumente")
+    pruefe(zu_lang == 0, "kein Schluessel ueber 200 Byte, darueber: %d" % zu_lang)
+    pruefe(nicht_ascii == 0,
+           "alle Schluessel reines ASCII, mit Sonderzeichen: %d" % nicht_ascii)
+    pruefe(fehler == 0, "jeder Pfad zerlegbar, unzerlegbar: %d" % fehler)
+    # Keine Zusicherung, sondern die Kennzahl, die wirklich etwas aussagt:
+    print("  Hinweis: bei %d Dokumenten besteht der lesbare Teil NUR noch aus dem"
+          " Bereichsnamen - dort ist die Zuordnung im Schluessel verloren"
+          % nur_bereich)
+
+
 if __name__ == "__main__":
     test_kennpfad()
     test_fingerabdruck()
     test_schluessel()
+    test_invariante_am_bestand()
     print("\n%d Fehler" % len(FEHLER))
     sys.exit(1 if FEHLER else 0)
