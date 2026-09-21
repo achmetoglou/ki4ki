@@ -9468,7 +9468,13 @@ class Griff(BaseHTTPRequestHandler):
             _voll = darf_sehen(self.headers)     # Healthcheck/README brauchen nur die Zahlen
             daten = json.dumps({"bestand": len(BESTAND.titel()),
                                 "verwaiste_bereiche": list(VERWAISTE_BEREICHE) if _voll else len(VERWAISTE_BEREICHE),
+                                # ⚠ "pdfs" zaehlt SCHLUESSEL, nicht Dokumente -
+                                # und seit der Uebergangsstuetze zwei je Datei
+                                # (Schluessel und nackter Name). Die ehrliche
+                                # Zahl ist "dokumente": ein Abdruck je Dokument,
+                                # auch bei gleichnamigen Dateien.
                                 "pdfs": len(PDFS),
+                                "dokumente": len(PDFS_ABDRUCK),
                                 # Solange nur_altweg > 0 ist, wird die
                                 # Uebergangsstuetze gebraucht. Steht sie auf 0
                                 # und altweg_aktiv weiter auf true, ist der
