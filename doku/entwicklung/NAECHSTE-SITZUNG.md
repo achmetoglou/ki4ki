@@ -50,9 +50,10 @@ Regeln aus Abschnitt 1 im Auftrag. Ergebnis: Mängelliste mit Belegstellen.
 ```
 Zweig     pfad-identitaet · Rückweg: Tag vor-pfad-identitaet-2026-09-20
           zurück mit: git checkout main && ./aktualisiere.sh
-n8n       GESTOPPT (docker compose stop n8n)
-          ⚠ Die Lösch-Wache im Proxy läuft trotzdem jede Minute
-KAP       205 im Eingang · 8 im Archiv · 15 aussortiert · 4.036 geparkt
+n8n       LÄUFT wieder (seit 21.09.), aber alle Eingänge sind LEER —
+          deshalb nimmt die Anlage nichts auf. Bleibt so bis der Umbau steht.
+          ⚠ Die Lösch-Wache im Proxy läuft unabhängig davon jede Minute
+KAP       Eingang leer · 8 im Archiv · 15 aussortiert · 4.241 geparkt
 Bestand   67 Dokumente
 Daten     Emrach hat alle Rohdaten lokal — der Serverbestand ist entbehrlich
 ```
