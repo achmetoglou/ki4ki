@@ -42,7 +42,7 @@
             },
             {
               "name": "do_picture_description",
-              "value": "={{ ($json.massenlauf === true || $json.massenlauf === 'true') ? 'false' : ((($env.KI4KI_BILDBESCHREIBUNG || 'an') === 'aus') ? 'false' : 'true') }}"
+              "value": "={{ ((($env.KI4KI_BILDBESCHREIBUNG || 'an') === 'aus') ? 'false' : 'true') }}"
             },
             {
               "name": "do_picture_classification",
@@ -50,7 +50,7 @@
             },
             {
               "name": "picture_description_area_threshold",
-              "value": "0.08"
+              "value": "0.01"
             },
             {
               "name": "picture_description_custom_config",
