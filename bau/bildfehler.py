@@ -26,6 +26,7 @@ Aufruf:
 import json
 import os
 import random
+import subprocess
 import sys
 import time
 import urllib.error
@@ -101,6 +102,42 @@ ZWEITVERSUCH = [
 ]
 
 
+def _beschaffenheit(pfad):
+    """Was ist das fuer eine Datei? Nur Art und Groesse, kein Name, kein Inhalt.
+
+    Anlass: Unter den Fehlermeldungen tauchte zweimal der Hash
+    e3b0c44298fc1c149... auf - das ist der SHA-256 der LEEREN Zeichenkette.
+    Zwei der Dateien sind also vermutlich 0 Byte gross. Ob die uebrigen
+    beschaedigt, verschluesselt oder gar keine PDF sind, entscheidet
+    darueber, ob hier die Anlage oder der Bestand das Problem ist.
+    """
+    try:
+        groesse = os.path.getsize(pfad)
+    except OSError:
+        return "Datei nicht lesbar"
+    if groesse == 0:
+        return "LEERE Datei (0 Byte)"
+    try:
+        with open(pfad, "rb") as f:
+            kopf = f.read(1024)
+    except OSError:
+        return "Datei nicht lesbar (%d Byte)" % groesse
+    if not kopf.startswith(b"%PDF"):
+        return "keine PDF - Kennung fehlt (%d Byte)" % groesse
+    try:
+        ergebnis = subprocess.run(["pdfinfo", pfad], capture_output=True,
+                                  text=True, timeout=30)
+    except (OSError, subprocess.SubprocessError):
+        return "PDF-Kennung da, pdfinfo nicht ausfuehrbar (%d Byte)" % groesse
+    if ergebnis.returncode == 0:
+        return ("gueltige PDF, die nur Docling nicht laedt (%d Byte)" % groesse)
+    meldung = (ergebnis.stderr or "").strip().splitlines()
+    grund = meldung[0][:60] if meldung else "ohne Meldung"
+    if "Encrypted" in (ergebnis.stdout or ""):
+        return "verschluesselte PDF (%d Byte)" % groesse
+    return "auch poppler scheitert: %s (%d Byte)" % (grund, groesse)
+
+
 def main():
     if not os.path.isdir(WURZEL):
         print("Wurzel fehlt - nichts zu tun.")
@@ -162,9 +199,12 @@ def main():
             leer += 1 if z2 == 0 else 0
             geht_doch += 1
         else:
-            kurz = (f2 or "")[:60]
-            gruende[kurz] = gruende.get(kurz, 0) + 1
-            print("  Nr %3d: BEIDE Versuche scheitern · %s" % (nr, kurz))
+            # Nicht bei "geht nicht" stehenbleiben, sondern die Datei selbst
+            # befragen: Groesse, Kennung, ob poppler sie oeffnen kann. Das
+            # entscheidet, ob die ANLAGE ein Problem hat oder der BESTAND.
+            art = _beschaffenheit(pfad)
+            gruende[art] = gruende.get(art, 0) + 1
+            print("  Nr %3d: beide Versuche scheitern · %s" % (nr, art))
             unrettbar += 1
 
     print("\n%d von %d kommen ueber den Zweitversuch doch durch." % (geht_doch, len(fehlend)))
@@ -174,9 +214,19 @@ def main():
               " geretteter Fall." % leer)
     print("%d bleiben liegen." % unrettbar)
     if gruende:
-        print("\nFehlerklassen der uebrigen:")
+        print("\nWas fuer Dateien das sind:")
         for text, n in sorted(gruende.items(), key=lambda x: -x[1]):
             print("  %2d x  %s" % (n, text))
+        echte = sum(n for text, n in gruende.items()
+                    if text.startswith("gueltige PDF"))
+        if echte:
+            print("\n  ⛔ %d davon sind gueltige PDF, die poppler oeffnen"
+                  " kann - dort liegt es an Docling, nicht am Bestand." % echte)
+        kaputt = unrettbar - echte
+        if kaputt:
+            print("  → %d sind leer, beschaedigt oder keine PDF. Da kann die"
+                  " Anlage nichts gewinnen - sie muss sie aber AUSSORTIEREN"
+                  " statt archivieren (Punkt 10)." % kaputt)
     if geht_doch:
         print("\n⭐ Der Befund 'diese Dateien haetten weder Text noch"
               " Bildbeschreibung' war damit zu pessimistisch: Der"
