@@ -53,6 +53,7 @@ import rolle
 import kategorie
 import mehrstufig
 import pdfstelle
+import schluessel
 import pruefprotokoll
 import veredeln
 import wortsuche
@@ -1322,6 +1323,11 @@ PDFS = {}
 #   GESCHUETZTEN Leerzeichen, das man nicht sieht. Der exakte Vergleich
 #   findet sie nie, und der Verweis bleibt tot.
 PDFS_GRUND = {}
+# ⭐ Drittes Verzeichnis nach ABDRUCK - der einzige Teil des Schluessels, der
+#   alle neun Normalisierungen des Hauses uebersteht (sie werfen jedes Zeichen
+#   ausser A-Za-z0-9 weg, der Abdruck besteht nur aus solchen). Verglichen
+#   wird ausschliesslich hierueber; der lesbare Teil darf verstuemmelt sein.
+PDFS_ABDRUCK = {}
 # Ollama vertraegt keine zehn gleichzeitigen Pruefungen; die Pruefung selbst
 # ist schnell, aber der Bestand soll nicht mehrfach parallel geladen werden.
 PRUEFSPERRE = threading.Lock()
@@ -2407,6 +2413,46 @@ def _titel_aus_json(docpath):
         return None
 
 
+_OFFICE_ORIGINAL = (".docx", ".doc", ".odt", ".rtf", ".pptx", ".ppt", ".odp")
+
+
+def _schluessel_der_datei(wurzel, dateiname):
+    """(Schluessel, Abdruck) dieses Dokuments - oder (None, None).
+
+    ⭐ Die Office-Regel: Word und PowerPoint werden vor Docling nach PDF
+      gewandelt, und die PDF liegt neben dem Original im Archiv. Das Dokument
+      ist das ORIGINAL; die PDF ist nur die Quelle fuer den Belegsprung.
+      Bekaeme sie einen eigenen Abdruck, zeigte jeder Beleg des
+      Word-Dokuments ins Leere - ohne Meldung. Am Bestand gemessen (21.09.):
+      293 von 779 PDF haben ein gleichnamiges Office-Original daneben.
+
+    ⛔ Der Abdruck wird AUS DEM KENNPFAD gerechnet, nicht aus dem fertigen
+      Schluessel herausgeschnitten. Im Schluessel steht hinter dem Abdruck
+      noch die Endung; die letzten zehn alphanumerischen Zeichen sind dort
+      also NICHT der Abdruck. Beim Wiederfinden faellt das nicht auf, weil
+      abdruck_finden alle Fenster durchgeht - beim ANLEGEN des Verzeichnisses
+      wuerde es jeden Eintrag falsch machen.
+    """
+    rel = os.path.relpath(os.path.join(wurzel, dateiname), PDF_ORDNER)
+    teile = rel.replace(os.sep, "/").split("/", 1)
+    if len(teile) < 2:
+        return None, None
+    if dateiname.lower().endswith(".pdf"):
+        stamm = dateiname[:-4]
+        for e in _OFFICE_ORIGINAL:
+            if os.path.exists(os.path.join(wurzel, stamm + e)):
+                teile = os.path.relpath(
+                    os.path.join(wurzel, stamm + e),
+                    PDF_ORDNER).replace(os.sep, "/").split("/", 1)
+                break
+    try:
+        kpfad = schluessel.kennpfad(teile[0], teile[1])
+        return schluessel.schluessel(teile[0], teile[1]), \
+            schluessel.fingerabdruck(kpfad)
+    except ValueError:
+        return None, None
+
+
 def pdfs_einlesen():
     """Alle Quell-PDFs einlesen - auch die in den Abteilungsordnern.
 
@@ -2421,14 +2467,71 @@ def pdfs_einlesen():
     """
     PDFS.clear()
     PDFS_GRUND.clear()
+    PDFS_ABDRUCK.clear()
     for wurzel, _, dateien in os.walk(PDF_ORDNER):
         for d in dateien:
-            if d.lower().endswith(".pdf"):
-                # Bei gleichem Namen in mehreren Ordnern gewinnt der erste
-                # Fund - die oberste Ebene wird zuerst durchlaufen.
-                PDFS.setdefault(d[:-4], os.path.join(wurzel, d))
-                PDFS_GRUND.setdefault(_grundform(d[:-4]), d[:-4])
+            if not d.lower().endswith(".pdf"):
+                continue
+            voll = os.path.join(wurzel, d)
+            sl, ab = _schluessel_der_datei(wurzel, d)
+            if sl:
+                # ⭐ Der Schluessel ist eindeutig - hier gibt es kein
+                #   "erster Fund gewinnt" mehr. Genau das war der Schaden:
+                #   139 von 787 PDF waren dadurch fuer Belege unsichtbar
+                #   (gemessen 21.09.), und wer einen davon anklickte,
+                #   oeffnete die gleichnamige Datei eines anderen Kunden.
+                PDFS[sl] = voll
+                PDFS_GRUND.setdefault(_grundform(sl), sl)
+                PDFS_ABDRUCK[ab] = sl
+            # ⚠ UEBERGANGSSTUETZE bis zum Ende des Neu-Einlesens: Der nackte
+            #   Name bleibt aufloesbar, damit die Dokumente aus der Zeit vor
+            #   dem Umbau waehrend der 12,7 Stunden nicht unauffindbar werden.
+            #   Wann sie weg darf, sagt nur_ueber_altweg() - und die Pruefung
+            #   in schluesselwege_test.py wird von selbst rot, sobald die
+            #   Stuetze unbegruendet ist.
+            PDFS.setdefault(d[:-4], voll)
+            PDFS_GRUND.setdefault(_grundform(d[:-4]), d[:-4])
     return len(PDFS)
+
+
+def nur_ueber_altweg():
+    """Wie viele Dokumente im Bestand tragen KEINEN Abdruck?
+
+    Das ist die einzige Begruendung fuer die Uebergangsstuetze: Dokumente aus
+    der Zeit vor dem Umbau, die unter ihrem nackten Namen abgelegt wurden.
+    Sinkt die Zahl auf 0, ist die Stuetze unbegruendet und gehoert weg - die
+    Pruefung in schluesselwege_test.py wird dann von selbst rot.
+
+    ⚠ Gezaehlt werden Ablagedateien, nicht Protokollzeilen. Ein Log, das je
+      Versuch anhaengt, war in diesem Projekt schon einmal als Mengenzaehler
+      gelesen worden.
+
+    Rueckgabe -1 heisst "nicht lesbar". NICHT 0 - eine 0 hiesse "die Stuetze
+    darf weg", und das waere aus einem Lesefehler geschlossen.
+    """
+    ohne = 0
+    try:
+        for w, _u, dateien in os.walk(BESTAND_ORDNER):
+            for d in dateien:
+                if not d.endswith(".json"):
+                    continue
+                if not schluessel.abdruck_finden(schluessel.ohne_uuid(d),
+                                                 PDFS_ABDRUCK):
+                    ohne += 1
+    except Exception:
+        return -1
+    return ohne
+
+
+def altweg_aktiv():
+    """Steht die Uebergangsstuetze noch im Code?
+
+    Am VERHALTEN gemessen, nicht an einem Schalter: Loest ein Eintrag im
+    Index ohne Abdruck auf, ist sie aktiv. Ein Schalter koennte gesetzt sein,
+    ohne dass der Code ihn beachtet - dieselbe Fehlerklasse wie ein halb
+    gebautes Feature, dessen sichtbare Haelfte funktioniert.
+    """
+    return any(schluessel.abdruck_finden(k, PDFS_ABDRUCK) is None for k in PDFS)
 
 
 def _grundform(name):
@@ -2474,14 +2577,25 @@ def _pdfs_erneuern_wenn_faellig():
 def _pdf_schluessel_roh(name):
     """Den echten Schluessel in PDFS zu einem geschriebenen Namen finden.
 
-    ⚠ EINE Funktion fuer ALLE sieben Nachschlagestellen. Vorher verglich
-      jede fuer sich exakt; eine davon zu vergessen faellt jetzt beim
-      Zaehlen auf, statt sich als toter Verweis zu zeigen.
+    Drei Wege, in dieser Reihenfolge:
+      1. genau so geschrieben,
+      2. ueber den ABDRUCK - die einzige Form, die alle neun
+         Normalisierungen des Hauses uebersteht,
+      3. ueber die Grundform (Uebergangsstuetze fuer Namen aus der Zeit vor
+         dem Umbau; faellt weg, sobald nur_ueber_altweg() 0 meldet).
+
+    ⚠ EINE Funktion fuer 32 Aufrufstellen - nachgezaehlt, nicht behauptet.
+      Die Vergleiche in mit_verweisen, dokument_erlaubt und im Loeschweg
+      gehen daran VORBEI und sind einzeln umgestellt; der Kommentar, der hier
+      frueher "alle sieben Nachschlagestellen" versprach, stimmte nie.
     """
     if not name:
         return None
     if name in PDFS:
         return name
+    treffer = schluessel.abdruck_finden(name, PDFS_ABDRUCK)
+    if treffer:
+        return PDFS_ABDRUCK[treffer]
     for endung in (".pdf", ".md"):
         if name.lower().endswith(endung):
             kurz = name[:-len(endung)]
@@ -9189,6 +9303,12 @@ class Griff(BaseHTTPRequestHandler):
             daten = json.dumps({"bestand": len(BESTAND.titel()),
                                 "verwaiste_bereiche": list(VERWAISTE_BEREICHE) if _voll else len(VERWAISTE_BEREICHE),
                                 "pdfs": len(PDFS),
+                                # Solange nur_altweg > 0 ist, wird die
+                                # Uebergangsstuetze gebraucht. Steht sie auf 0
+                                # und altweg_aktiv weiter auf true, ist der
+                                # Rueckbau faellig (-1 = Bestand nicht lesbar).
+                                "nur_altweg": nur_ueber_altweg(),
+                                "altweg_aktiv": altweg_aktiv(),
                                 "gpu": {"modelle": GPU_STAND.get("modelle") if _voll else len(GPU_STAND.get("modelle") or []),
                                         "warnung": GPU_STAND.get("warnung")}},
                                ensure_ascii=False).encode("utf-8")
