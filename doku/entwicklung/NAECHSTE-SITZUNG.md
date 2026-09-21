@@ -233,7 +233,7 @@ und gleicht ab, was n8n **wirklich geladen** hat. Aufruf auf dem Host:
 2. **`LESBAR_BYTE`** (siehe oben), gehört zu Teil 3.
 3. **Die Protokoll-Wiederholung** bei jedem Minutentakt (§3, Punkt 2).
 
-## 3e - Teil 3 laeuft: 9 von 14 Aufgaben gebaut (21.09., spaeter Abend)
+## 3e - Teil 3 laeuft: 13 von 14 Aufgaben gebaut (21.09., spaeter Abend)
 
 Plan: `/home/runlvl89/.claude/plans/ki4ki-wissensdatenbank-des-snazzy-willow.md`
 (14 Aufgaben, 92 Schritte). Gebaut wird in einem Klon, gepusht auf
@@ -251,7 +251,10 @@ Plan: `/home/runlvl89/.claude/plans/ki4ki-wissensdatenbank-des-snazzy-willow.md`
 | 6 | `6e2866f` | Zweitindex `pdfstelle.py` (beide Kopien) |
 | 6b | `dfc47f2` | Belegvorrat - keine gleichnamige Fassung wird mehr verworfen |
 | 6c | `b500ecd` | Anzeigetitel in `kennung()`, `angaben()`, `metadaten._grund()` |
-| 7 | `bb3817d` | Belegvergleich am Abdruck - vier realistische Modell-Abweichungen gepruegt |
+| 7 | `bb3817d` | Belegvergleich am Abdruck - vier realistische Modell-Abweichungen geprueft |
+| 8 | `af7d146` | Rechtepruefung am Abdruck, fail-closed |
+| 9 | `3d1611b` | Loeschweg - ein Klick loescht ein Dokument, nicht 99 |
+| 10+11 | `3883505` | Aufnahmekette in n8n, beide Unterordner-Fehler, Ablaufpruefung |
 
 ### Die Messung am echten Bestand (21.09., `bau/abdruck-messung.py`)
 
@@ -274,21 +277,25 @@ Container, den es auf dem Host nicht gibt. Container-innen ist nicht Host.
 
 | Aufgabe | Was | Gate |
 |---|---|---|
-| 8 | Rechtepruefung `dokument_erlaubt`, fail-closed | braucht 6c (das K3-Tor ist die erste Zeile darin) |
-| 9 | Loeschweg - dreifach nachgesehen | |
-| 10 | Aufnahmekette in n8n + die zwei Unterordner-Fehler | |
-| 11 | `bau/ablauf_pruefen.py` erweitern | |
-| 12 | Ausrollen, neu einlesen, Uebergangsstuetze entfernen | |
+| 12 | Ausrollen, neu einlesen, Uebergangsstuetze entfernen | ⛔ **der einzige noch offene Schritt - er gehoert Emrach** |
 
-### ⛔ Der naechste Halt: die Belegmessung (Gate vor Aufgabe 8+)
+### ⛔ Aufgabe 12: die Reihenfolge, in der eingelesen wird
 
-Aufgabe 7 beweist, dass der PROXY einen Abdruck erkennt - nicht, dass das
-MODELL ihn mitschreibt. Das kann nur am laufenden System gemessen werden:
+**Nicht mit KAP anfangen.** Ein Neu-Einlesen von KAP dauert 12,7 Stunden; geht
+dabei etwas schief, ist die Zeit weg. Deshalb in dieser Reihenfolge:
 
-1. Vor dem Umstellen aus `/kpi` notieren: Anteil Antworten mit mindestens
-   einem blauen (geprueften) Beleg.
-2. Nach dem Ausrollen drei Fachfragen stellen, denselben Anteil ablesen,
-   dazu `altweg_belege` aus `/pruef-status`.
+1. `./aktualisiere.sh` - baut Proxy und mkmd-Dienst neu und spielt die
+   Ablaufplaene ein.
+2. **Ein kleiner Bereich zuerst** (FAQ): Dateien nach `input/`, einen
+   Durchgang abwarten, dann nachsehen:
+   - `curl localhost:3001/pruef-status` - `bestand` steigt, `nur_altweg`
+     sinkt
+   - eine Fachfrage an diesen Bereich: kommt ein **blauer** Beleg? Springt
+     der Klick auf die richtige Seite?
+3. **Erst dann die Belegmessung**, die vorher gar nichts sagen konnte: Ohne
+   ein Dokument MIT Schluessel kann das Modell keinen Abdruck mitschreiben.
+   Aus `/kpi` den Anteil quellenbasierter Antworten vorher und nachher
+   vergleichen, dazu `altweg_belege` aus `/pruef-status`.
 
 | Ergebnis | Folge |
 |---|---|
@@ -319,6 +326,8 @@ python3 schluesselwege_test.py                      52 Pruefungen
 python3 dialogtest.py                              519 Pruefungen
 python3 wegabgleich.py                               0 Loecher
 python3 ../bau/abdruck-messung.py                  sechs Zahlen
+cd .. && python3 bau/ablauf_pruefen.py              26 Pruefungen
+bash bau/sperrprobe.sh            zeigt den Unterordner-Fehler im Vergleich
 ```
 `<baum>` legt `python3 bau/kunstbaum.py <baum>` an.
 ⚠ `absichttest.py` braucht Ollama und laeuft nur auf der A40.

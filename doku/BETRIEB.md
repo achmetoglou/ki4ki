@@ -173,15 +173,14 @@ verschwindet sein Ordner nur, wenn er leer ist — sonst wird er unter
 
 ## 5 · Wie die Aufnahme läuft
 
-> ⛔ **Stand 20.09.2026: Unterordner im Eingang sind derzeit nicht benutzbar.**
-> Zwei Fehler greifen, sobald Dokumente tiefer als direkt im Eingang liegen —
-> eine Endlosschleife in der 180-Minuten-Sicherung und eine Bereichserkennung,
-> die Dokumente in den falschen Arbeitsbereich legen kann. Dazu erkennt die
-> Anlage ein Dokument bisher nur an seinem **Dateinamen**: Bei gleichnamigen
-> Dateien überschreiben sich Dokumente gegenseitig, ohne Fehlermeldung.
-> Einzelheiten und Messzahlen in `doku/entwicklung/BUGS_UND_FIXES.md`,
-> Punkte 6 und 7. **Bis das behoben ist: Dateien flach in den Eingang legen und
-> auf eindeutige Dateinamen achten.**
+> ⭐ **Unterordner im Eingang sind benutzbar** (seit 21.09.2026).
+> Ein Dokument wird nicht mehr an seinem Dateinamen erkannt, sondern an
+> **Bereich + Pfad unterhalb der Stufe**. Gleichnamige Dateien in
+> verschiedenen Kundenordnern bleiben dadurch getrennt; `archiv/` und
+> `aussortiert/` spiegeln die Unterordner des Eingangs.
+> Gemessen am echten Bestand: 4.321 Dateien, 0 doppelt vergebene Kennungen,
+> waehrend unter dem alten Schluessel 1.593 Dateien kollidierten.
+> Einzelheiten in `doku/entwicklung/BUGS_UND_FIXES.md`, Punkte 6, 7 und 13.
 
 1. Jede Minute sieht n8n in `dokumente/*/input/` nach (auch in Unterordnern).
 2. Ein Durchgang nimmt bis zu 25 Dateien (`KI4KI_MENGE_JE_LAUF`) eines Bereichs; eine
