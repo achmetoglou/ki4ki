@@ -843,6 +843,52 @@ derselben Karte ausgehen.
 
 ---
 
+## 21 · Zwei Umlaut-Regeln, und das Zitat traf keine (22.09.2026, BEHOBEN)
+
+**Symptom.** `„Die Zugfestigkeit beträgt 412 MPa." (KundeAlpha-Pruefbericht,
+S. 1 — nicht wörtlich gefunden)`. Der Dokumentname wurde erkannt, die
+Klammer stand richtig da — und der Sprung fiel trotzdem weg. Die Fußzeile
+meldete „2 Zitate geprüft, 2 nicht gefunden" und behauptete damit ein
+Zitatproblem, **das es nicht gab**: Das Modell hatte wörtlich richtig
+zitiert.
+
+**Ursache, gemessen:**
+
+```
+Zitat des Modells  ->  'die zugfestigkeit betragt 412 mpa'
+Seite im Dokument  ->  'die zugfestigkeit betraegt 412 mpa'
+```
+
+`wortsuche._falte()` schleift den Umlaut auf den **Grundbuchstaben** ab
+(`ä` → `a`), das Dokument stand in **Behelfsschreibung** (`ae`). Beide Regeln
+sind für sich richtig und treffen sich nie.
+
+⚠ **Nicht dasselbe wie §16.** Dort verglich `pruef_proxy` Umlaut gegen
+Umlaut; hier faltet `fadenfrage` auf den Grundbuchstaben. Verschiedene
+Module, verschiedene Konventionen, gleiche Wirkung — und beide fallen erst
+auf, wenn ein Dokument die andere Schreibweise benutzt.
+
+**Lösung.** `wortsuche._falte_ae()` dehnt den Umlaut aus **und** faltet dann;
+`_steht_auf()` probiert beide Regeln, jede auf beide Seiten gleich
+angewandt. Damit landen `beträgt` und `betraegt` auf derselben Form.
+
+⭐ **Die drei Gegenproben tragen die Prüfung:** Ein Zitat, das nicht auf der
+Seite steht, ein erfundenes und ein zu kurzes Bruchstück bleiben
+unbestätigt. Ohne sie wären die vier grünen Zeilen auch dann grün, wenn
+`_steht_auf` einfach immer `True` lieferte — und dann bekäme **jedes**
+erfundene Zitat einen blauen Beleg.
+
+---
+
+## 22 · Die Modellangabe in der Fußzeile war konstant und falsch (22.09.2026, BEHOBEN)
+
+Die Fußzeile nannte das Modell. Ein Arbeitsbereich fragt aber immer dasselbe
+Modell — die Zeile sagte also nie etwas Neues. Dazu stand sie **falsch** da:
+Emrach am 22.09. beim Gemma-Lauf: *„ja beim gemma lauf, sagt er trotzdem
+qwen"*. Entfernt.
+
+---
+
 ## Offen / vor einer Vermarktung zu klären
 
 - **Erste vollständige Installation von null** auf der Zielumgebung — erst damit

@@ -86,6 +86,24 @@ def _falte(s):
     return re.sub(r"[^a-z0-9]+", " ", n.lower()).strip()
 
 
+def _falte_ae(s):
+    """Wie _falte, aber der Umlaut wird AUSGESCHRIEBEN statt abgeschliffen.
+
+    _falte macht aus dem Umlaut den Grundbuchstaben ("beträgt" -> "betragt").
+    Dokumente in Behelfsschreibung schreiben "betraegt". Beide Regeln sind
+    fuer sich richtig und treffen sich nie - am 22.09. hat das jeden
+    woertlichen Beleg gekostet, obwohl das Modell richtig zitiert hatte.
+
+    Diese Fassung dehnt zuerst aus und faltet dann: Damit landen "beträgt"
+    UND "betraegt" auf derselben Form.
+    """
+    t = str(s or "")
+    for a, b in (("ä", "ae"), ("ö", "oe"), ("ü", "ue"),
+                 ("Ä", "Ae"), ("Ö", "Oe"), ("Ü", "Ue")):
+        t = t.replace(a, b)
+    return _falte(t)
+
+
 def _suchformen(wort):
     """Alle Schreibweisen, unter denen ein Wort im Dokumentindex stehen kann.
 

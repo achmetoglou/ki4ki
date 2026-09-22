@@ -139,10 +139,22 @@ _SEITE = re.compile(r"\(\s*S\.?\s*(\d{1,4})\s*\)")
 
 
 def _steht_auf(zitat, seitentext):
-    z = _falte(zitat)
-    if len(z) < 8:
-        return False
-    return z[:80] in _falte(seitentext)
+    """Steht das Zitat woertlich auf der Seite?
+
+    ⛔ BEIDE Umlaut-Regeln probieren. Die eine schleift den Umlaut auf den
+      Grundbuchstaben ab, die andere schreibt ihn aus; Dokumente kommen in
+      beiden Schreibweisen vor. Am 22.09. kam deshalb "nicht woertlich
+      gefunden", obwohl das Modell richtig zitiert hatte - der Beleg fiel
+      weg, und die Fusszeile behauptete ein Zitatproblem, das es nicht gab.
+
+    Beide Seiten werden jeweils mit DERSELBEN Regel gefaltet, sonst waere
+    der Vergleich wieder schief.
+    """
+    for falten in (_falte, wortsuche._falte_ae):
+        z = falten(zitat)
+        if len(z) >= 8 and z[:80] in falten(seitentext):
+            return True
+    return False
 
 
 def verlinken(text, schluessel, seiten, geprueft=None):

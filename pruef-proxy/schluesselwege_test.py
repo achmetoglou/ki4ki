@@ -1038,6 +1038,51 @@ def assistent_titel(n):
     return assistent._titel_saubern(n)
 
 
+def test_zitatpruefung_umlaute():
+    """Das woertliche Zitat darf nicht an der Umlaut-Regel scheitern.
+
+    \u26d4 Gemessen am 22.09.: Das Modell zitierte richtig, die Klammer wurde
+      erkannt - und es kam trotzdem "nicht woertlich gefunden". Grund: _falte
+      macht aus dem Umlaut den GRUNDBUCHSTABEN ("betr\u00e4gt" -> "betragt"),
+      das Dokument stand in Behelfsschreibung ("betraegt"). Zwei Regeln fuer
+      dieselbe Sache, und dazwischen faellt der Sprung heraus.
+
+    \u26a0 Das ist nicht dasselbe wie BUGS 16: Dort verglich pruef_proxy
+      Umlaut gegen Umlaut, hier faltet fadenfrage auf den Grundbuchstaben.
+      Verschiedene Module, verschiedene Konventionen, gleiche Wirkung.
+    """
+    import fadenfrage
+    print("\nZitatpruefung und Umlaute")
+    zitat_umlaut = "Die Zugfestigkeit betr\u00e4gt 412 MPa."
+    zitat_behelf = "Die Zugfestigkeit betraegt 412 MPa."
+    seite_behelf = ("Ergebnis: Die Zugfestigkeit betraegt 412 MPa. "
+                    "Bruchdehnung 3,1 Prozent, Pr\u00fcfklima 23 Grad.")
+    seite_umlaut = seite_behelf.replace("betraegt", "betr\u00e4gt")
+    fremd = ("Verfahrensanweisung Kleben: Die Oberfl\u00e4che wird "
+             "angeschliffen und entfettet.")
+
+    for wie, z, seite in (("Umlaut im Zitat, Behelf im Dokument",
+                           zitat_umlaut, seite_behelf),
+                          ("Behelf im Zitat, Umlaut im Dokument",
+                           zitat_behelf, seite_umlaut),
+                          ("beide mit Umlaut", zitat_umlaut, seite_umlaut),
+                          ("beide in Behelfsschreibung",
+                           zitat_behelf, seite_behelf)):
+        pruefe(fadenfrage._steht_auf(z, seite) is True,
+               "%s: das Zitat steht auf der Seite" % wie)
+
+    # \u26d4 Die Gegenproben. Ohne sie waeren die vier Zeilen oben auch dann
+    #   gruen, wenn _steht_auf einfach immer True liefert - und dann wuerde
+    #   jedes erfundene Zitat blau verlinkt.
+    pruefe(fadenfrage._steht_auf(zitat_umlaut, fremd) is False,
+           "ein Zitat, das NICHT auf der Seite steht, wird nicht bestaetigt")
+    pruefe(fadenfrage._steht_auf("Die Klemmung erh\u00fcht die Lebensdauer.",
+                                 seite_umlaut) is False,
+           "ein erfundenes Zitat wird nicht bestaetigt")
+    pruefe(fadenfrage._steht_auf("kurz", seite_umlaut) is False,
+           "ein zu kurzes Bruchstueck wird nicht bestaetigt")
+
+
 def main():
     baum_bauen()
     pruefungen = [test_index, test_pdfstelle, test_belegvorrat,
@@ -1050,7 +1095,8 @@ def main():
                   test_leere_eingangsordner,
                   test_belegklammer,
                   test_trennzeichen_egal,
-                  test_belegsprung]
+                  test_belegsprung,
+                  test_zitatpruefung_umlaute]
     try:
         for t in pruefungen:
             t()

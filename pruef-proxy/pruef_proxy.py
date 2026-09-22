@@ -7828,7 +7828,11 @@ class Griff(BaseHTTPRequestHandler):
         _was = sorted({_kurz.get(n, n) for n, _, _ in e["aufrufe"] if n != "waechter"})
         fuss = []
         if _modell_b:
-            fuss.append("Modell: %s" % _modell_b)
+            # Die Modellangabe stand hier fuer das Auffangnetz. Ein
+            # Arbeitsbereich fragt aber immer dasselbe Modell - die Zeile
+            # sagte also nie etwas und war nebenbei falsch beschriftet
+            # (Emrach 22.09.: beim Gemma-Lauf stand dort qwen).
+            pass
         if _doks:
             # "Quelle" nur, wenn wirklich etwas belegt wurde; sonst war es eine
             # Suche ohne Fund - "Nicht belegt · Quelle: DS-24-005" las sich
