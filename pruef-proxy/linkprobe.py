@@ -28,10 +28,17 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 def main():
     import pruef_proxy as p
     import schluessel
+    import veredeln
 
+    if p.BESTAND is None:
+        # Genau wie beim echten Start: BESTAND entsteht erst in main(), nicht
+        # beim Import. Ohne diese beiden Zeilen ist es None - die Messung ist
+        # daran am 22.09. ausgefallen und hat sich richtigerweise selbst fuer
+        # ungueltig erklaert, statt "0 tote Links" zu melden.
+        p.BESTAND = veredeln.Bestand()
+        p.BESTAND._rohtext()
     p.pdfs_einlesen()
     try:
-        p.BESTAND.aktualisiere()
         titel = list(p.BESTAND.titel())
     except Exception as e:
         print("Bestand nicht lesbar (%s) - DIE MESSUNG IST UNGUELTIG"
