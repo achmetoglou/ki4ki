@@ -784,7 +784,7 @@ def test_umlautdeckung():
 def test_leere_eingangsordner():
     """Leere Unterordner im Eingang verschwinden - aber nicht zu frueh.
 
-    Emrach am 22.09.: "die leeren ordner stehen nur noch lose da".
+    Gemeldet am 22.09.: "die leeren ordner stehen nur noch lose da".
     """
     import pruef_proxy as p
     print("\nLeere Unterordner im Eingang")
@@ -1289,7 +1289,7 @@ def test_sprung_nur_wenn_es_eine_seite_gibt():
     pruefe("/stelle?dok=" not in ohne,
            "ohne Seiten entsteht KEIN Sprung, ist %r" % ohne[-70:])
     # ⭐ GEAENDERTE ANFORDERUNG (22.09., nachmittags): Frueher stand hier
-    #   "und der Text bleibt unveraendert". Das war zu streng. Emrach hat am
+    #   "und der Text bleibt unveraendert". Das war zu streng. Am
     #   laufenden System gesehen, was dabei herauskommt: In der Antwort stand
     #   gar kein Link mehr, und der Leser kam nicht an die Tabelle, aus der
     #   die Zahl stammt. Richtig ist, nur das zu versprechen, was die Anlage

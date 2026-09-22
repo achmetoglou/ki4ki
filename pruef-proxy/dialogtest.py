@@ -662,7 +662,7 @@ def szenario_25_rolle():
 
 
 def szenario_26_kategorien():
-    print("\n[26] Kategorien und Themen aus dem Kopf der Aufnahme (Emrach 27.08.: 'wie erkennt das System, was was ist?')")
+    print("\n[26] Kategorien und Themen aus dem Kopf der Aufnahme (Rueckmeldung 27.08.: 'wie erkennt das System, was was ist?')")
     import kategorie as kat
     import bestand
     kopf = kat.aus_kopf("# DVS 2290 praktischer Leitfaden\n\nQuelle: x.pdf\nDokumenttyp: Practical Guide / Manual\nSprache: German\nDomain: Production\n\n## Tags\n\n- Laminating Process\n\n## Keywords\n\n- Harz\n- Härter\n- Laminieren\n\n## Methoden\n\n- Handlaminieren\n\n## Inhalt\n\nText")

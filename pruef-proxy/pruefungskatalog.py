@@ -4,7 +4,7 @@ WOERTLICH aus dem Bestandstext, die Loesung steht im Katalog oder gar nicht.
 
 Gemessen 26.08. (Bereich AuW): "Stell mir eine Pruefungsfrage" - das Modell
 erfand Fragen, Optionen und Zitate, weil die Excel keine PDF-Seiten hat und
-kein Werkzeug den Katalog lesen konnte. Emrach: "er sollte doch exakte
+kein Werkzeug den Katalog lesen konnte. Rueckmeldung: "er sollte doch exakte
 Fragen aus der Datei mir nennen ... wenn ich eine Antwort gebe, pruefst du
 anhand des Katalogs, ob das richtig ist."
 

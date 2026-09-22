@@ -475,7 +475,7 @@ def kennzahlen(seit=None, bis=None):
     belegt = sum(verdikte.get(k, 0) for k in ("belegt", "woertlich", "geglaettet", "teilweise"))
     eskaliert, stoerfaelle, erste = 0, 0, {}
     tage = {}
-    # ⭐ Nenner ehrlich (Emrach 01.09.: "9,3 % sieht nicht nach Qualitaet aus"):
+    # ⭐ Nenner ehrlich (Rueckmeldung 01.09.: "9,3 % sieht nicht nach Qualitaet aus"):
     #   Belegen KANN nur eine inhaltliche Antwort. Bestandslisten, Bilder,
     #   Begruessungen, Klaerfragen, Exporte, Allgemeinwissen und ehrliche
     #   "nicht gefunden" sind keine unbelegten Fachantworten - sie zaehlen

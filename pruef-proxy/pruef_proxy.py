@@ -168,7 +168,7 @@ def _bereich_llm(slug):
 
 
 def modell_fuer_bereich(slug):
-    """⭐ MODELL JE BEREICH (Emrach 02.09.): Das in den Chat-Einstellungen des
+    """⭐ MODELL JE BEREICH (entschieden 02.09.): Das in den Chat-Einstellungen des
     Bereichs gewaehlte Modell gilt auch fuer die Antworten der Anlage (Stufe 2,
     leerer Bereich) - nicht nur fuer AnythingLLMs eigene Rueckfaelle. So laesst
     sich z. B. llm-test auf ein anderes Modell stellen, waehrend die uebrigen
@@ -866,7 +866,7 @@ def _liegengebliebene_einraeumen():
 def bereich_ordner_anlegen(slug):
     """dokumente/<slug>/{input,parkplatz,archiv,aussortiert,loeschen} + bereich.json
     mit den Rechten der Aufnahme (1000:KI4KI_GID, 2775). Gemessen 26.08.:
-    Emrach legte AuW/KAP/KI4KI in der Oberflaeche an - per FileZilla gab es
+    Die Bereiche wurden in der Oberflaeche angelegt - ueber WebDAV gab es
     nur 'wissensdatenbank', weil der Ordner erst beim ersten Upload entstand.
     True = angelegt oder vorhanden."""
     if not slug:
@@ -977,7 +977,7 @@ BEREICH_LOESCHEN = re.compile(r"^/api/(?:v1/)?workspace/([^/]+)/?$")
 
 def bereich_ordner_aufraeumen(slug):
     """Nach dem Loeschen eines Arbeitsbereichs: Ordner weg, wenn LEER
-    (Emrach 26.08.: 'wenn ich mich vertippte und es loesche, dann geht das
+    (Rueckmeldung 26.08.: 'wenn ich mich vertippte und es loesche, dann geht das
     ja nicht weg in FileZilla'). Liegt irgendeine Datei mit Inhalt darin
     (PDF im Archiv, Eingang, Parkplatz, Logs mit Zeilen), bleibt er - und
     wird als verwaist gemeldet. Rueckgabe: 'geloescht' | 'behalten' | None."""
@@ -992,7 +992,7 @@ def bereich_ordner_aufraeumen(slug):
             if d == "bereich.json":
                 continue
             if d == rolle.DATEI or d.endswith(".neu"):
-                continue          # Rolle/Verwaltung - kein Inhalt (Emrach 27.08.: Ordner soll weg)
+                continue          # Rolle/Verwaltung - kein Inhalt (Rueckmeldung 27.08.: Ordner soll weg)
             if d == kategorie.DATEI or d == "bilder-nachholen.txt" or d.endswith(".log"):
                 # Von der Anlage selbst erzeugt (Kategorienliste, Vormerkliste,
                 # Quittungen) - kein Inhalt des Partners. Gemessen 01.09.: die
@@ -1189,7 +1189,7 @@ _KATALOG_LAEUFT = threading.Lock()
 def _katalog_nachziehen():
     """Fehlende Katalogeintraege (Titel/Verfasser/Jahr vom Deckblatt, Kategorie,
     Themen) im Hintergrund nachtragen - alle 5 Minuten, nicht erst, wenn
-    jemand "Was haben wir im Bestand" fragt (Emrach 01.09.: "nach jedem
+    jemand "Was haben wir im Bestand" fragt (Rueckmeldung 01.09.: "nach jedem
     Upload muss man die Frage stellen, damit der Katalog aktuell ist").
     Laeuft nie doppelt; ein Durchlauf arbeitet die offenen Eintraege ab."""
     if not _KATALOG_LAEUFT.acquire(blocking=False):
@@ -1549,7 +1549,7 @@ def _fassung_vergleichen(wurzel, dateiname, inhalt):
     Wird nur fuer die MELDUNG gebraucht: Der Hochladen-Knopf weist eine
     gleichnamige Datei ohnehin ab. Ohne diese Unterscheidung las der Nutzer
     "liegt bereits vor" und wusste nicht, dass seine korrigierte Fassung
-    verworfen wurde (Emrach 15.09.).
+    verworfen wurde (entschieden 15.09.).
     """
     try:
         stamm = _loesch_grund(os.path.splitext(dateiname)[0])
@@ -3434,7 +3434,7 @@ EINHAENGER = """
   // Wahl des Modus mit Erklaerung. Nach dem Anlegen schickt das Skript die
   // Angaben an /rolle - der Proxy schreibt dokumente/<bereich>/prompt.md,
   // laesst das Modell den Text glaetten und spielt Prompt + Modus ein.
-  // AnythingLLM selbst bleibt unveraendert (Emrach 27.08.: "die wichtigsten
+  // AnythingLLM selbst bleibt unveraendert (Rueckmeldung 27.08.: "die wichtigsten
   // Felder fuer den Prompt direkt in der Box 'Neues Workspace anlegen'").
   var ID = "ki4ki-rolle-felder";
   var werte = {fach: "", nutzer: "", besonderes: "", modus: "query"};
@@ -3503,7 +3503,7 @@ EINHAENGER = """
     // KEIN Ausschluss ueber die Seitenadresse: Der Dialog "Neuer Arbeitsbereich"
     // laesst sich von jeder Seite aus oeffnen - auch aus den Chat-Einstellungen
     // eines Bereichs (Adresse .../settings/...). Genau dort blieben die Felder
-    // aus (Emrach 01.09.: "nur manchmal klappt es"). Die Einstellungsseite
+    // aus (Rueckmeldung 01.09.: "nur manchmal klappt es"). Die Einstellungsseite
     // selbst wird unten ueber "schwebendes Fenster" ausgeschlossen.
     var eingaben = document.querySelectorAll('input[name="name"]');
     for (var i = 0; i < eingaben.length; i++) {
@@ -3592,7 +3592,7 @@ EINHAENGER = """
   }
 
   // --- Einstellungen eines bestehenden Bereichs: dieselben Felder, vorausgefuellt,
-  //     mit Knopf. Emrach 27.08.: "Die werden nie die Textdatei aendern -
+  //     mit Knopf. Rueckmeldung 27.08.: "Die werden nie die Textdatei aendern -
   //     Bequemlichkeit kommt immer ueber die UI."
   var ID2 = "ki4ki-rolle-einstellungen";
   function slugAusPfad() {
@@ -5546,7 +5546,7 @@ class Griff(BaseHTTPRequestHandler):
         except Exception:
             traceback.print_exc(file=sys.stderr)
         # ⭐ PRUEFUNGSKATALOG (26.08.): exakte Fragen aus der Datei, Antwort gegen
-        #   den Katalog - deterministisch, ohne Modell. Emrach: "er sollte doch
+        #   den Katalog - deterministisch, ohne Modell. Rueckmeldung: "er sollte doch
         #   exakte Fragen aus der Datei mir nennen ... pruefst du anhand des
         #   Katalogs, ob das richtig ist."
         try:
@@ -7916,8 +7916,8 @@ class Griff(BaseHTTPRequestHandler):
             # Einklammerung unten fasst wegen ihres Lookbehind nur die runde,
             # die andere Haelfte blieb Klartext: weder geprueft noch verlinkt.
             # Gemessen 15.09. ueber alle gespeicherten Antworten: 65 eckige
-            # gegen 65 runde - also genau die Haelfte ging verloren. Emrachs
-            # Beobachtung: "manchmal verlinkt er sachen und manchmal nicht".
+            # gegen 65 runde - also genau die Haelfte ging verloren. Gemeldet
+            # wurde es als "manchmal verlinkt er sachen und manchmal nicht".
             #
             # Zwei Dinge bleiben bewusst unangetastet:
             #   - ein fertiger Markdown-Link "[X, S. 5](/stelle...)"  -> (?!\()
@@ -8001,8 +8001,7 @@ class Griff(BaseHTTPRequestHandler):
         if beruehrt:
             text, ok, nein = fadenfrage.verlinken_mehrfach(text, beruehrt)
         # ---- Fuss --------------------------------------------------------
-        # ⭐ Fuss: EINE kurze Zeile, nur mit Inhalt, der sich aendert (Emrach 26.08.:
-        #   "die Fussnoten nerven, da steht eh immer das selbe").
+        # ⭐ Fuss: EINE kurze Zeile, nur mit Inhalt, der sich aendert (Rueckmeldung 26.08.: #   "die Fussnoten nerven, da steht eh immer das selbe").
         _kurz = {"seiten_lesen": "gelesen", "abbildungen_auflisten": "Bilder gelistet", "abbildung_zeigen": "Bild",
                  "zusammenfassen": "zusammengefasst", "zaehlen": "gezählt", "bestand": "Katalog", "dokument_finden": "gesucht",
                  "abkuerzung": "Abkürzung", "exportieren": "Export", "seite_zeigen": "Seite", "bestand_durchsuchen": "Bestand durchsucht",
@@ -8027,12 +8026,12 @@ class Griff(BaseHTTPRequestHandler):
             # Die Modellangabe stand hier fuer das Auffangnetz. Ein
             # Arbeitsbereich fragt aber immer dasselbe Modell - die Zeile
             # sagte also nie etwas und war nebenbei falsch beschriftet
-            # (Emrach 22.09.: beim Gemma-Lauf stand dort qwen).
+            # (Rueckmeldung 22.09.: beim Gemma-Lauf stand dort qwen).
             pass
         if _doks:
             # "Quelle" nur, wenn wirklich etwas belegt wurde; sonst war es eine
             # Suche ohne Fund - "Nicht belegt · Quelle: DS-24-005" las sich
-            # wie eine Zuschreibung (Emrach 01.09.).
+            # wie eine Zuschreibung (entschieden 01.09.).
             fuss.append(("Quelle: %s" if (ok or belegt_z) else "durchsucht: %s") % _doks)
         if _was:
             fuss.append(", ".join(_was))
@@ -8050,7 +8049,7 @@ class Griff(BaseHTTPRequestHandler):
             fuss.append("⚠ " + "; ".join(_warn))
         # Allgemeinwissen ist im Absatz selbst gekennzeichnet ("Aus Allgemeinwissen
         # (nicht aus den Dokumenten):") - eine zweite Warnung in der Fusszeile war
-        # doppelt (Emrach 01.09.: "zu viele Hinweise").
+        # doppelt (Rueckmeldung 01.09.: "zu viele Hinweise").
         if fuss:
             text += "\n\n*" + " · ".join(fuss) + "*"
         # ---- Merken und senden -------------------------------------------
@@ -8411,7 +8410,7 @@ class Griff(BaseHTTPRequestHandler):
         konf["rolle"] = {"fach": fach or "", "nutzer": nutzer or "", "besonderes": besonderes or "", "modus": modus or konf.get("rolle", {}).get("modus", "")}
         _bereich_konf_schreiben(slug, konf)
         # 1) SOFORT: Vorlage + Modus eintragen - wer gleich die Einstellungen
-        #    oeffnet, sieht schon Rolle und Modus (gemessen 27.08.: Emrach sah
+        #    oeffnet, sieht schon Rolle und Modus (gemessen 27.08.: der Nutzer sah
         #    den alten Stand, weil das Glaetten noch lief).
         _rolle_schreiben(slug, text)
         eingespielt = _rolle_einspielen(slug, erzwingen=True)
@@ -8585,7 +8584,7 @@ class Griff(BaseHTTPRequestHandler):
                     return True
         # Zweifel an der letzten Themen-Auskunft ("nur den einen wirklich?"):
         # nicht die Liste wiederholen, sondern gegenpruefen - Katalog UND
-        # Volltext, und sagen, was das Wort NICHT enthaelt (Emrach 01.09.).
+        # Volltext, und sagen, was das Wort NICHT enthaelt (entschieden 01.09.).
         thema = GESPRAECHE.notiz(k, "bestand_thema")
         if thema and assistent.ist_bestand_zweifel(frage):
             if not bereich_sichtbar(self.path, self.headers):
@@ -9404,7 +9403,7 @@ class Griff(BaseHTTPRequestHandler):
 
     def _faden_taufen(self, frage):
         """Erste Frage eines Fadens wird sein Name - sonst heisst jeder Reiter
-        "new thread" (Emrach 02.09.). Laeuft im Hintergrund, kostet nichts."""
+        "new thread" (entschieden 02.09.). Laeuft im Hintergrund, kostet nichts."""
         m = re.match(r"^/api/(?:v1/)?workspace/([^/]+)/thread/([^/]+)/", self.path or "")
         if not m or not API_SCHLUESSEL or not (frage or "").strip():
             return

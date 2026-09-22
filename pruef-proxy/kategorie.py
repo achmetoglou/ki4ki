@@ -4,7 +4,7 @@ Die Aufnahme (n8n, Verschlagwortung) setzt jedem Dokument einen Kopf voran:
     Dokumenttyp: Practical Guide / Manual
     Sprache: German · Domain: ... · Subdomain: ...
     ## Tags / ## Keywords / ## Methoden
-Bisher las das niemand (Emrach 27.08.: "wie erkennt das System, was was ist?").
+Bisher las das niemand (Rueckmeldung 27.08.: "wie erkennt das System, was was ist?").
 Hier wird daraus eine KATEGORIE aus einer festen, je Bereich pflegbaren Liste
 (dokumente/<bereich>/kategorien.txt) und eine Handvoll THEMEN (Keywords).
 

@@ -40,7 +40,7 @@ import time
 # Wie viele Gespraechsschritte je Unterhaltung behalten werden. Mehr
 # braucht es nicht: Anreichern stuetzt sich auf die letzte inhaltliche
 # Frage, nicht auf den ganzen Verlauf.
-SCHRITTE = 24      # 27.08.: 20 Zuege Gedaechtnis je Faden (Emrach: 'Gedaechtnis geht verloren')
+SCHRITTE = 24      # 27.08.: 20 Zuege Gedaechtnis je Faden (Rueckmeldung: 'Gedaechtnis geht verloren')
 
 # Nach dieser Zeit ohne Frage gilt eine Unterhaltung als beendet. Wer nach
 # einer Stunde "und dazu?" schreibt, meint fast nie das Thema von vorhin.
@@ -1170,7 +1170,7 @@ def _liste_nach_art(frage, namen, bereich=None, zusatz=None):
         pass
     # Die Bandnummer der Schriftenreihe nur zeigen, wenn es sie hier gibt -
     # bei Normen und Pruefungsunterlagen bliebe die Spalte sonst leer
-    # (Emrach 15.09.: "die stehen doch auf dem Cover").
+    # (Rueckmeldung 15.09.: "die stehen doch auf dem Cover").
     daten = [(n, bestand.angaben(n)) for n in passend]
     mit_band = any((a or {}).get("band") for _n, a in daten)
     if mit_band:
@@ -1219,7 +1219,7 @@ def _volltext_zusatz(stichwort, namen, ausser=()):
     """Welche Dokumente des Bereichs nennen das Wort im VOLLTEXT - ueber das
     Wortverzeichnis, ohne Modell. Der Katalog kennt nur Titel und Themen;
     bei 2.000 Dokumenten ist das die ehrliche zweite Haelfte der Antwort
-    ("nur den einen wirklich?", Emrach 01.09.). Leer, wenn nichts da ist."""
+    ("nur den einen wirklich?", Rueckmeldung 01.09.). Leer, wenn nichts da ist."""
     raus = {_titel_saubern(a).lower() for a in ausser}
     treffer = [n for n in _volltext_namen(stichwort, namen) if n.lower() not in raus]
     if not treffer:
@@ -1378,8 +1378,7 @@ def _titel_saubern(t):
 
 def _liste(titel, zusatz=None):
     """Der INDEX eines Bereichs: IMMER eine Tabelle (Kennung · Titel ·
-    Verfasser · Jahr · Art), egal was hochgeladen wurde (Emrach 26.08.:
-    "diese Spaltenansicht soll er immer machen, in jedem Workspace, quasi
+    Verfasser · Jahr · Art), egal was hochgeladen wurde (Rueckmeldung 26.08.: "diese Spaltenansicht soll er immer machen, in jedem Workspace, quasi
     ein Index, egal was man hochlaedt"). Vorher gab es die Tabelle nur,
     wenn wenigstens ein Katalogeintrag existierte - sonst nackte Namen.
 

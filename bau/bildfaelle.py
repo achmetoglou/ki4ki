@@ -1,6 +1,6 @@
 """Vier kontrollierte Faelle: Was sieht Docling als EINE Abbildung?
 
-Anlass ist eine Frage von Emrach (21.09.), die eine stillschweigende
+Anlass ist eine Rueckfrage (21.09.), die eine stillschweigende
 Annahme der Bildmessung trifft:
 
   "Bei manchen PDF besteht ein Bild aus mehreren kleinen Boxen. Wenn die

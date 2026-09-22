@@ -223,7 +223,7 @@ _GRUPPEN_TIEFEN = [
 def _tiefen_fuer(nutzer):
     """Nur die Tiefen-Beschreibungen der GENANNTEN Gruppen - sonst schreibt das
     Modell den ganzen Katalog ab ('Techniker und Instandhalter' in der
-    Bibliothek, Emrach 02.09.)."""
+    Bibliothek, Rueckmeldung 02.09.)."""
     n = (nutzer or "").lower()
     treffer = [t for rx, t in _GRUPPEN_TIEFEN if re.search(rx, n)]
     if not treffer:
@@ -250,7 +250,7 @@ ZUORDNUNGEN = [
 def _zuordnungen_fuer(fach, nutzer, besonderes):
     """Nur die Bausteine, die der Betreiber wirklich anspricht - der Rollen-
     Absatz eines Bibliotheksbereichs bekommt keine Stoerungs-Tabellen und
-    Sicherheitsdatenblatt-Regeln (Emrach 02.09.: 'ich dachte modular')."""
+    Sicherheitsdatenblatt-Regeln (Rueckmeldung 02.09.: 'ich dachte modular')."""
     alles = " ".join((fach or "", nutzer or "", besonderes or "")).lower()
     treffer = [t for rx, t in ZUORDNUNGEN if re.search(rx, alles)]
     if not treffer:
@@ -306,7 +306,7 @@ def vorlage_mit_glaettung(fach, nutzer, besonderes, geglaettet, slug=""):
 def aus_prompt(prompt):
     """Den Rollen-Abschnitt aus einem in der Oberflaeche gespeicherten Prompt
     holen - '' wenn keiner drin ist. Die Oberflaeche ist die Wahrheit
-    (Emrach 27.08.: 'Bequemlichkeit wird immer ueber die UI kommen')."""
+    (Rueckmeldung 27.08.: 'Bequemlichkeit wird immer ueber die UI kommen')."""
     t = prompt or ""
     i = t.find(MARKE_ABSCHNITT)
     if i < 0:
