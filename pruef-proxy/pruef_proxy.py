@@ -1483,6 +1483,19 @@ PDFS_GRUND = {}
 #   ausser A-Za-z0-9 weg, der Abdruck besteht nur aus solchen). Verglichen
 #   wird ausschliesslich hierueber; der lesbare Teil darf verstuemmelt sein.
 PDFS_ABDRUCK = {}
+
+# Was als Dokument gilt. Dieselbe Liste wie VORGESEHEN im Knoten "Ablage
+# entscheiden" von Ablaufplan 1 - was die Aufnahme annimmt, muss der Index
+# auch kennen.
+#
+# ⚠ Sie steht damit an ZWEI Stellen, weil n8n kein Python liest. Laeuft
+#   sie auseinander, faellt es nicht auf: Die Aufnahme nimmt ein Format an,
+#   der Index kennt es nicht - und das Dokument liegt im Bestand, ist aber
+#   unauffindbar. Wer eine Endung ergaenzt, ergaenzt sie hier UND dort.
+DOKUMENTENDUNGEN = (".pdf", ".doc", ".docx", ".odt", ".rtf",
+                    ".ppt", ".pptx", ".odp",
+                    ".xls", ".xlsx", ".xlsm",
+                    ".csv", ".txt", ".md", ".html", ".htm")
 # Wie oft ein Beleg NICHT ueber den Abdruck, sondern ueber den alten
 # Namensvergleich zustande kam. Steht der Zaehler ueber eine Woche
 # normalen Betriebs auf 0, wird der Altweg nicht mehr gebraucht.
@@ -2673,10 +2686,27 @@ def pdfs_einlesen():
     PDFS_ABDRUCK.clear()
     for wurzel, _, dateien in os.walk(PDF_ORDNER):
         for d in dateien:
-            if not d.lower().endswith(".pdf"):
+            klein = d.lower()
+            # ⭐ JEDES Dokument kommt ins Abdruckverzeichnis, nicht nur
+            #   PDF. Gemessen am 22.09.: Ein Excel-, Text- oder
+            #   Word-Dokument stand in keinem - und war damit dreifach
+            #   beschaedigt: nur_altweg zaehlte es als "ohne Abdruck", sein
+            #   Name liess sich nicht kuerzen, und die Belegklammer fand es
+            #   nicht ("nicht belegt", obwohl die Aussage woertlich darin
+            #   steht). In derselben Antwort waren genau die PDF verlinkt
+            #   und genau die anderen nicht.
+            if not klein.endswith(DOKUMENTENDUNGEN):
                 continue
             voll = os.path.join(wurzel, d)
             sl, ab = _schluessel_der_datei(wurzel, d)
+            if sl:
+                # WIEDERFINDEN gilt fuer jedes Dokument ...
+                PDFS_ABDRUCK.setdefault(ab, sl)
+            if not klein.endswith(".pdf"):
+                # ... ANZEIGEN nur fuer PDF: Nur sie hat Seiten, auf die ein
+                # Beleg springen kann. Ein Eintrag in PDFS ohne Datei
+                # brächte den Sprung ins Leere.
+                continue
             if sl:
                 # ⭐ Der Schluessel ist eindeutig - hier gibt es kein
                 #   "erster Fund gewinnt" mehr. Genau das war der Schaden:
@@ -2685,12 +2715,12 @@ def pdfs_einlesen():
                 #   oeffnete die gleichnamige Datei eines anderen Kunden.
                 PDFS[sl] = voll
                 PDFS_GRUND.setdefault(_grundform(sl), sl)
-                PDFS_ABDRUCK[ab] = sl
-            # ⚠ UEBERGANGSSTUETZE bis zum Ende des Neu-Einlesens: Der nackte
-            #   Name bleibt aufloesbar, damit die Dokumente aus der Zeit vor
-            #   dem Umbau waehrend der 12,7 Stunden nicht unauffindbar werden.
-            #   Wann sie weg darf, sagt nur_ueber_altweg() - und die Pruefung
-            #   in schluesselwege_test.py wird von selbst rot, sobald die
+            # ⚠ UEBERGANGSSTUETZE bis zum Ende des Neu-Einlesens: Der
+            #   nackte Name bleibt aufloesbar, damit die Dokumente aus der
+            #   Zeit vor dem Umbau waehrend der 12,7 Stunden nicht
+            #   unauffindbar werden. Wann sie weg darf, sagt
+            #   nur_ueber_altweg() - und die Pruefung in
+            #   schluesselwege_test.py wird von selbst rot, sobald die
             #   Stuetze unbegruendet ist.
             PDFS.setdefault(d[:-4], voll)
             PDFS_GRUND.setdefault(_grundform(d[:-4]), d[:-4])
@@ -4211,6 +4241,29 @@ def _themenfremde_nennungen_tilgen(text):
 
 
 _NAME_VOR_SEITE = re.compile(r"([^\s(\[\],;]{1,240})$")
+
+
+_WERKZEUGMARKE = re.compile(
+    r"^[ \t]*\[\s*Tool\s*:[^\]\n]{1,60}\]\s*$", re.M)
+
+
+def _werkzeugmarken_entfernen(text):
+    """Zeilen wie "[Tool: seiten_lesen]" aus der Antwort nehmen.
+
+    \u26d4 Die schreibt das MODELL, nicht die Anlage - gesucht wurde am
+      22.09. zuerst im eigenen Quelltext, dort steht nichts dergleichen.
+      Qwen und Gemma stellen ihren Werkzeugaufruf gelegentlich zusaetzlich
+      als Text in die Antwort. Fuer den Leser ist das Innenleben, das ihn
+      nichts angeht.
+
+    \u26a0 Entfernt wird nur eine Zeile, die AUSSCHLIESSLICH aus der Marke
+      besteht. Steht sie mitten in einem Satz, bleibt sie stehen - dann ist
+      sie Teil einer Aussage, und stillschweigend Text aus einer Antwort zu
+      schneiden waere schlimmer als eine haessliche Zeile.
+    """
+    if not text or "[Tool" not in text:
+        return text
+    return re.sub(r"\n{3,}", "\n\n", _WERKZEUGMARKE.sub("", text)).strip()
 
 
 def mit_verweisen(text, pruefungen=None, quellen=None):
@@ -7789,7 +7842,7 @@ class Griff(BaseHTTPRequestHandler):
                 continue
             _gesehen.add(_k)
             _zeilen.append(_z)
-        text = "\n".join(_zeilen)
+        text = _werkzeugmarken_entfernen("\n".join(_zeilen))
         # ---- Jede Aussage mit Seitenangabe gegen die Seite pruefen --------
         # Gemessen 26.08.: Das Modell schrieb "die Klemmung erhoeht die
         # Lebensdauer (DS-24-005, S. 12)" - erfunden, Gegenteil der Arbeit.

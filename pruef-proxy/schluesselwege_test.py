@@ -1172,6 +1172,83 @@ def test_klammer_kennt_anzeigetitel():
            "mehrdeutiger Anzeigetitel waehlt KEINES aus, ist %r" % (d3,))
 
 
+def test_index_kennt_alle_dokumente():
+    """Excel, Text und Word gehoeren ins Abdruckverzeichnis.
+
+    \u26d4 Gemessen am 22.09. am laufenden System: pdfs_einlesen() lief nur
+      ueber .pdf-Dateien. Ein Excel-, Text- oder Word-Dokument stand damit
+      in keinem Abdruckverzeichnis - mit drei Folgen auf einmal:
+
+        1. nur_altweg zaehlte es als "Dokument ohne Abdruck". Der Zaehler
+           erreicht so NIE die Null und taugt nicht mehr als Abschaltsignal
+           fuer die Uebergangsstuetze.
+        2. bestand._anzeige() konnte den Namen nicht kuerzen - in der
+           Fusszeile stand der volle Schluessel statt des lesbaren Titels.
+        3. Die Belegklammer fand das Dokument nicht: "nicht belegt",
+           obwohl die Aussage woertlich darin steht.
+
+      Ein Fehler, drei Erscheinungsformen. In der Antwort vom 22.09. waren
+      genau die PDF verlinkt und genau die anderen nicht.
+
+    \u26a0 PDFS (Schluessel -> Dateipfad) bleibt PDF-only: Nur eine PDF hat
+      Seiten, auf die ein Beleg springen kann. Getrennt wird also das
+      WIEDERFINDEN (alle Dokumente) vom ANZEIGEN (nur PDF).
+    """
+    import schluessel
+    import pruef_proxy as p
+    print("\nIndex kennt alle Dokumente")
+
+    ordner = os.path.join(BAUM, "zz-alle", "archiv", "KundeX")
+    os.makedirs(ordner, exist_ok=True)
+    dateien = {"Bericht.pdf": b"%PDF-1.4\nA\n",
+               "Kennwerte.xlsx": b"PK\x03\x04xlsx",
+               "Liste.txt": "Sperrfrist 14 Tage\n".encode("utf-8"),
+               "Notiz.docx": b"PK\x03\x04docx",
+               "Foto.jpg": b"\xff\xd8\xff\xe0JFIF"}
+    for name, inhalt in dateien.items():
+        with open(os.path.join(ordner, name), "wb") as fh:
+            fh.write(inhalt)
+    p.pdfs_einlesen()
+
+    def abdruck(name):
+        return schluessel.fingerabdruck(
+            schluessel.kennpfad("zz-alle", "archiv/KundeX/" + name))
+
+    # \u2b50 Die Zusicherung: jedes DOKUMENT steht im Abdruckverzeichnis.
+    for name in ("Bericht.pdf", "Kennwerte.xlsx", "Liste.txt", "Notiz.docx"):
+        pruefe(abdruck(name) in p.PDFS_ABDRUCK,
+               "%-14s steht im Abdruckverzeichnis" % name)
+
+    # \u26d4 Gegenprobe 1: Ein Foto ist kein Dokument und gehoert NICHT
+    #   hinein - sonst waere die Zusicherung oben auch dann gruen, wenn
+    #   einfach jede Datei aufgenommen wird.
+    pruefe(abdruck("Foto.jpg") not in p.PDFS_ABDRUCK,
+           "ein Foto steht NICHT im Abdruckverzeichnis")
+
+    # \u26d4 Gegenprobe 2: PDFS bleibt PDF-only. Nur eine PDF hat Seiten,
+    #   auf die ein Beleg springen kann; ein Eintrag ohne Datei brächte den
+    #   Belegsprung ins Leere.
+    sch_x = schluessel.schluessel("zz-alle", "archiv/KundeX/Kennwerte.xlsx")
+    sch_p = schluessel.schluessel("zz-alle", "archiv/KundeX/Bericht.pdf")
+    pruefe(sch_p in p.PDFS, "die PDF hat einen Dateipfad")
+    pruefe(sch_x not in p.PDFS,
+           "die Excel-Tabelle hat KEINEN Dateipfad - sie hat keine Seiten")
+
+    # \u2b50 Und die Folge, um die es eigentlich geht: der Name laesst sich
+    #   kuerzen, also findet die Belegklammer das Dokument wieder.
+    import bestand
+    bestand.bereiche_setzen(["zz-alle", "kap", "auw"])
+    bestand.abdruecke_setzen(p.PDFS_ABDRUCK)
+    roh = sch_x[:-5].replace("--", "-") + ".md"
+    pruefe(bestand._anzeige(roh) == "KundeX-Kennwerte",
+           "der Name der Excel-Tabelle wird gekuerzt, ist %r"
+           % bestand._anzeige(roh))
+    nt, na, karte = p._belegverzeichnis([roh])
+    dok, _l = p._beleg_dokument("KundeX-Kennwerte", nt, na, karte)
+    pruefe(dok is not None,
+           "die Belegklammer findet die Excel-Tabelle, ist %r" % (dok,))
+
+
 def main():
     baum_bauen()
     pruefungen = [test_index, test_pdfstelle, test_belegvorrat,
@@ -1186,7 +1263,8 @@ def main():
                   test_trennzeichen_egal,
                   test_belegsprung,
                   test_zitatpruefung_umlaute,
-                  test_klammer_kennt_anzeigetitel]
+                  test_klammer_kennt_anzeigetitel,
+                  test_index_kennt_alle_dokumente]
     try:
         for t in pruefungen:
             t()
