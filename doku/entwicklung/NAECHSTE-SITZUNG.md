@@ -315,57 +315,78 @@ KAP.
 
 ## 3f - AUFTRAG: Die Art eines Dokuments (offen, nach dem KAP-Lauf)
 
-**Emrach am 22.09.:** *"In den Mails sind Woerter wie 'Prozessimulation'
-drin. Mein Bedenken ist, dass das RAG-System auf die Frage 'wie sieht eine
-Prozessimulation aus' dann diese Mails zitiert. Die KI braucht irgendwie
-einen Sinnesverstand."*
+⭐ **Nachgeschaerft am 22.09., abends.** Die Entscheidung ist gefallen und
+sie lautet **nicht** "Mails aussortieren", sondern:
 
-**Warum das kein Modellproblem ist.** Das Modell sieht nie den Bestand,
-sondern acht Textstuecke. In einem steht *"die Prozessimulation haben wir
-mit 240 Grad gerechnet, passt so"*. Dass das eine interne Mail von Dienstag
-ist, steht nicht dabei. Kein Modell kann unterscheiden, was ihm niemand
-mitteilt - das ist eine Frage der Information, nicht der Klugheit.
+> **Die Mails werden aufgenommen. In der Antwort steht, WOHER die Auskunft
+> kommt** - "aus diesem Dokument", "aus der E-Mail vom ...".
 
-**Drei Teile, in dieser Reihenfolge:**
+Das ist die bessere Loesung, weil der Wert der Mails gerade in dem liegt,
+was nur dort steht: Absprachen, Rueckfragen, Zusagen. Wer sie aussortiert,
+verliert den Zusammenhang eines Auftrags. Wer sie ohne Kennzeichnung
+aufnimmt, bekommt eine Absprache als Spezifikation serviert.
 
-1. **Art bestimmen.** Aus dem Pfad, den der Schluessel seit Teil 3 traegt:
-   `.../Angebote/...` -> Angebot, `.../Pruefberichte/...` -> Pruefbericht,
-   `.msg` -> Korrespondenz. `bestand.art_von()` gibt es schon, leitet die
-   Art aber aus einer KENNUNG ab (`DS-24-005`) - fuer Pfadbestaende fehlt
-   das Gegenstueck.
-2. **Art mitschicken.** Sie muss IM Textstueck stehen, das beim Modell
-   ankommt (`[Korrespondenz - Kunde X - 2024]`). Ohne das nuetzt die beste
-   Erkennung nichts.
-3. **Regel im Bereichsprompt.** Fachliche Aussagen nur aus Fachunterlagen;
-   Korrespondenz fuer Absprachen und Entscheidungen, gekennzeichnet. Und:
-   Steht eine fachliche Aussage NUR in Korrespondenz, sagt die Anlage das -
-   statt die Mail zu zitieren, als waere sie eine Spezifikation.
+Der Unterschied liegt also nicht im Bestand, sondern im **Beleg**:
 
-⚠ **Stumpf bauen, nicht auf Urteilskraft setzen.** Gemma und Qwen befolgen
-"waege die Belastbarkeit der Quelle ab" unzuverlaessig, eine mechanische
-Regel ("steht [Korrespondenz] davor, kennzeichne es") zuverlaessig.
+```
+❌ "Die Prozesstemperatur betraegt 240 °C (Dokument, S. 1)."
+✅ "Laut E-Mail vom 14.03. an Herrn X wurden 240 °C abgesprochen -
+     eine Absprache, keine Spezifikation."
+```
 
-⭐ **Pruefbar erst mit echter Korrespondenz.** An erfundenen Mails sieht man
-nicht, ob die Regel im Alltag traegt. Deshalb: erst der KAP-Lauf ohne
-Mails, dann bauen, dann die 65 hereinholen - dieselben Dateien, dieselben
-Schluessel, kein zweiter 12,7-Stunden-Lauf.
+### Warum das kein Modellproblem ist
 
-### Weiter gedacht (Emrach, 22.09.): ganze Postfaecher
+Das Modell sieht nie den Bestand, sondern acht Textstuecke. In einem steht
+*"die Prozessimulation haben wir mit 240 Grad gerechnet, passt so"*. Dass
+das eine interne Mail von Dienstag ist, steht nicht dabei. Kein Modell kann
+unterscheiden, was ihm niemand mitteilt - eine Frage der Information, nicht
+der Klugheit.
 
-*"Mitarbeiter, die das Unternehmen verlassen - deren Postfaecher werden
-vielleicht mal eingespeist, damit der Nachfolger Kontext und Absprachen
-kennt, falls kein vernuenftiger Uebergabe stattfand."*
+### Vier Teile, in dieser Reihenfolge
 
-⛔ Das aendert den Zuschnitt und gehoert VOR dem Bau bedacht, nicht danach:
+1. **Art bestimmen.** Aus dem Pfad, den der Schluessel seit Teil 3 traegt
+   (`.../Angebote/...` → Angebot, `.../Pruefberichte/...` → Pruefbericht)
+   und aus der Endung (`.msg`, `.eml` → Korrespondenz).
+   ⚠ `bestand.art_von()` gibt es schon, leitet die Art aber aus einer
+   KENNUNG ab (`DS-24-005`) - fuer Pfadbestaende fehlt der Weg.
 
-- Aus 65 Mails werden dann Zehntausende. Die Art allein reicht nicht -
-  es braucht **Faeden** (Betreff, Verlauf) und ein **Datum**, sonst
-  zitiert die Anlage die verworfene Zwischenfassung statt der Absprache.
-- Ein Postfach enthaelt **Privates und Personenbezogenes**. Das ist keine
-  Aufraeumfrage, sondern eine Rechtsfrage (Betriebsrat, DSGVO,
-  Zweckbindung) - und sie ist vor der Technik zu klaeren.
-- **Anhaenge** sind eigene Dokumente. Ohne Regel dafuer liegt dasselbe
-  Angebot dreimal im Bestand: im Ordner, in der Mail, im Anhang.
+2. **Absender und Datum aus der Mail holen.** Ohne beides ist "aus der
+   E-Mail vom ..." nicht schreibbar. Tika liefert die Kopfzeilen mit; sie
+   muessen als Metadaten am Dokument haengen, nicht nur im Fliesstext
+   stehen.
+
+3. **Den Beleg die Art nennen lassen.** Nicht "(Dokument, S. 1)", sondern
+   "(E-Mail vom 14.03.)". Die Belegklammer kennt den Anzeigetitel seit dem
+   22.09. - hier kommt die Art daneben.
+
+4. **Die Rangfolge im Prompt.** Widersprechen sich Korrespondenz und
+   Fachunterlage, gewinnt die Fachunterlage - und die Antwort sagt, dass es
+   einen Widerspruch gibt. Eine Mail darf eine Spezifikation ERGAENZEN,
+   nie ERSETZEN.
+
+### ⛔ Was bis dahin gilt
+
+Die Positivliste laesst `.msg`/`.eml` weiterhin in die Aussortierstufe
+laufen - **mit Begruendung und ohne Verlust**. Gemessen am 21.09.: Der
+Schluessel ist auf jeder Stufe derselbe, die Zuordnung zu Kunde und Auftrag
+bleibt erhalten. Die Mails sind also **spaeter nachholbar, ohne den
+12,7-Stunden-Lauf zu wiederholen**.
+
+⭐ Deshalb die Empfehlung fuer den KAP-Lauf: **erst ohne Mails laufen
+lassen.** Kaemen die 65 `.msg` ohne die Herkunftsangabe mit hinein,
+entstuende genau der Fehler, gegen den dieser Auftrag gebaut wird - und der
+waere dann im Bestand, nicht nur in der Antwort.
+
+### Weiter gedacht: Postfaecher ausscheidender Mitarbeiter
+
+Laengerfristig sollen ganze Postfaecher eingespeist werden koennen, damit
+ein Nachfolger Kontext und Absprachen kennt, wenn die Uebergabe knapp war.
+Dann wird aus der Herkunftsangabe eine Pflicht: Bei tausenden Mails ist
+"woher kommt das" die einzige Bremse gegen falsche Sicherheit.
+
+⛔ **Vorher zu klaeren, nicht nebenbei:** Ein Postfach enthaelt
+Privates, Personalangelegenheiten und Mails Dritter. Das ist eine Frage
+fuer Datenschutz und Betriebsrat, keine technische.
 
 ## 3e - Teil 3: GEBAUT und am laufenden System belegt (Stand 22.09.)
 
