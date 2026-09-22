@@ -4665,13 +4665,26 @@ def _belegverzeichnis(namen):
       zieht das doppelte Trennzeichen zu einem zusammen. Der Abdruck
       uebersteht das, der lesbare Teil nicht - genau dafuer gibt es ihn.
     """
-    nach_titel, nach_abdruck = {}, {}
+    nach_titel, nach_abdruck, lesbar = {}, {}, {}
     for roh in (namen or []):
         nach_titel[assistent._titel_saubern(roh).strip().lower()] = roh
         a = schluessel.abdruck_finden(schluessel.ohne_uuid(roh), PDFS_ABDRUCK)
         if a:
             nach_abdruck.setdefault(a, roh)
-    return nach_titel, nach_abdruck
+        lesbar[roh] = _anzeigename(roh)
+    # \u26d4 Mehrdeutige Anzeigenamen kommen NICHT vor. Zwei verschiedene
+    #   Pfade koennen denselben lesbaren Titel ergeben ("Angebot 2024/x"
+    #   und "Angebot/2024 x") - dann zeigte ein Sprung auf das falsche
+    #   Dokument, und das ist genau die Kollisionsklasse, die dieser Umbau
+    #   beseitigt. In dem Fall bleibt der volle Name stehen: laenger, aber
+    #   eindeutig.
+    haeufig = {}
+    for t in lesbar.values():
+        haeufig[t] = haeufig.get(t, 0) + 1
+    for roh, t in list(lesbar.items()):
+        if haeufig[t] > 1:
+            lesbar[roh] = assistent._titel_saubern(roh)
+    return nach_titel, nach_abdruck, lesbar
 
 
 def _lesbarer_klammertitel(abdruck, roh):
@@ -4689,7 +4702,19 @@ def _lesbarer_klammertitel(abdruck, roh):
         return assistent._titel_saubern(roh)
 
 
-def _beleg_dokument(geschrieben, nach_titel, nach_abdruck):
+def _anzeigename(dok):
+    """Der Titel, der in der Antwort STEHT - EINE Quelle fuer alle Stellen.
+
+    \u26d4 Die Belegklammer und der Sprung muessen denselben Namen benutzen.
+      Am 22.09. taten sie es nicht: Die Klammer trug den lesbaren Titel,
+      verlinken_mehrfach suchte weiter den vollen. Die Seite wurde geprueft,
+      die Fusszeile meldete "Quelle:" - und der Sprung fiel lautlos heraus.
+    """
+    a = schluessel.abdruck_finden(schluessel.ohne_uuid(dok), PDFS_ABDRUCK)
+    return _lesbarer_klammertitel(a, dok)
+
+
+def _beleg_dokument(geschrieben, nach_titel, nach_abdruck, lesbar=None):
     """Welches Dokument meint eine Belegklammer? (name, lesbar) oder (None, None).
 
     \u2b50 Der ABDRUCK zuerst. Gemessen am 22.09. an zwei Modellen: In der
@@ -4706,11 +4731,12 @@ def _beleg_dokument(geschrieben, nach_titel, nach_abdruck):
     a = schluessel.abdruck_finden(k, nach_abdruck)
     if a:
         roh = nach_abdruck[a]
-        return assistent._titel_saubern(roh), _lesbarer_klammertitel(a, roh)
+        return (assistent._titel_saubern(roh),
+                (lesbar or {}).get(roh) or _lesbarer_klammertitel(a, roh))
     if k.lower() in nach_titel:
         roh = nach_titel[k.lower()]
         return (assistent._titel_saubern(roh),
-                _lesbarer_klammertitel(None, roh))
+                (lesbar or {}).get(roh) or _lesbarer_klammertitel(None, roh))
     if _KENNUNG_KLAMMER.fullmatch(k):
         return k, k
     return None, None
@@ -7740,13 +7766,13 @@ class Griff(BaseHTTPRequestHandler):
         # bleibt die Aussage stehen, aber als "nicht belegt" markiert.
         unbelegt = 0
         belegt_z = 0
-        _nach_titel, _nach_abdruck = _belegverzeichnis(namen)
+        _nach_titel, _nach_abdruck, _lesbar = _belegverzeichnis(namen)
 
         def _beleg(m):
             nonlocal unbelegt, belegt_z
             n = int(m.group(2))
             k, lesbar = _beleg_dokument(m.group(1), _nach_titel,
-                                        _nach_abdruck)
+                                        _nach_abdruck, _lesbar)
             if not k:
                 return m.group(0)          # Klammertext, kein Dokument des Bereichs
             anfang = max(text.rfind(x, 0, m.start()) for x in (". ", "\n", "! ", "? ", "• ", "- "))
@@ -7769,7 +7795,10 @@ class Griff(BaseHTTPRequestHandler):
             sch = _pdf_schluessel(dok)
             if sch:
                 try:
-                    beruehrt[assistent._titel_saubern(dok)] = (sch, _seitentexte_pdf(sch) or [])
+                    # \u2b50 DERSELBE Name wie in der Klammer - sonst
+                    #   findet verlinken_mehrfach ihn im Text nicht.
+                    beruehrt[_lesbar.get(dok) or _anzeigename(dok)] = (
+                        sch, _seitentexte_pdf(sch) or [])
                 except Exception:
                     pass
         ok = nein = 0

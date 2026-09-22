@@ -803,6 +803,46 @@ sein Ende. Beide Fälle stehen als Gegenprobe im Test.
 
 ---
 
+## 20 · Klammer und Sprung benutzten zwei verschiedene Namen (22.09.2026, BEHOBEN)
+
+**Der dritte Anlauf am selben Tag** — und der Fehler war diesmal von mir
+selbst eingebaut, in §18.
+
+**Symptom.** Die Klammer stand richtig da: `(KundeAlpha-Pruefbericht, S. 1)`.
+Die Fußzeile meldete **`Quelle:`** statt `durchsucht:`, die Seitenprüfung war
+also durchgelaufen. Trotzdem kein anklickbarer Sprung.
+
+**Ursache.** Zwei Stellen, zwei Namen:
+
+| Stelle | Name |
+|---|---|
+| `_beleg()` schreibt in den Text | **lesbarer Titel** (seit §18) |
+| `fadenfrage.verlinken_mehrfach()` sucht im Text | **voller Name** |
+
+Beide für sich richtig — nur nicht miteinander. Der Sprung fiel lautlos
+heraus. ⭐ Genau die Fehlerklasse, die dieses Projekt kennt: Nicht eine
+Funktion ist falsch, sondern zwei Funktionen sind sich uneinig.
+
+**Lösung.** `_anzeigename()` ist jetzt die **eine** Quelle für beide Stellen.
+`_belegverzeichnis()` bildet die Karte einmal, die Klammer schreibt daraus,
+und `beruehrt` wird damit geschlüsselt.
+
+⛔ **Und die Falle in dieser Lösung, die der Plan schon kannte:** Zwei
+verschiedene Pfade können denselben lesbaren Titel ergeben —
+`Angebot 2024/Blatt.pdf` und `Angebot/2024 Blatt.pdf` werden beide zu
+`Angebot-2024-Blatt`. Dann zeigte ein Sprung auf das falsche Dokument, und
+das ist **genau die Kollisionsklasse, die dieser Umbau beseitigt**. Bei
+Mehrdeutigkeit bleibt deshalb der volle Name stehen: länger, aber eindeutig.
+Der Fall steht als Prüfung im Test, mit beiden Dateien wirklich angelegt.
+
+⚠ **Was diese Prüfung NICHT abdeckt:** die Verdrahtung im Aufrufer selbst —
+er sitzt tief in einem HTTP-Griff und ist ohne Server nicht aufrufbar.
+Abgesichert ist stattdessen der Vertrag: Es gibt **eine** Funktion, die den
+Anzeigenamen bildet, und die Prüfung hält fest, dass Klammer und Sprung von
+derselben Karte ausgehen.
+
+---
+
 ## Offen / vor einer Vermarktung zu klären
 
 - **Erste vollständige Installation von null** auf der Zielumgebung — erst damit

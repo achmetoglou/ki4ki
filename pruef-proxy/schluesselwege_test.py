@@ -855,7 +855,7 @@ def test_belegklammer():
     im_bereich = meins[:-4].replace("--", "-") + ".md"
     pruefe("--" not in im_bereich,
            "Vorbedingung: der Name im Arbeitsbereich hat nur EIN Trennzeichen")
-    nach_titel, nach_abdruck = p._belegverzeichnis([im_bereich])
+    nach_titel, nach_abdruck, _karte = p._belegverzeichnis([im_bereich])
 
     # \u2b50 Die Zusicherung: der nackte Abdruck genuegt.
     dok, lesbar = p._beleg_dokument(abdruck_b, nach_titel, nach_abdruck)
@@ -954,6 +954,90 @@ def test_trennzeichen_egal():
     bestand.abdruecke_setzen(p.PDFS_ABDRUCK)
 
 
+def test_belegsprung():
+    """Aus der geprueften Klammer wird ein anklickbarer Sprung.
+
+    \u26d4 Gemessen am 22.09. am laufenden System: Die Klammer stand richtig
+      da - "(KundeAlpha-Pruefbericht, S. 1)" - und die Fusszeile meldete
+      "Quelle:", also war die Seitenpruefung durch. Trotzdem kein Link:
+      verlinken_mehrfach sucht den VOLLEN Namen, im Text steht der lesbare.
+      Zwei Stellen, zwei Namen - und dazwischen faellt der Sprung heraus.
+    """
+    from urllib.parse import quote
+    import schluessel
+    import bestand
+    import fadenfrage
+    import pruef_proxy as p
+    print("\nBelegsprung entsteht")
+    bestand.bereiche_setzen(["kap", "auw", "wissensdatenbank"])
+
+    ordner = os.path.join(BAUM, "kap", "archiv", "KundeQ")
+    os.makedirs(ordner, exist_ok=True)
+    with open(os.path.join(ordner, "Angebot.pdf"), "wb") as fh:
+        fh.write(b"%PDF-1.4\nQ\n")
+    p.pdfs_einlesen()
+    sch = schluessel.schluessel("kap", "archiv/KundeQ/Angebot.pdf")
+    roh = sch[:-4].replace("--", "-") + ".md"
+
+    lesbar = p._anzeigename(roh)
+    pruefe(lesbar == "KundeQ-Angebot",
+           "der Anzeigename ist kurz und lesbar, ist %r" % lesbar)
+
+    # \u2b50 Die eigentliche Zusicherung: Was die Klammer SCHREIBT und wovon
+    #   der Sprung ausgeht, ist DERSELBE Name. Genau das stimmte am 22.09.
+    #   nicht - beide Stellen waren fuer sich richtig, nur nicht miteinander.
+    _nt, _na, karte = p._belegverzeichnis([roh])
+    abdruck = schluessel.fingerabdruck(
+        schluessel.kennpfad("kap", "archiv/KundeQ/Angebot.pdf"))
+    _dok, aus_klammer = p._beleg_dokument(abdruck, _nt, _na, karte)
+    pruefe(aus_klammer == karte.get(roh),
+           "Klammer und Sprung gehen vom selben Namen aus (%r / %r)"
+           % (aus_klammer, karte.get(roh)))
+
+    seiten = ["Die Zugfestigkeit betraegt 412 MPa."]
+    text = "Ergebnis (%s, S. 1)." % karte[roh]
+    aus, ok, nein = fadenfrage.verlinken_mehrfach(text, {lesbar: (sch, seiten)})
+    ziel = "/stelle?dok=" + quote(sch, safe="")
+    pruefe(ziel in aus, "es entsteht ein Sprung auf DAS Dokument, ist %r"
+           % aus[-70:])
+    pruefe("seite=1" in aus, "und auf die gepruefte Seite")
+
+    # \u26d4 Gegenprobe: Mit dem VOLLEN Namen als Schluessel - so stand es bis
+    #   zum 22.09. - entsteht kein Sprung. Ohne diese Zeile waere die obige
+    #   auch dann gruen, wenn verlinken_mehrfach einfach alles verlinkt.
+    aus2, _o, _n = fadenfrage.verlinken_mehrfach(
+        text, {assistent_titel(roh): (sch, seiten)})
+    pruefe("/stelle?dok=" not in aus2,
+           "Gegenprobe: mit dem vollen Namen als Schluessel entsteht keiner")
+
+    # \u26d4 Und die Falle, die der Plan schon kannte: Zwei verschiedene Pfade
+    #   koennen denselben lesbaren Titel ergeben. Dann darf NICHT gekuerzt
+    #   werden - sonst zeigte ein Sprung auf das falsche Dokument, und das
+    #   ist genau die Kollisionsklasse, die dieser Umbau beseitigt.
+    for unter in ("Angebot 2024/Blatt.pdf", "Angebot/2024 Blatt.pdf"):
+        voll = os.path.join(BAUM, "kap", "archiv", *unter.split("/"))
+        os.makedirs(os.path.dirname(voll), exist_ok=True)
+        with open(voll, "wb") as fh:
+            fh.write(b"%PDF-1.4\n" + unter.encode("utf-8") + b"\n")
+    p.pdfs_einlesen()
+    zwei = [schluessel.schluessel("kap", "archiv/Angebot 2024/Blatt.pdf"),
+            schluessel.schluessel("kap", "archiv/Angebot/2024 Blatt.pdf")]
+    pruefe(zwei[0] != zwei[1], "Vorbedingung: zwei verschiedene Schluessel")
+    kurz = [p._anzeigename(z) for z in zwei]
+    pruefe(kurz[0] == kurz[1],
+           "Vorbedingung: beide ergeben denselben lesbaren Titel (%r)" % kurz[0])
+
+    _nt, _na, karte = p._belegverzeichnis(zwei)
+    pruefe(karte[zwei[0]] != karte[zwei[1]],
+           "bei Mehrdeutigkeit bleibt der VOLLE Name stehen, ist %r / %r"
+           % (karte[zwei[0]][-24:], karte[zwei[1]][-24:]))
+
+
+def assistent_titel(n):
+    import assistent
+    return assistent._titel_saubern(n)
+
+
 def main():
     baum_bauen()
     pruefungen = [test_index, test_pdfstelle, test_belegvorrat,
@@ -965,7 +1049,8 @@ def main():
                   test_umlautdeckung,
                   test_leere_eingangsordner,
                   test_belegklammer,
-                  test_trennzeichen_egal]
+                  test_trennzeichen_egal,
+                  test_belegsprung]
     try:
         for t in pruefungen:
             t()
