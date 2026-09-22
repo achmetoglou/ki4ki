@@ -7863,6 +7863,23 @@ class Griff(BaseHTTPRequestHandler):
             satz = text[anfang + 1:m.start()].strip(" *:„“\"")
             if len(satz) < 25:
                 return m.group(0)
+            # ⛔ Ohne Original mit Seiten ist die Aussage NICHT pruefbar -
+            #   und dann darf die Anlage auch nicht behaupten, sie sei
+            #   nicht belegt. "nicht belegt" heisst "steht so nicht in der
+            #   Quelle"; zutreffend waere hier nur "ich kann es nicht
+            #   nachschlagen". Eine Tabelle und eine Textdatei haben keine
+            #   Seiten. Gemessen 22.09.: Bei der Excel-Tabelle stand
+            #   dreimal "nicht belegt", obwohl die Zahl woertlich darin
+            #   steht - das hat den Leser zu Recht irritiert.
+            #
+            #   Dieselbe Haltung wie in _dok_hat_aussage: Unpruefbar heisst
+            #   schweigen, nicht verurteilen.
+            try:
+                _unbenutzt, _seiten_da = _seitentexte_von(k)
+            except Exception:
+                _seiten_da = []
+            if not _seiten_da:
+                return m.group(0)
             try:
                 seite = _verifizierte_seite(k, satz, bevorzugt=n)
             except Exception:

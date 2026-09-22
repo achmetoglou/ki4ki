@@ -1249,6 +1249,59 @@ def test_index_kennt_alle_dokumente():
            "die Belegklammer findet die Excel-Tabelle, ist %r" % (dok,))
 
 
+def test_sprung_nur_wenn_es_eine_seite_gibt():
+    """Ein Sprung entsteht nur, wenn die Seite wirklich existiert.
+
+    \u26d4 Gemessen am 22.09. am laufenden System: Seit die Nicht-PDF im
+      Abdruckverzeichnis stehen, fand die Klammer auch eine Textdatei - und
+      verlinkte sie auf die PDF-Ansicht. Der Klick landete auf
+      "Dieses Dokument liegt nicht vor". Ein toter Link ist schlimmer als
+      gar keiner: Er verspricht einen Nachweis und liefert eine
+      Fehlermeldung.
+
+    \u2b50 Und der Sprung nimmt die Aussage mit. Ohne `zitat=` oeffnet er
+      die richtige Seite OHNE gelbe Markierung - der Leser sucht die Stelle
+      dann selbst.
+    """
+    from urllib.parse import quote
+    import fadenfrage
+    print("\nSprung nur mit echter Seite")
+
+    seiten = ["Die Zugfestigkeit betraegt 344 MPa. Glasuebergang 151 Grad."]
+    text = "Die Zugfestigkeit liegt bei 344 MPa (Charge-9, S. 1)."
+
+    aus, _o, _n = fadenfrage.verlinken_mehrfach(
+        text, {"Charge-9": ("kap-Charge-9--ab12cd34ef.pdf", seiten)})
+    pruefe("/stelle?dok=" in aus, "mit Seite entsteht ein Sprung")
+    pruefe("zitat=" in aus,
+           "und er nimmt die Aussage mit (gelbe Markierung), ist %r"
+           % aus[-90:])
+
+    # \u26d4 Die Zusicherung, um die es geht: OHNE Seiten kein Sprung.
+    ohne, _o, _n = fadenfrage.verlinken_mehrfach(
+        text, {"Charge-9": ("kap-Liste--ab12cd34ef.txt", [])})
+    pruefe("/stelle?dok=" not in ohne,
+           "ohne Seiten entsteht KEIN Sprung, ist %r" % ohne[-70:])
+    pruefe(ohne == text, "und der Text bleibt unveraendert")
+
+    # \u26d4 Eine Seitenzahl ueber den Bestand hinaus ebenso wenig.
+    zu_hoch, _o, _n = fadenfrage.verlinken_mehrfach(
+        "Aussage (Charge-9, S. 7).",
+        {"Charge-9": ("kap-Charge-9--ab12cd34ef.pdf", seiten)})
+    pruefe("/stelle?dok=" not in zu_hoch,
+           "Seite 7 von 1 ergibt keinen Sprung")
+
+    # \u26d4 Gegenprobe: Das woertliche Zitat muss weiterhin verlinkt werden -
+    #   sonst waere alles oben auch dann gruen, wenn gar nichts mehr
+    #   verlinkt wird.
+    zitat = ('Es gilt \u201eDie Zugfestigkeit betraegt 344 MPa.\u201c '
+             '(Charge-9, S. 1).')
+    mit, ok, _n = fadenfrage.verlinken_mehrfach(
+        zitat, {"Charge-9": ("kap-Charge-9--ab12cd34ef.pdf", seiten)})
+    pruefe("/stelle?dok=" in mit and ok == 1,
+           "das woertliche Zitat wird weiterhin verlinkt (ok=%d)" % ok)
+
+
 def main():
     baum_bauen()
     pruefungen = [test_index, test_pdfstelle, test_belegvorrat,
@@ -1264,7 +1317,8 @@ def main():
                   test_belegsprung,
                   test_zitatpruefung_umlaute,
                   test_klammer_kennt_anzeigetitel,
-                  test_index_kennt_alle_dokumente]
+                  test_index_kennt_alle_dokumente,
+                  test_sprung_nur_wenn_es_eine_seite_gibt]
     try:
         for t in pruefungen:
             t()

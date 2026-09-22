@@ -291,7 +291,15 @@ def szenario_15_vergleich():
     seitenA = ["", "Becker: Die Steifigkeit sinkt um 12 %."]; seitenB = ["", "Müller: Die Steifigkeit steigt um 5 %."]
     roh = 'Tabelle | Steifigkeit | „Die Steifigkeit sinkt um 12 %“ (DS-24-005, S. 2) | „Die Steifigkeit steigt um 5 %“ (DS-23-005, S. 2) |\nEinordnung (DS-24-005, S. 2).'
     text, ok, nein = fadenfrage.verlinken_mehrfach(roh, {"DS-24-005": ("DS-24-005", seitenA), "DS-23-005": ("DS-23-005", seitenB)})
-    pruefe(ok == 2 and nein == 0 and "dok=DS-23-005&seite=2" in text and "[DS-24-005, S. 2](/stelle?dok=DS-24-005&seite=2)" in text, "beide Dokumente verlinkt, Zitate geprueft (ok=%d)" % ok)
+    # Der schlichte Verweis traegt seit dem 22.09. zusaetzlich die Aussage
+    # als zitat= mit, damit die Stelle im Original gelb markiert wird. Hier
+    # wird deshalb der ANFANG der Adresse geprueft und getrennt, dass die
+    # Fundstelle mitkommt - nicht mehr die Adresse woertlich.
+    pruefe(ok == 2 and nein == 0 and "dok=DS-23-005&seite=2" in text
+           and "[DS-24-005, S. 2](/stelle?dok=DS-24-005&seite=2" in text,
+           "beide Dokumente verlinkt, Zitate geprueft (ok=%d)" % ok)
+    pruefe("&seite=2&zitat=" in text,
+           "der schlichte Verweis nimmt die Aussage fuer die Markierung mit")
     a = fadenfrage.vergleichs_auftrag("Vergleiche", "Methodik", ("DS-24-005", "Becker", [2], seitenA), ("DS-23-005", "Müller", [2], seitenB), modus="widerspruch")
     pruefe("DOKUMENT DS-24-005" in a and "DOKUMENT DS-23-005" in a and "WIDERSPRUCH" in a, "Widerspruchs-Auftrag enthaelt beide Dokumente")
     pruefe(fadenfrage.uebersichtsseiten(["Deckblatt", "1 Einleitung " * 20, "Text " * 30, "7 Zusammenfassung " * 10]) == [2, 4], "Uebersichtsseiten: Einleitung + Zusammenfassung")

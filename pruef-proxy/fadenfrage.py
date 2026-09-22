@@ -222,6 +222,20 @@ def vergleichs_auftrag(frage, aspekt, a, b, modus="vergleich", je_seite=3000):
     return "\n\n".join(teile)
 
 
+def _satz_davor(text, pos, hoechstens=300):
+    """Die Aussage unmittelbar vor der Klammer.
+
+    Sie wird als Fundstelle mitgegeben, damit die Stelle im Original gelb
+    markiert wird. Ohne sie oeffnet der Sprung zwar die richtige Seite,
+    aber der Leser sucht darauf selbst (gemessen 22.09.).
+    """
+    anfang = -1
+    for z in (". ", "\n", "! ", "? ", "\u2022 "):
+        anfang = max(anfang, text.rfind(z, 0, pos))
+    satz = text[max(anfang + 1, pos - hoechstens):pos]
+    return re.sub(r"\s+", " ", satz).strip(" *:\u201e\u201c\"()")
+
+
 def verlinken_mehrfach(text, dokumente):
     """(Kennung, S. n) -> Link, fuer mehrere Dokumente. dokumente = {kennung:
     (schluessel, seiten)}. Zitate direkt davor werden geprueft."""
@@ -242,8 +256,26 @@ def verlinken_mehrfach(text, dokumente):
             gesamt_nein += 1
             return "„%s“ (%s, S. %d — nicht wörtlich gefunden)" % (zitat, kennung, s)
         aus = zit.sub(_z, aus)
+        def _schlicht(m, seiten=seiten, dq=dq, kennung=kennung, quelle=aus):
+            s = int(m.group(1))
+            # \u26d4 Nur verlinken, wenn es die Seite WIRKLICH gibt. Seit
+            #   auch Nicht-PDF im Abdruckverzeichnis stehen, findet die
+            #   Klammer eine Textdatei oder eine Tabelle - die hat aber
+            #   keine Seiten, und der Klick landete auf "Dieses Dokument
+            #   liegt nicht vor" (gemessen 22.09.). Ein toter Link ist
+            #   schlimmer als gar keiner: Er verspricht einen Nachweis und
+            #   liefert eine Fehlermeldung.
+            if not (0 < s <= len(seiten)):
+                return m.group(0)
+            # \u2b50 Die Aussage davor mitgeben, sonst oeffnet der Sprung die
+            #   Seite ohne gelbe Markierung.
+            satz = _satz_davor(quelle, m.start())
+            anhang = ("&zitat=" + quote(satz[:400], safe="")) if satz else ""
+            return "[%s, S. %d](/stelle?dok=%s&seite=%d%s)" % (
+                kennung, s, dq, s, anhang)
+
         aus = re.sub(r"(?<!\[)\(\s*%s\s*,\s*S\.?\s*(\d{1,4})\s*\)" % k,
-                     lambda m: "[%s, S. %s](/stelle?dok=%s&seite=%s)" % (kennung, m.group(1), dq, m.group(1)), aus)
+                     _schlicht, aus)
     return aus, gesamt_ok, gesamt_nein
 
 
