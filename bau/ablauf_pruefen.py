@@ -336,6 +336,74 @@ console.log(JSON.stringify([
            "Pruefung trifft die Fehlerklasse" % (alt_erg,))
 
 
+def test_positivliste():
+    """Nur vorgesehene Formate kommen in den Bestand.
+
+    Gemessen am KAP-Bestand (22.09.): 2.093 von 4.325 Dateien gehen an die
+    "sonst"-Weiche zu Tika - 1.707 Bilder und rund 190 in Formaten, die
+    niemand vorgesehen hat. Entschieden hat bisher allein die Textlaenge;
+    aus einer Binaerdatei kommt fast immer irgendein Zeichensalat, und der
+    landete als "Dokument" im Bestand.
+    """
+    print("\nNur vorgesehene Formate")
+    quelle = knoten("1_KI4KI-Masse-Ingest.json",
+                    "Ablage entscheiden")["parameters"]["jsCode"]
+    # Bis HINTER die Begruendung schneiden - sie ist der halbe Befund.
+    kern = ausschnitt(quelle, "const MINDESTZEICHEN",
+                      "  const zeile =", "Positivliste")
+    if kern is None:
+        return
+    kern = kern.replace("const abgelegt = dokumente.map((d) => {",
+                        "function entscheide(d, gefunden, grund) {")
+    js = """
+const grund = (s) => String(s).toLowerCase();
+""" + kern + """
+  return { drin, grund: begruendung };
+}
+const A = "ab12cd34ef";
+const G = ["kap-kundeb-bericht-" + A + "-md"];
+const faelle = [
+  ["pdf", "Bericht.pdf"], ["docx", "Bericht.docx"], ["doc", "Bericht.doc"],
+  ["pptx", "Folien.pptx"], ["xlsx", "Werte.xlsx"], ["xlsm", "Werte.xlsm"],
+  ["txt", "Liste.txt"], ["csv", "Werte.csv"], ["md", "Notiz.md"],
+  ["jpg", "Foto.jpg"], ["tif", "Mikroskop.tif"], ["zip", "Anhang.zip"],
+  ["tra", "Messung.tra"], ["001", "Teil.001"], ["msg", "Post.msg"],
+  ["eml", "Post.eml"], ["ohne", "LIESMICH"],
+];
+console.log(JSON.stringify(faelle.map(([k, n]) =>
+  [k, entscheide({filename: n, abdruck: A, text_length: 5000}, G, grund)])));
+"""
+    erg = dict((k, e) for k, e in json.loads(node_lauf(js)))
+
+    # 1. Was hinein soll, kommt hinein - auch mit reichlich Text.
+    for k in ("pdf", "docx", "doc", "pptx", "xlsx", "xlsm", "txt", "csv", "md"):
+        pruefe(erg[k]["drin"] is True,
+               "%-5s wird aufgenommen" % k)
+
+    # 2. ⛔ Was Text LIEFERN KOENNTE, aber nicht vorgesehen ist, bleibt
+    #    draussen. Genau hier lag der Fehler: text_length ist in allen
+    #    Faellen 5000, die Entscheidung darf also NICHT daran haengen.
+    for k in ("jpg", "tif", "zip", "tra", "001", "ohne"):
+        pruefe(erg[k]["drin"] is False,
+               "%-5s bleibt draussen, obwohl Text da waere" % k)
+        pruefe("nicht vorgesehen" in erg[k]["grund"],
+               "%-5s nennt den WAHREN Grund, nicht 'kein Text'" % k)
+
+    # 3. Korrespondenz bekommt eine EIGENE Begruendung - sie ist nicht
+    #    "nicht vorgesehen", sondern vertagt.
+    for k in ("msg", "eml"):
+        pruefe(erg[k]["drin"] is False, "%-5s bleibt draussen" % k)
+        pruefe("Korrespondenz" in erg[k]["grund"],
+               "%-5s wird als Korrespondenz benannt, nicht als Formatfehler" % k)
+
+    # 4. ⛔ Die Gegenprobe, ohne die alles oben nichts sagt: Die Liste darf
+    #    nicht einfach ALLES abweisen. Ohne diese Zeile waere Nummer 2 auch
+    #    dann gruen, wenn `drin` immer false ist - und der ganze Bestand
+    #    bliebe leer, ohne dass eine Pruefung rot wird.
+    pruefe(any(erg[k]["drin"] for k in erg),
+           "Gegenprobe: mindestens ein Format kommt ueberhaupt durch")
+
+
 def test_plaene_unversehrt():
     """Die Plaene muessen ladbar und vollstaendig bleiben."""
     print("\nAblaufplaene unversehrt")
@@ -354,6 +422,7 @@ def test_plaene_unversehrt():
 if __name__ == "__main__":
     test_nichtdokumente()
     test_leere_aussortieren()
+    test_positivliste()
     test_docling_einstellungen()
     test_bereichserkennung()
     test_plaene_unversehrt()
