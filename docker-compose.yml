@@ -126,19 +126,54 @@ services:
       # haengen die Claim-Garantie (3 h) und das Einraeumen (1 h). Jedes
       # Update haette sonst beide Uhren fuer alles in input/ auf null
       # gestellt (gemessen 25.08.).
-      mkdir -p /files/dokumente
-      G=${KI4KI_GID:-1000}
-      find /files/dokumente ! -user 1000 -exec chown 1000 {} +
-      find /files/dokumente ! -group "$$G" -exec chgrp "$$G" {} +
-      find /files/dokumente -type d ! -perm 2775 -exec chmod 2775 {} +
-      find /files/dokumente -type f ! -perm 664 -exec chmod 664 {} +
+      # Die Regeln stehen in EINER Datei, weil die Rechte-Wache dieselben
+      # braucht. Zwei Kopien waeren zwei Wahrheiten - genau daran ist an
+      # diesem Projekt schon mehr als einmal etwas lautlos auseinander
+      # gelaufen.
+      /rechte-setzen.sh /files/dokumente
       echo "Rechte gesetzt: n8n (1000) und Server-Nutzer (Gruppe ${KI4KI_GID:-1000}) duerfen schreiben."
+    environment:
+      KI4KI_GID: ${KI4KI_GID:-1000}
     volumes:
     - ./dokumente:/files/dokumente
+    - ./rechte-setzen.sh:/rechte-setzen.sh:ro
     - austausch:/files/processed
     - austausch-json:/files/json
     - austausch-md:/files/anythingllm
     restart: "no"
+
+
+  # --- Rechte-Wache ---------------------------------------------------------
+  rechte-wache:
+    image: docker.n8n.io/n8nio/n8n@sha256:15091606d98f6d15bad10cb26bb937ccb47dfd9fee2bb7ae44c7061cba2e7a04
+    container_name: ki4ki-rechte-wache
+    user: "0:0"
+    restart: unless-stopped
+    entrypoint: ["/bin/sh", "-c"]
+    command:
+    - |
+      # ⛔ Eine Regel, an die ein Mensch nach JEDEM Hochladen denken muss,
+      #   ist keine Regel - sie wird vergessen, und dann faellt es niemandem
+      #   auf. Ordner, die ein Mensch per SFTP anlegt, haben oft kein
+      #   Gruppen-Schreibrecht; die Aufnahme darf die Datei dann nicht aus
+      #   dem Eingang herausbewegen und nimmt sie JEDE Minute erneut auf.
+      #   Gemessen am 21.09.: aus einer Datei wurden fuenf Bestandseintraege.
+      #
+      # ⭐ Im Takt laufen darf das nur, WEIL rechte-setzen.sh ausschliesslich
+      #   anfasst, was falsch steht. Sonst schriebe jeder Durchgang die
+      #   ctime neu und stellte damit Claim-Garantie (3 h) und Einraeumen
+      #   (1 h) fuer alles im Eingang auf null. Belegt in bau/rechte-probe.sh,
+      #   samt Gegenprobe, dass ein bedingungsloses chmod die ctime sehr
+      #   wohl wandert.
+      while true; do
+        /rechte-setzen.sh /files/dokumente
+        sleep 60
+      done
+    environment:
+      KI4KI_GID: ${KI4KI_GID:-1000}
+    volumes:
+    - ./dokumente:/files/dokumente
+    - ./rechte-setzen.sh:/rechte-setzen.sh:ro
 
   # --- Ablaufsteuerung ------------------------------------------------------
   n8n:

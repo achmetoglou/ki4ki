@@ -182,18 +182,32 @@ verschwindet sein Ordner nur, wenn er leer ist — sonst wird er unter
 > waehrend unter dem alten Schluessel 1.593 Dateien kollidierten.
 > Einzelheiten in `doku/entwicklung/BUGS_UND_FIXES.md`, Punkte 6, 7 und 13.
 
-> ⛔ **Nach jedem Einspielen per SFTP/FileZilla: `docker compose up -d rechte-init`.**
-> Ordner, die ein Mensch anlegt, gehören ihm und haben oft kein
-> Gruppen-Schreibrecht. Die Aufnahme läuft als Benutzer 1000 und darf eine
-> Datei dann zwar lesen, aber nicht aus dem Ordner **herausbewegen** —
-> `mv: Permission denied`. Folge: Die Datei bleibt im Eingang, wird jede
-> Minute erneut aufgenommen und landet bei **jedem** Durchgang ein weiteres
-> Mal im Bestand. Gemessen am 21.09.: aus einer Datei wurden binnen Minuten
-> fünf Einträge.
-> `rechte-init` setzt Ordner auf `2775` (setgid) und Dateien auf `664` und
-> fasst dabei nur an, was wirklich falsch steht — die Uhren für
-> Claim-Garantie und Einräumen bleiben unberührt. Der Befehl ist gefahrlos
-> wiederholbar; `./aktualisiere.sh` führt ihn ohnehin mit aus.
+> ⭐ **Nach dem Hochladen ist nichts zu tun.** Die **Rechte-Wache**
+> (`ki4ki-rechte-wache`) sieht jede Minute nach und stellt richtig, was
+> falsch steht.
+>
+> Warum es sie gibt: Ordner, die ein Mensch per SFTP/FileZilla anlegt,
+> gehören ihm und haben oft kein Gruppen-Schreibrecht. Die Aufnahme läuft
+> als Benutzer 1000 und darf eine Datei dann zwar lesen, aber nicht aus dem
+> Ordner **herausbewegen** — `mv: Permission denied`. Folge: Die Datei
+> bleibt liegen, wird jede Minute erneut aufgenommen und landet bei
+> **jedem** Durchgang ein weiteres Mal im Bestand. Gemessen am 21.09.: aus
+> einer Datei wurden binnen Minuten **fünf** Einträge.
+>
+> ⛔ Vorher stand hier die Regel „nach jedem Einspielen
+> `docker compose up -d rechte-init`". Eine Regel, an die ein Mensch jedes
+> Mal denken muss, ist keine Regel — sie wird vergessen, und der Schaden
+> fällt niemandem auf. Deshalb macht es jetzt die Anlage.
+>
+> ⭐ Dass die Wache im Takt laufen **darf**, hängt an einer Eigenschaft von
+> `rechte-setzen.sh`: Es fasst ausschließlich an, was falsch steht (Ordner
+> `2775` mit setgid, Dateien `664`). Ein `chmod` auf eine schon richtige
+> Datei schriebe ihre ctime neu — und an der ctime hängen Claim-Garantie
+> (3 h) und Einräumen (1 h). Belegt in `bau/rechte-probe.sh`, mit der
+> Gegenprobe, dass ein bedingungsloses `chmod` die ctime sehr wohl wandert.
+>
+> Von Hand geht es weiter mit `docker compose up -d rechte-init`; nötig ist
+> es nicht mehr. `./aktualisiere.sh` führt es ohnehin mit aus.
 
 1. Jede Minute sieht n8n in `dokumente/*/input/` nach (auch in Unterordnern).
 2. Ein Durchgang nimmt bis zu 25 Dateien (`KI4KI_MENGE_JE_LAUF`) eines Bereichs; eine
