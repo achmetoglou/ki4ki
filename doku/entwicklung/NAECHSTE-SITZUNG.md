@@ -284,6 +284,41 @@ am `--` ab - nach dem Neueinlesen waere damit der ganze Schaden aus **13**
 zurueckgekommen: kein Katalogeintrag, keine Kennung, kein K3-Tor. **BUGS 19**,
 behoben; abgeschnitten wird jetzt am Abdruck, nicht am Trennzeichen.
 
+### ✅ ABNAHME BESTANDEN (22.09., nachmittags)
+
+Vier Probedokumente, zwei gleichnamige Pruefberichte in zwei Kundenordnern.
+Die Frage nach der Zugfestigkeit bringt **beide** Zahlen, jede mit einem
+**blauen Beleg**, der auf das **richtige** Dokument und die richtige Seite
+springt; die Stelle ist dort gelb markiert. `bestand` 67 -> 71,
+`nur_altweg` unveraendert 67, `altweg_belege` 0.
+
+Bis dahin brauchte es vier Anlaeufe, und jeder hat den naechsten Fehler
+freigelegt, weil der vorige ihn verdeckte: BUGS **16** (Umlaut im
+Zitatwaechter), **18** (Klammer kannte nur volle Titel), **19** (doppeltes
+Trennzeichen ueberlebt AnythingLLM nicht), **20** (Klammer und Sprung
+benutzten zwei Namen), **21** (zwei Umlaut-Regeln im Zitatvergleich).
+
+⭐ **Die Lehre, die ueber Teil 3 hinausgeht:** An jeder Modulgrenze sitzt
+eine eigene Normalisierung, und sie sind sich nicht einig. Gezaehlt sind
+inzwischen **vier** Stellen, die Umlaute behandeln - mit **drei**
+verschiedenen Regeln. Zwei davon sind vereinheitlicht (`pruef_proxy`,
+`fadenfrage`), zwei behalten bewusst ihre eigene (`veredeln`,
+`pdfstelle._glatt`), weil sie IM Seitentext suchen.
+
+### ⚠ Bekannte Restschwaeche (kein Hindernis fuer KAP)
+
+`pdfstelle._glatt()` macht nur klein; "beträgt" und "betraegt" sind dort
+verschiedene Woerter. Trifft ein Zitat mit Umlaut auf ein Dokument in
+Behelfsschreibung, findet der Dreiwort-Einstieg nichts; es greift der
+Zweiwort-Einstieg oder der Stichwort-Rueckfall. Die Markierung wird dann
+ungenauer, der **Link bleibt richtig**.
+
+⭐ **Warum das KAP nicht aufhaelt:** Es betrifft nur die Darstellung, nicht
+die Aufnahme. Der Fix ist jederzeit nachtraeglich moeglich, **ohne neu
+einzulesen**. Echte Dokumente tragen ausserdem echte Umlaute - der
+gemischte Fall entstand nur, weil die Probedokumente in Behelfsschreibung
+gesetzt waren (inzwischen berichtigt).
+
 ### ⛔ Offen: die Belegmessung (Aufgabe 7, Schritt 5)
 
 Nach dem naechsten `./aktualisiere.sh` dieselbe Frage im selben Bereich
