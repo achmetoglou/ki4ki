@@ -1153,6 +1153,29 @@ am Morgen: eine Fehlerklasse aus einer verwandten, aber anders gebauten
 abgeleitet. Die Messung kostete zwei Minuten, die Schätzung hätte einen
 unnötigen Umbau vor dem Nachtlauf ausgelöst.
 
+### ⛔ Zwei Folgefehler, am selben Abend gefunden
+
+In der Bestandsliste standen die beiden Outlook-Nachrichten — und ein
+Klick darauf endete auf „Dieses Dokument liegt nicht vor“. Zwei Ursachen
+griffen ineinander:
+
+1. `.msg` stand **nicht in `DOKUMENTENDUNGEN`** — kein Abdruck, nicht
+   auffindbar. Die Liste war an `VORGESEHEN` ausgerichtet; richtig ist
+   aber: Der Index muss jedes Dokument kennen, das im Arbeitsbereich
+   **stehen kann**, nicht nur die, welche die Aufnahme behalten wollte.
+2. `_archivdatei()` durchsuchte **nur `archiv/`**. Die Datei lag in
+   `aussortiert/`. Jetzt: `archiv`, `aussortiert`, `parkplatz` —
+   `loeschen` bleibt ausgenommen, was dort liegt ist zum Entfernen
+   vorgemerkt.
+
+⭐ **Und ein Befund über die Messung selbst.** `linkprobe.py` meldete
+dabei „0 tote Links“. Beide Einträge hatten keinen Abdruck im Index und
+fielen deshalb in den Topf „Altbestand“ — wo sie niemand suchte. Eine
+Messung, die einen Fehler als Normalzustand verbucht, ist schlimmer als
+keine. Die Probe unterscheidet jetzt **VERSCHOLLEN** (trägt einen
+Pfad-Schlüssel, ist aber nicht im Index) von **Altbestand** (Name aus
+der Zeit vor dem Umbau).
+
 ### Was zu tun ist
 
 Die Positivliste gehört **vor** den Upload. Bis dahin: abgelehnte Formate

@@ -1459,6 +1459,72 @@ def test_sprung_nur_mit_seitenbild():
            "geprueft wird also der Sprung, nicht die Textquelle")
 
 
+def test_aussortiert_bleibt_erreichbar():
+    """Was im Arbeitsbereich steht, muss sich auch oeffnen lassen.
+
+    ⛔ Gemessen am 22.09. abends am laufenden System: In der
+      Bestandsliste standen zwei Outlook-Nachrichten - sie waren
+      hochgeladen worden, BEVOR die Positivliste sie ablehnte (Punkt 28).
+      Die Datei lag danach in aussortiert/, das Dokument aber weiter im
+      Arbeitsbereich. Ein Klick auf den Eintrag endete auf "Dieses Dokument
+      liegt nicht vor".
+
+      Zwei Ursachen griffen ineinander:
+        1. .msg stand nicht in DOKUMENTENDUNGEN - kein Abdruck, nicht
+           auffindbar.
+        2. _archivdatei durchsuchte nur archiv/, nicht aussortiert/.
+
+    ⭐ Die Regel dahinter: Der Index kennt jedes DOKUMENT, unabhaengig
+      davon, ob die Aufnahme es behalten wollte. Was die Anlage anzeigt,
+      muss sie auch liefern koennen - sonst verspricht die Liste etwas, das
+      der Klick nicht einloest.
+
+    ⛔ loeschen/ ist ausgenommen. Was dort liegt, ist zum Entfernen
+      vorgemerkt; es auszuliefern waere das Gegenteil dessen, was der
+      Ordner bedeutet.
+    """
+    import pruef_proxy as p
+    print("\nAussortiertes bleibt erreichbar")
+
+    lege_an("kap", "aussortiert", "KundeA", "Beauftragung.msg",
+            inhalt=b"From: a@b\r\nSubject: Test\r\n\r\nText.\r\n")
+    lege_an("kap", "loeschen", "Weg.msg", inhalt=b"From: x\r\n\r\nweg\r\n")
+    p.pdfs_einlesen()
+
+    sch = schluessel_von("kap", "aussortiert/KundeA/Beauftragung.msg")
+    stamm = p._stamm(sch)
+
+    # ⭐ Die Zusicherung: auffindbar, auslieferbar, verlinkbar.
+    pruefe(p._pdf_schluessel(stamm) is not None,
+           "die Outlook-Nachricht ist auffindbar")
+    datei = p._archivdatei(stamm)
+    pruefe(datei is not None and datei.endswith("Beauftragung.msg"),
+           "_archivdatei findet sie in aussortiert/, ist %r"
+           % os.path.basename(datei or ""))
+    bsch, bseiten = p._belegquelle(stamm)
+    pruefe(bsch is not None and bseiten == [],
+           "sie bekommt einen Dokumentlink ohne Seiten, ist %r"
+           % ((bsch or "")[-22:],))
+
+    # ⛔ Gegenprobe 1: Was zum Loeschen vorgemerkt ist, wird NICHT
+    #   ausgeliefert. Ohne diese Zeile waere die Zusicherung oben auch dann
+    #   gruen, wenn _archivdatei einfach ueberall sucht.
+    weg = p._stamm(schluessel_von("kap", "loeschen/Weg.msg"))
+    pruefe(p._archivdatei(weg) is None,
+           "eine zum Loeschen vorgemerkte Datei wird NICHT geliefert, ist %r"
+           % (p._archivdatei(weg),))
+
+    # ⛔ Gegenprobe 2: Ein Foto bleibt draussen. Die Endungsliste darf
+    #   sich nicht in "alles" verwandeln - sonst zaehlt jeder Schnappschuss
+    #   als Dokument und nur_altweg wird nie null.
+    lege_an("kap", "aussortiert", "KundeA", "Foto.jpg", inhalt=b"\xff\xd8\xff")
+    p.pdfs_einlesen()
+    import schluessel as _s
+    ab_foto = _s.fingerabdruck(_s.kennpfad("kap", "aussortiert/KundeA/Foto.jpg"))
+    pruefe(ab_foto not in p.PDFS_ABDRUCK,
+           "ein Foto steht weiterhin NICHT im Abdruckverzeichnis")
+
+
 def main():
     baum_bauen()
     pruefungen = [test_index, test_pdfstelle, test_belegvorrat,
@@ -1477,7 +1543,8 @@ def main():
                   test_index_kennt_alle_dokumente,
                   test_sprung_nur_wenn_es_eine_seite_gibt,
                   test_zwei_einhaengungen,
-                  test_sprung_nur_mit_seitenbild]
+                  test_sprung_nur_mit_seitenbild,
+                  test_aussortiert_bleibt_erreichbar]
     try:
         for t in pruefungen:
             t()

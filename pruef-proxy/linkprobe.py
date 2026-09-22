@@ -53,8 +53,24 @@ def main():
     mit_pdf = 0        # Seitenansicht moeglich (Sprung mit gelber Markierung)
     nur_datei = 0      # keine Seitenansicht, aber die Originaldatei liegt da
     tot = 0            # weder noch: der Link fuehrt ins Leere
-    ohne_abdruck = 0   # nicht einmal wiederzufinden (Altbestand)
+    altbestand = 0     # Name aus der Zeit vor dem Umbau - erwartet
+    verschollen = 0    # Pfad-Schluessel, aber nicht im Index - FEHLER
     je_endung = {}
+
+    # ⛔ Warum diese Unterscheidung noetig wurde: Am 22.09. meldete die
+    #   Probe "0 tote Links", waehrend in der Bestandsliste zwei Eintraege
+    #   standen, deren Klick auf "liegt nicht vor" fuehrte. Beide trugen
+    #   einen Pfad-Schluessel, waren aber nicht im Index - und fielen
+    #   dadurch in denselben Topf wie die Altdokumente, wo sie niemand
+    #   suchte. Eine Messung, die einen Fehler als Normalzustand verbucht,
+    #   ist schlimmer als keine.
+    #
+    #   Ein Pfad-Schluessel beginnt mit dem Bereichsnamen. Ein alter Name
+    #   ("DS-24-005") tut das nicht.
+    try:
+        bereiche = tuple(sorted(os.listdir(p.EINGANG_ORDNER)))
+    except Exception:
+        bereiche = ()
 
     for t in titel:
         stamm = p._stamm(t)
@@ -63,8 +79,13 @@ def main():
         endung = os.path.splitext(sch or stamm)[1].lower() or "(ohne)"
 
         if ab is None:
-            ohne_abdruck += 1
-            lage = "ohne_abdruck"
+            neu = any(stamm.startswith(b + "-") for b in bereiche)
+            if neu:
+                verschollen += 1
+                lage = "VERSCHOLLEN"
+            else:
+                altbestand += 1
+                lage = "altbestand"
         elif sch and p.PDFS.get(sch) and os.path.exists(p.PDFS[sch]):
             mit_pdf += 1
             lage = "seitenansicht"
@@ -87,7 +108,8 @@ def main():
     print("  Seitenansicht moeglich (PDF da) : %4d" % mit_pdf)
     print("  nur Originaldatei (kein Sprung) : %4d" % nur_datei)
     print("  TOTER LINK (nichts auszuliefern): %4d" % tot)
-    print("  ohne Abdruck (Altbestand)       : %4d" % ohne_abdruck)
+    print("  VERSCHOLLEN (Schluessel, kein Index): %2d" % verschollen)
+    print("  Altbestand (Name von vor dem Umbau): %3d" % altbestand)
     print()
     print("Je Endung:")
     for e in sorted(je_endung):
@@ -108,9 +130,10 @@ def main():
     print("Messung gueltig: %d Dokumente sind auslieferbar, die Klassen "
           "unterscheiden also wirklich." % (mit_pdf + nur_datei))
     print()
-    if tot:
+    if tot or verschollen:
         print("⛔ %d Dokument(e) bieten einen Link an, den die Anlage nicht "
-              "einloesen kann. Das ist der Fehler aus den Bildschirmfotos." % tot)
+              "einloesen kann (%d ohne Datei, %d nicht im Index)."
+              % (tot + verschollen, tot, verschollen))
     else:
         print("Kein toter Link. Fuehrt ein Klick trotzdem auf 'liegt nicht "
               "vor', liegt es NICHT an der Datei, sondern am Rechte-Tor "

@@ -1484,9 +1484,22 @@ PDFS_GRUND = {}
 #   wird ausschliesslich hierueber; der lesbare Teil darf verstuemmelt sein.
 PDFS_ABDRUCK = {}
 
-# Was als Dokument gilt. Dieselbe Liste wie VORGESEHEN im Knoten "Ablage
-# entscheiden" von Ablaufplan 1 - was die Aufnahme annimmt, muss der Index
-# auch kennen.
+# Was als Dokument gilt.
+#
+# ⭐ Die Liste ist ABSICHTLICH weiter als VORGESEHEN im Knoten "Ablage
+#   entscheiden": Der Index muss jedes Dokument kennen, das im
+#   Arbeitsbereich stehen KANN - nicht nur die, welche die Aufnahme behalten
+#   wollte. Gemessen am 22.09.: Zwei Outlook-Nachrichten standen in der
+#   Bestandsliste (sie werden hochgeladen, bevor die Positivliste sie
+#   ablehnt, siehe BUGS 28). Weil .msg hier fehlte, endete jeder Klick auf
+#   "Dieses Dokument liegt nicht vor" - und die Zaehlung verbuchte sie als
+#   Altbestand statt als Fehler.
+#
+# ⛔ Was die Anlage ANZEIGT, muss sie auch LIEFERN koennen. Eine Liste,
+#   deren Eintraege sich nicht oeffnen lassen, verspricht mehr als da ist.
+#
+# ⛔ Bilder bleiben draussen. Waere hier "alles" eingetragen, zaehlte
+#   jeder Schnappschuss als Dokument und nur_altweg erreichte nie die Null.
 #
 # ⚠ Sie steht damit an ZWEI Stellen, weil n8n kein Python liest. Laeuft
 #   sie auseinander, faellt es nicht auf: Die Aufnahme nimmt ein Format an,
@@ -1495,7 +1508,8 @@ PDFS_ABDRUCK = {}
 DOKUMENTENDUNGEN = (".pdf", ".doc", ".docx", ".odt", ".rtf",
                     ".ppt", ".pptx", ".odp",
                     ".xls", ".xlsx", ".xlsm",
-                    ".csv", ".txt", ".md", ".html", ".htm")
+                    ".csv", ".txt", ".md", ".html", ".htm",
+                    ".msg", ".eml")
 # Wie oft ein Beleg NICHT ueber den Abdruck, sondern ueber den alten
 # Namensvergleich zustande kam. Steht der Zaehler ueber eine Woche
 # normalen Betriebs auf 0, wird der Altweg nicht mehr gebraucht.
@@ -2930,9 +2944,25 @@ def _seitenzahl_schnell(pfad):
     return n
 
 
+# Wo eine Originaldatei liegen darf, wenn sie ausgeliefert werden soll.
+# ⛔ "loeschen" fehlt mit Absicht: Was dort liegt, ist zum Entfernen
+#   vorgemerkt. Es auszuliefern waere das Gegenteil dessen, was der Ordner
+#   bedeutet.
+ABLAGESTUFEN = ("archiv", "aussortiert", "parkplatz")
+
+
 def _archivdatei(name):
-    """Die Originaldatei zu einem Stamm in irgendeinem <bereich>/archiv/ -
-    fuer Dokumente ohne PDF (Excel, Word ...). None, wenn es keine gibt."""
+    """Die Originaldatei zu einem Stamm - in jeder Ablagestufe eines Bereichs.
+
+    Fuer Dokumente ohne PDF (Excel, Word, Text, Post). None, wenn es keine
+    gibt.
+
+    ⛔ Nicht nur archiv/. Gemessen am 22.09.: Eine aussortierte
+      Outlook-Nachricht stand trotzdem im Arbeitsbereich (BUGS 28) - die
+      Suche sah dort nicht nach, und der Klick endete auf "liegt nicht vor".
+      Solange Hochladen und Aussortieren nicht in derselben Reihenfolge
+      laufen, ist das der Normalfall, nicht die Ausnahme.
+    """
     ziel = schluessel.abdruck_finden(name, PDFS_ABDRUCK)
     alt_ziel = _loesch_grund(_stamm(name)) if (ziel is None and altweg_aktiv()) else None
     if ziel is None and not alt_ziel:
@@ -2942,19 +2972,22 @@ def _archivdatei(name):
     except Exception:
         return None
     for bereich in bereiche:
-        archiv = os.path.join(EINGANG_ORDNER, bereich, "archiv")
-        try:
-            # os.walk, weil das Archiv die Unterordner des Eingangs spiegelt.
-            for ordner, _u, dateien in os.walk(archiv):
-                # Die Nicht-PDF-Datei zuerst (Original neben gewandelter PDF)
-                for d in sorted(dateien, key=lambda x: x.lower().endswith(".pdf")):
-                    if d.startswith("."):
-                        continue
-                    sl, ab = _schluessel_der_datei(ordner, d)
-                    if _trifft_ziel(sl or d, ziel, alt_ziel, abdruck=ab):
-                        return os.path.join(ordner, d)
-        except Exception:
-            continue
+        for stufe in ABLAGESTUFEN:
+            ablage = os.path.join(EINGANG_ORDNER, bereich, stufe)
+            try:
+                # os.walk, weil jede Stufe die Unterordner des Eingangs
+                # spiegelt.
+                for ordner, _u, dateien in os.walk(ablage):
+                    # Die Nicht-PDF zuerst (Original neben gewandelter PDF)
+                    for d in sorted(dateien,
+                                    key=lambda x: x.lower().endswith(".pdf")):
+                        if d.startswith("."):
+                            continue
+                        sl, ab = _schluessel_der_datei(ordner, d)
+                        if _trifft_ziel(sl or d, ziel, alt_ziel, abdruck=ab):
+                            return os.path.join(ordner, d)
+            except Exception:
+                continue
     return None
 
 
