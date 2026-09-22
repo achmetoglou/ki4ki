@@ -889,6 +889,59 @@ qwen"*. Entfernt.
 
 ---
 
+## 23 · Eine stoerrische Datei riss den ganzen Stapel mit (22.09.2026, BEHOBEN)
+
+⛔ **Der gefährlichste Fund des Tages** — und er wäre im Nachtlauf über
+4.300 Dateien mit Sicherheit eingetreten.
+
+**Symptom.** Zehn Dateien im Eingang, alle landen in `aussortiert/` mit
+*„kein Text gewonnen (0 Zeichen)"* — auch die PDF, die zwei Stunden vorher
+sauber durchliefen. Der Durchgang meldet **„Succeeded"**. Kein roter
+Baustein, keine Fehlermeldung im Protokoll außer zwei nackten `TypeError`.
+
+**Was die Oberfläche zeigte:**
+
+```
+Dateien in JSON umwandeln
+  1 item, 10 sub-executions
+  Cannot read properties of undefined (reading 'entries')
+  → WorkflowExecute.assignPairedItems   (n8n 2.31.4)
+```
+
+Zehn Unterausführungen, **ein** Ergebnis. Eine davon gab nichts zurück, der
+Elternbaustein stürzte beim Einsammeln ab, und damit war der Text **aller**
+zehn Dateien weg.
+
+**Ursache.** In der Unterkette war **nur der PDF-Weg abgesichert**:
+
+| Weg | `onError` vorher |
+|---|---|
+| Docling PDF-Extraktion, Zweitversuch | ✅ `continueRegularOutput` |
+| Tika (Word, PowerPoint, sonstige) | ⛔ keiner |
+| Office nach PDF | ⛔ keiner |
+| Extract from File 1–4 (Excel, CSV, HTML, Text) | ⛔ keiner |
+
+⭐ **Deshalb fiel es nie auf:** Solange ausschließlich PDF im Eingang lagen,
+konnte nichts passieren. Beim ersten Word-, Excel- oder Outlook-Dokument
+schon. Der Testlauf am Morgen (vier PDF) war grün **aus dem falschen
+Grund** — er hat den einzigen geschützten Weg geprüft.
+
+**Lösung.** Alle sechs Bausteine bekommen `onError: continueRegularOutput`
+**und** `alwaysOutputData: true`. Beides ist nötig: Ein Baustein, der im
+Fehlerfall gar kein Element weitergibt, lässt den Elternbaustein genauso
+abstürzen wie einer, der abbricht. Eine gescheiterte Datei kommt jetzt ohne
+Text weiter, bekommt ihre eigene Begründung und lässt die anderen in Ruhe.
+
+⭐ `bau/ablauf_pruefen.py` hält beides fest; die Mutationsprobe (Tika wieder
+ungeschützt) färbt genau zwei Zeilen rot.
+
+⚠ **Was das über unsere Proben sagt:** Vier gleichartige Dateien sind keine
+Probe. Der Morgenlauf hat den Umbau bestätigt und die Brüchigkeit der
+übrigen fünf Wege dabei vollständig verdeckt. Eine Probe muss die
+**Vielfalt** des echten Bestands enthalten, nicht nur seine Fehlerklasse.
+
+---
+
 ## Offen / vor einer Vermarktung zu klären
 
 - **Erste vollständige Installation von null** auf der Zielumgebung — erst damit

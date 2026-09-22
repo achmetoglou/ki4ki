@@ -404,6 +404,54 @@ console.log(JSON.stringify(faelle.map(([k, n]) =>
            "Gegenprobe: mindestens ein Format kommt ueberhaupt durch")
 
 
+def _plan_lesen(datei):
+    """Einen Ablaufplan laden - oder eine rote Pruefung statt eines Absturzes."""
+    pfad = os.path.join(PLAENE, datei)
+    if not os.path.exists(pfad):
+        pruefe(False, "Ablaufplan fehlt: %s - NICHT geprueft" % datei)
+        return None
+    return json.load(open(pfad, encoding="utf-8"))
+
+
+def test_unterkette_reisst_nicht_mit():
+    """Eine stoerrische Datei darf nicht den ganzen Stapel mitnehmen.
+
+    ⛔ Gemessen am 22.09. an n8n 2.31.4: Zehn Dateien, zehn
+      Unterausfuehrungen, EIN Ergebnis - und im Protokoll
+      "Cannot read properties of undefined (reading 'entries')" aus
+      WorkflowExecute.assignPairedItems. Eine Unterausfuehrung gab nichts
+      zurueck, der Elternbaustein stuerzte beim Einsammeln ab, und ALLE
+      zehn Dateien kamen mit null Zeichen heraus - bei gemeldetem Erfolg.
+
+    ⭐ Warum es vorher nie auffiel: Von allen Wegen war NUR der
+      PDF-Weg abgesichert. Solange ausschliesslich PDF im Eingang lagen,
+      konnte nichts passieren. Beim ersten Word-, Excel- oder
+      Outlook-Dokument schon. Bei 4.300 Dateien ist eine stoerrische Datei
+      keine Moeglichkeit, sondern eine Gewissheit.
+    """
+    print("\nKeine Datei reisst den Stapel mit")
+    plan = _plan_lesen("2_Dateien-in-JSON-umwandeln.json")
+    if plan is None:
+        return
+    riskant = [n for n in plan["nodes"]
+               if n["type"].split(".")[-1] in ("httpRequest", "extractFromFile")]
+    pruefe(len(riskant) >= 6,
+           "Vorbedingung: es gibt ueberhaupt riskante Bausteine (%d)"
+           % len(riskant))
+    for n in riskant:
+        pruefe(n.get("onError") == "continueRegularOutput",
+               "%-38s faengt Fehler ab" % n["name"][:38])
+
+    # ⛔ Die Gegenprobe: onError allein genuegt nicht. Ein Baustein, der
+    #   im Fehlerfall gar kein Element weitergibt, laesst den
+    #   Elternbaustein genauso abstuerzen wie einer, der abbricht.
+    for n in riskant:
+        if n["name"].startswith(("Extract from File", "Tika", "Office nach")):
+            pruefe(n.get("alwaysOutputData") is True,
+                   "%-38s gibt auch im Fehlerfall ein Element weiter"
+                   % n["name"][:38])
+
+
 def test_plaene_unversehrt():
     """Die Plaene muessen ladbar und vollstaendig bleiben."""
     print("\nAblaufplaene unversehrt")
@@ -423,6 +471,7 @@ if __name__ == "__main__":
     test_nichtdokumente()
     test_leere_aussortieren()
     test_positivliste()
+    test_unterkette_reisst_nicht_mit()
     test_docling_einstellungen()
     test_bereichserkennung()
     test_plaene_unversehrt()

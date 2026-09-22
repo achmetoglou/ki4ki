@@ -100,7 +100,11 @@
         192
       ],
       "id": "8fbada4f-cd87-4f0d-b7db-4bcffe3897dd",
-      "name": "Extract from File"
+      "name": "Extract from File",
+      "onError": "continueRegularOutput",
+      "alwaysOutputData": true,
+      "notes": "Scheitert hier EINE Datei, geht sie ohne Text weiter - sie darf den Stapel nicht mitreissen. Ohne das gab n8n 2.31.4 fuer den ganzen Durchgang nur ein Ergebnis zurueck (assignPairedItems: reading 'entries'), und alle Dateien kamen mit null Zeichen heraus, bei gemeldetem Erfolg. Gemessen 22.09.",
+      "notesInFlow": false
     },
     {
       "parameters": {
@@ -114,7 +118,11 @@
         384
       ],
       "id": "e7a6dc67-64cd-4ae6-897c-c4fa5f156aea",
-      "name": "Extract from File1"
+      "name": "Extract from File1",
+      "onError": "continueRegularOutput",
+      "alwaysOutputData": true,
+      "notes": "Scheitert hier EINE Datei, geht sie ohne Text weiter - sie darf den Stapel nicht mitreissen. Ohne das gab n8n 2.31.4 fuer den ganzen Durchgang nur ein Ergebnis zurueck (assignPairedItems: reading 'entries'), und alle Dateien kamen mit null Zeichen heraus, bei gemeldetem Erfolg. Gemessen 22.09.",
+      "notesInFlow": false
     },
     {
       "parameters": {
@@ -128,7 +136,11 @@
         576
       ],
       "id": "863d5c2d-c524-4b49-a808-26e23f6ef5e0",
-      "name": "Extract from File2"
+      "name": "Extract from File2",
+      "onError": "continueRegularOutput",
+      "alwaysOutputData": true,
+      "notes": "Scheitert hier EINE Datei, geht sie ohne Text weiter - sie darf den Stapel nicht mitreissen. Ohne das gab n8n 2.31.4 fuer den ganzen Durchgang nur ein Ergebnis zurueck (assignPairedItems: reading 'entries'), und alle Dateien kamen mit null Zeichen heraus, bei gemeldetem Erfolg. Gemessen 22.09.",
+      "notesInFlow": false
     },
     {
       "parameters": {
@@ -142,7 +154,11 @@
         768
       ],
       "id": "45ec3cc1-3683-4850-87bb-04fb2779406d",
-      "name": "Extract from File3"
+      "name": "Extract from File3",
+      "onError": "continueRegularOutput",
+      "alwaysOutputData": true,
+      "notes": "Scheitert hier EINE Datei, geht sie ohne Text weiter - sie darf den Stapel nicht mitreissen. Ohne das gab n8n 2.31.4 fuer den ganzen Durchgang nur ein Ergebnis zurueck (assignPairedItems: reading 'entries'), und alle Dateien kamen mit null Zeichen heraus, bei gemeldetem Erfolg. Gemessen 22.09.",
+      "notesInFlow": false
     },
     {
       "parameters": {
@@ -530,7 +546,11 @@
           },
           "timeout": 300000
         }
-      }
+      },
+      "onError": "continueRegularOutput",
+      "alwaysOutputData": true,
+      "notes": "Scheitert hier EINE Datei, geht sie ohne Text weiter - sie darf den Stapel nicht mitreissen. Ohne das gab n8n 2.31.4 fuer den ganzen Durchgang nur ein Ergebnis zurueck (assignPairedItems: reading 'entries'), und alle Dateien kamen mit null Zeichen heraus, bei gemeldetem Erfolg. Gemessen 22.09.",
+      "notesInFlow": false
     },
     {
       "id": "0f1c3a52-9b7e-4d2a-8c11-office-frage00",
@@ -613,7 +633,11 @@
           },
           "timeout": 900000
         }
-      }
+      },
+      "onError": "continueRegularOutput",
+      "alwaysOutputData": true,
+      "notes": "Scheitert hier EINE Datei, geht sie ohne Text weiter - sie darf den Stapel nicht mitreissen. Ohne das gab n8n 2.31.4 fuer den ganzen Durchgang nur ein Ergebnis zurueck (assignPairedItems: reading 'entries'), und alle Dateien kamen mit null Zeichen heraus, bei gemeldetem Erfolg. Gemessen 22.09.",
+      "notesInFlow": false
     }
   ],
   "connections": {
