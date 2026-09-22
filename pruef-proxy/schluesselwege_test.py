@@ -1083,6 +1083,95 @@ def test_zitatpruefung_umlaute():
            "ein zu kurzes Bruchstueck wird nicht bestaetigt")
 
 
+def test_klammer_kennt_anzeigetitel():
+    """Das Modell schreibt den lesbaren Titel - die Klammer muss ihn kennen.
+
+    \u26d4 Gemessen am 22.09. am laufenden System: Nachdem Klammer und
+      Fusszeile auf den Anzeigetitel umgestellt waren, schrieb das Modell
+      genau diesen in die Klammer - und die Klammerpruefung kannte ihn
+      nicht. Kein Treffer, kein Link. Die Umstellung hat sich selbst das
+      Bein gestellt.
+
+    \u26a0 Und der Vergleich muss die Schreibweise aushalten: Das Modell
+      schreibt "Qualit\u00e4t" mit Umlaut, das Dokument heisst "Qualitat"
+      ohne - der Umlaut faellt bei der Schluesselbildung weg.
+    """
+    import schluessel
+    import bestand
+    import pruef_proxy as p
+    print("\nKlammer kennt den Anzeigetitel")
+    bestand.bereiche_setzen(["kap", "auw", "zz-probe"])
+
+    # \u26d4 Die Ordner tragen ECHTE Umlaute, wie auf dem Server. Der
+    #   Schluessel schleift sie ab ("Qualit\u00e4t" -> "Qualitat"), das Modell
+    #   schreibt sie wieder hin. Genau diese Paarung muss der Vergleich
+    #   aushalten. Ein erster Anlauf nannte den Ordner "Qualitaet" mit ae -
+    #   dann verglich die Pruefung zwei wirklich verschiedene Woerter und
+    #   war rot, ohne dass am Code etwas fehlte.
+    ordner = os.path.join(BAUM, "zz-probe", "archiv", "Sch\u00e4fer",
+                          "Qualit\u00e4t")
+    os.makedirs(ordner, exist_ok=True)
+    with open(os.path.join(ordner, "Liste.pdf"), "wb") as fh:
+        fh.write(b"%PDF-1.4\nL\n")
+    p.pdfs_einlesen()
+    bestand.abdruecke_setzen(p.PDFS_ABDRUCK)
+
+    sch = schluessel.schluessel(
+        "zz-probe", "archiv/Sch\u00e4fer/Qualit\u00e4t/Liste.pdf")
+    roh = sch[:-4].replace("--", "-") + ".md"
+    nt, na, karte = p._belegverzeichnis([roh])
+    lesbar = karte[roh]
+    pruefe(lesbar == "Schafer-Qualitat-Liste",
+           "Vorbedingung: der Schluessel schleift die Umlaute ab (%r)" % lesbar)
+
+    # \u2b50 Die Zusicherung: genau die Form, die das Modell schreibt.
+    dok, _l = p._beleg_dokument(lesbar, nt, na, karte)
+    pruefe(dok is not None and p._pdf_schluessel(dok) == sch,
+           "der Anzeigetitel findet das Dokument, ist %r" % (dok,))
+
+    # Und in der Schreibweise, die das Modell benutzt: mit Umlauten.
+    # So, wie das Modell es schreibt: Es setzt die Umlaute wieder ein.
+    mit_umlaut = lesbar.replace("Schafer", "Sch\u00e4fer").replace(
+        "Qualitat", "Qualit\u00e4t")
+    dok2, _l = p._beleg_dokument(mit_umlaut, nt, na, karte)
+    pruefe(dok2 is not None and p._pdf_schluessel(dok2) == sch,
+           "auch mit Umlauten geschrieben (%r)" % mit_umlaut)
+
+    # Der Abdruck und der volle Name muessen weiter gehen.
+    ab = schluessel.fingerabdruck(schluessel.kennpfad(
+        "zz-probe", "archiv/Sch\u00e4fer/Qualit\u00e4t/Liste.pdf"))
+    pruefe(p._beleg_dokument(ab, nt, na, karte)[0] is not None,
+           "der Abdruck geht weiterhin")
+    pruefe(p._beleg_dokument(roh[:-3], nt, na, karte)[0] is not None,
+           "der volle Name geht weiterhin")
+
+    # \u26d4 Gegenprobe 1: ein FREMDER Anzeigetitel trifft nichts. Ohne diese
+    #   Zeile waere alles oben auch dann gruen, wenn jeder Klammertext das
+    #   erstbeste Dokument bekommt.
+    for fremd in ("Irgendwas-Anderes", "Schafer-Qualitat-Andere",
+                  "Liste", "siehe oben", ""):
+        d, _l = p._beleg_dokument(fremd, nt, na, karte)
+        pruefe(d is None, "fremder Titel %r trifft nichts, ist %r" % (fremd, d))
+
+    # \u26d4 Gegenprobe 2: Sind ZWEI Dokumente unter demselben Anzeigetitel
+    #   im Arbeitsbereich, darf keines gewaehlt werden - sonst zeigte der
+    #   Sprung auf das falsche. Genau die Kollisionsklasse, gegen die dieser
+    #   Umbau gebaut ist.
+    for unter in ("archiv/Angebot 2024/Blatt.pdf", "archiv/Angebot/2024 Blatt.pdf"):
+        voll = os.path.join(BAUM, "zz-probe", *unter.split("/"))
+        os.makedirs(os.path.dirname(voll), exist_ok=True)
+        with open(voll, "wb") as fh:
+            fh.write(b"%PDF-1.4\n" + unter.encode("utf-8") + b"\n")
+    p.pdfs_einlesen()
+    zwei = [schluessel.schluessel("zz-probe", u)[:-4].replace("--", "-") + ".md"
+            for u in ("archiv/Angebot 2024/Blatt.pdf",
+                      "archiv/Angebot/2024 Blatt.pdf")]
+    nt2, na2, karte2 = p._belegverzeichnis(zwei)
+    d3, _l = p._beleg_dokument("Angebot-2024-Blatt", nt2, na2, karte2)
+    pruefe(d3 is None,
+           "mehrdeutiger Anzeigetitel waehlt KEINES aus, ist %r" % (d3,))
+
+
 def main():
     baum_bauen()
     pruefungen = [test_index, test_pdfstelle, test_belegvorrat,
@@ -1096,7 +1185,8 @@ def main():
                   test_belegklammer,
                   test_trennzeichen_egal,
                   test_belegsprung,
-                  test_zitatpruefung_umlaute]
+                  test_zitatpruefung_umlaute,
+                  test_klammer_kennt_anzeigetitel]
     try:
         for t in pruefungen:
             t()

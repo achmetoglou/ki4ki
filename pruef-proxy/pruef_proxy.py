@@ -4702,6 +4702,19 @@ def _lesbarer_klammertitel(abdruck, roh):
         return assistent._titel_saubern(roh)
 
 
+def _flach_titel(t):
+    """Vergleichsform eines Anzeigetitels.
+
+    \u26d4 GENAU die Bereinigung, die auch der Schluessel benutzt - sonst
+      vergleichen wir zwei verschiedene Schreibweisen miteinander. Gemessen
+      am 22.09.: Das Modell schreibt "Qualit\u00e4t" mit Umlaut, der Schluessel
+      traegt "Qualitat" ohne, weil die Bereinigung den Umlaut abschleift.
+      Beide muessen dieselbe Form ergeben, sonst faellt der Beleg weg.
+    """
+    return re.sub(r"[^a-z0-9]", "",
+                  schluessel._bereinigen(str(t or "")).lower())
+
+
 def _anzeigename(dok):
     """Der Titel, der in der Antwort STEHT - EINE Quelle fuer alle Stellen.
 
@@ -4737,6 +4750,24 @@ def _beleg_dokument(geschrieben, nach_titel, nach_abdruck, lesbar=None):
         roh = nach_titel[k.lower()]
         return (assistent._titel_saubern(roh),
                 (lesbar or {}).get(roh) or _lesbarer_klammertitel(None, roh))
+    # \u2b50 Der ANZEIGETITEL. Genau das schreibt das Modell in die Klammer,
+    #   seit Klammer und Fusszeile ihn anzeigen - gemessen am 22.09.:
+    #   "(Muller-Sohne-Prufberichte-Prufprotokoll-Charge-11, S. 1)".
+    #   Ohne diesen Nachschlag hat sich die Umstellung selbst das Bein
+    #   gestellt: Sie brachte dem Modell eine Form bei, die die Pruefung
+    #   nicht kannte.
+    #
+    # \u26d4 Nur bei GENAU EINEM Treffer. Tragen zwei Dokumente desselben
+    #   Arbeitsbereichs denselben Anzeigetitel, wird keines gewaehlt - ein
+    #   Sprung auf das falsche waere genau die Kollisionsklasse, gegen die
+    #   dieser Umbau gebaut ist.
+    if lesbar:
+        flach = _flach_titel(k)
+        if flach:
+            treffer = [r for r, t in lesbar.items() if _flach_titel(t) == flach]
+            if len(treffer) == 1:
+                roh = treffer[0]
+                return assistent._titel_saubern(roh), lesbar[roh]
     if _KENNUNG_KLAMMER.fullmatch(k):
         return k, k
     return None, None
