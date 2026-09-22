@@ -233,6 +233,61 @@ und gleicht ab, was n8n **wirklich geladen** hat. Aufruf auf dem Host:
 2. **`LESBAR_BYTE`** (siehe oben), gehört zu Teil 3.
 3. **Die Protokoll-Wiederholung** bei jedem Minutentakt (§3, Punkt 2).
 
+## 3h - Stand 22.09., abends: alle Links tragen, KAP kann laufen
+
+**Einstieg fuer die naechste Sitzung.** Zweig `pfad-identitaet`.
+
+### Was am Nachmittag dazukam
+
+| | |
+|---|---|
+| **25** | Derselbe Ordner ist ZWEIMAL eingehaengt (lesend und schreibend). `_schluessel_der_datei` rechnete immer gegen die Lese-Wurzel - fuenf von sechs Aufrufstellen waren dadurch **wirkungslos**. Behoben. **Punkt 24 war derselbe Fehler.** |
+| **26** | "Seiten" heisst nicht "Seitenbild". Erst entstand kein Link mehr, dann gar keiner - jetzt: Sprung wo es eine Seite gibt, sonst Link auf das Dokument. |
+| **27** | Gewandelte Word-PDF lag flach im Archiv statt neben dem Original. Behoben, beide Haelften am System bestaetigt. |
+| **28** | ⛔ OFFEN: Aussortierte Dokumente bleiben im Arbeitsbereich (Upload vor Positivliste). |
+
+### Zahlen, gemessen statt geschaetzt
+
+```
+linkprobe.py, Bereich zz-schluesselprobe:
+  vorher   TOTE LINKS 3   (.docx .txt .xlsx)
+  danach   TOTE LINKS 0   Seitenansicht 9, nur Datei 2
+  Bild in den Eingang gelegt: Bestand 81 vorher, 81 nachher
+```
+
+### Zwei Fehlgriffe von mir, beide derselben Art
+
+- Aus drei `.msg` im Arbeitsbereich auf **2.000 Bilder** geschlossen. Falsch:
+  ohne Text entsteht keine Markdown-Fassung, also kein Upload.
+- Aus einem Byte Groessenunterschied auf eine beschaedigte Datei geschlossen.
+  Falsch: Der Erzeuger arbeitet nicht reproduzierbar (8810/8810/8813).
+
+⭐ Beide Male half dieselbe Frage: **Was genau habe ich gemessen, und was
+habe ich daraus nur abgeleitet?**
+
+### ⛔ Die kaputten Probedateien waren MEIN Fehler
+
+Word und Excel im Pruefbereich haben je einen Teil mit falscher Pruefsumme -
+schon auf der Nextcloud, vor jeder Beruehrung durch die Anlage. Ich habe sie
+hochgeladen und nie nachgemessen, ob ankommt, was ich abgeschickt habe.
+
+⭐ Zwei Folgerungen: Die Anlage ist unschuldig (echte Office-Dateien aus
+Word sind nicht betroffen, der KAP-Lauf ist nicht gefaehrdet). Und: Die
+Aufnahme hat die Beschaedigung **nicht gemeldet** - sie prueft keine
+Dateiintegritaet. Bei einer halb lesbaren Datei gaebe es eine halbe Antwort
+ohne Hinweis. Kleine Luecke, notiert.
+
+### Offen, nach dem KAP-Lauf
+
+1. **Punkt 28** - Positivliste vor den Upload.
+2. **Quellenleiste rechts** zeigt die `.md` statt der Originale; die Eintraege
+   sind nicht anklickbar. Gehoert zu derselben Familie wie die toten Links.
+3. **"nicht belegt" bei Tabellen** - die Zahl steht in einer Zelle, das Modell
+   formuliert einen Satz daraus, die woertliche Pruefung findet ihn nicht.
+4. **Auftrag 3f** - Mails aufnehmen, Herkunft benennen.
+5. **Repo-Trennung** - oeffentlicher Baukasten gegen internes Repo, plus
+   Freigabe-Waechter fuer `KAP`, Servernamen und Hausadressen.
+
 ## 3g - Stand 22.09., Mittag: Teil 3 abgenommen, Formatprobe laeuft
 
 **Einstieg fuer die naechste Sitzung.** Zweig `pfad-identitaet`.

@@ -1105,10 +1105,59 @@ eine erzeugt.
 ⚠ **Wirkt nur für neu aufgenommene Dokumente.** Was vorher gewandelt wurde,
 liegt weiter flach im Archiv.
 
+✅ **Am 22.09. abends am laufenden System bestätigt — beide Hälften.**
+
+| Nachweis | Ergebnis |
+|---|---|
+| Ablage | `archiv/Müller & Söhne/Prüfberichte/` enthält jetzt `.docx` **und** `.pdf` — gesehen |
+| Index | `linkprobe.py`: `.docx` wandert von `nur_datei` nach `seitenansicht` (8→9 mit Seite, 3→2 ohne) |
+| Sprung | `/stelle?dok=…docx&seite=1&zitat=…` öffnet die Seite, belegte Stelle **gelb hinterlegt** |
+
+Ein Word-Dokument mit Umlauten und `&` im Pfad, drei Ebenen tief.
+
 ⭐ **Die Lehre:** Zwei Ablaufpläne, die getrennt laufen und eine gemeinsame
 Annahme haben — und kein Werkzeug hat sie verglichen.
 `test_office_pdf_liegt_neben_dem_original` tut das jetzt; mit der alten
 Zeile wird sie rot.
+
+---
+
+## 28 — Aussortierte Dokumente bleiben im Arbeitsbereich
+
+**Gemessen 22.09.** OFFEN.
+
+Die Aufnahmekette lädt **zuerst hoch und sortiert danach**:
+
+```
+Markdown speichern → Upload → In Workspace einbetten → Ablage entscheiden
+                                                          ↑ hier erst die Positivliste
+```
+
+Folge: Ein Dokument, das die Positivliste ablehnt, liegt trotzdem im
+Arbeitsbereich — die Datei wandert nach `aussortiert/`, die hochgeladene
+Textfassung bleibt. Gemessen: drei von drei `.msg` im Prüfbereich.
+
+### ⚠ Eine Schätzung, die sich als falsch erwies
+
+Ich hatte daraus „rund 2.000 Geisterdokumente im KAP-Arbeitsbereich"
+gerechnet — 1.707 Bilder plus 386 Rückfall-Formate. **Die Messung sagt
+etwas anderes:** Eine Bilddatei in den Eingang gelegt, Bestand vorher 81,
+nachher 81. Das Bild landet **nicht** im Arbeitsbereich.
+
+Der Grund: Ohne Text entsteht keine Markdown-Fassung, also gibt es nichts
+hochzuladen. Betroffen sind nur Dateien, die **Text haben und trotzdem
+abgelehnt werden** — `.msg`, `.eml` und ein Teil der 386 Rückfall-Formate.
+
+⭐ Von den `.msg` auf die Bilder zu schließen war derselbe Fehlgriff wie
+am Morgen: eine Fehlerklasse aus einer verwandten, aber anders gebauten
+abgeleitet. Die Messung kostete zwei Minuten, die Schätzung hätte einen
+unnötigen Umbau vor dem Nachtlauf ausgelöst.
+
+### Was zu tun ist
+
+Die Positivliste gehört **vor** den Upload. Bis dahin: abgelehnte Formate
+gar nicht erst in den Eingang legen, oder die Reste danach löschen. Kein
+Datenverlust in beiden Fällen — der Schlüssel ist auf jeder Stufe derselbe.
 
 ---
 
