@@ -467,6 +467,78 @@ def test_plaene_unversehrt():
         pruefe(not leer, "%s: kein Code-Knoten ist leer" % datei)
 
 
+def test_office_pdf_liegt_neben_dem_original():
+    """Die gewandelte PDF muss im SELBEN Ordner landen wie ihr Original.
+
+    ⛔ Gemessen am 22.09.: Ablaufplan 1 legt das Original seit dem
+      Schluessel-Umbau mit Unterordnern ab (archiv/<Kunde>/<Auftrag>/x.docx),
+      Ablaufplan 2 schrieb die gewandelte PDF weiter FLACH nach archiv/x.pdf.
+      Damit lagen sie nicht mehr nebeneinander - und genau das setzt die
+      Office-Regel im Proxy voraus (_schluessel_der_datei sucht das Original
+      im selben Ordner). Folge: Das Word-Dokument hatte keine Seitenansicht,
+      und die gewandelte PDF bekam einen eigenen Schluessel - ein Dokument,
+      das niemand kennt. Bei 1.137 Office-Dateien im KAP-Bestand waeren das
+      1.137 solche Geisterdokumente.
+
+    ⭐ Ein Umbau an einer Stelle, der eine Annahme an einer anderen
+      bricht. Die beiden Plaene laufen getrennt, und kein Werkzeug hat sie
+      verglichen - deshalb steht der Vergleich jetzt hier.
+
+    ⭐ Die Rechnung muss DIESELBE sein wie in Ablaufplan 1, Knoten
+      "Code": wurzel = /files/dokumente/<bereich> mit bereich = Segment VOR
+      dem letzten "input", unter = alle Segmente dahinter. "Aehnlich" reicht
+      nicht - dann laufen sie beim naechsten Sonderfall wieder auseinander.
+    """
+    print("\nGewandelte PDF liegt neben dem Original")
+    k = knoten("2_Dateien-in-JSON-umwandeln.json", "Office nach PDF")
+    ziel = ""
+    for kopf in k["parameters"]["headerParameters"]["parameters"]:
+        if kopf.get("name") == "X-Ziel":
+            ziel = kopf.get("value") or ""
+    if not ziel.startswith("={{") or not ziel.rstrip().endswith("}}"):
+        pruefe(False, "X-Ziel ist kein Ausdruck - dieser Teil ist NICHT "
+                      "geprueft (%r)" % ziel[:40])
+        return
+    js = ziel.strip()[3:-2]
+
+    def ziel_fuer(verzeichnis, name):
+        aus = node_lauf(
+            "const $binary = {data:{directory:%s, fileName:%s}};\n"
+            "const w = (%s);\n"
+            "console.log(w ? decodeURIComponent(w) : '(kein Ziel)');"
+            % (json.dumps(verzeichnis), json.dumps(name), js))
+        return aus.strip()
+
+    # ⭐ Die Zusicherung: derselbe Ordner wie das Original.
+    tief = ziel_fuer("/files/dokumente/kap/input/Kunde/Auftrag", "Bericht.docx")
+    pruefe(tief == "/files/dokumente/kap/archiv/Kunde/Auftrag/Bericht.pdf",
+           "drei Ebenen tief: %r" % tief)
+
+    flach = ziel_fuer("/files/dokumente/kap/input", "Bericht.docx")
+    pruefe(flach == "/files/dokumente/kap/archiv/Bericht.pdf",
+           "ohne Unterordner: %r" % flach)
+
+    # ⛔ Gegenprobe 1: Ohne "input" im Pfad KEIN Ziel. Ein geratenes Ziel
+    #   legte die PDF unter den Eingang - und der naechste Durchgang sammelte
+    #   sie wieder ein. Der Riegel gegen Endlosschleifen erzeugte dann eine.
+    pruefe(ziel_fuer("/files/dokumente/kap/archiv", "Bericht.docx")
+           == "(kein Ziel)",
+           "ohne Eingangsordner wird KEIN Ziel genannt")
+
+    # ⛔ Gegenprobe 2: Der Bereich wird am LETZTEN "input" bestimmt -
+    #   genau wie in Ablaufplan 1. Ein Kundenordner, der selbst "input"
+    #   heisst, darf die beiden nicht auseinanderlaufen lassen.
+    doppelt = ziel_fuer("/files/dokumente/kap/input/input", "Bericht.docx")
+    pruefe(doppelt == "/files/dokumente/input/archiv/Bericht.pdf",
+           "zweimal 'input': dieselbe Rechnung wie Plan 1, ist %r" % doppelt)
+
+    # ⛔ Gegenprobe 3: Die Endung wird getauscht, nicht angehaengt -
+    #   sonst hiesse die Datei "Bericht.docx.pdf" und traefe das Original
+    #   nicht mehr.
+    pruefe(not tief.endswith(".docx.pdf"),
+           "die Endung wird getauscht, nicht angehaengt")
+
+
 if __name__ == "__main__":
     test_nichtdokumente()
     test_leere_aussortieren()
@@ -474,6 +546,7 @@ if __name__ == "__main__":
     test_unterkette_reisst_nicht_mit()
     test_docling_einstellungen()
     test_bereichserkennung()
+    test_office_pdf_liegt_neben_dem_original()
     test_plaene_unversehrt()
     test_was_n8n_wirklich_geladen_hat()
     print("\nGeprueft wurden die Plaene in: %s" % PLAENE)

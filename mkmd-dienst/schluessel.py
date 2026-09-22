@@ -211,7 +211,7 @@ def anzeigetitel(schluessel_text, bereich=None, bereiche=(), abdruecke=()):
     roh = str(schluessel_text or "")
     endung = _endung_von(roh)
     stamm = roh[:-len(endung)] if endung else roh
-    # \u2b50 Zuerst ueber MITGLIEDSCHAFT abschneiden, wenn die Abdruecke
+    # ⭐ Zuerst ueber MITGLIEDSCHAFT abschneiden, wenn die Abdruecke
     #   bekannt sind. Gemessen am 22.09.: AnythingLLM gibt den Namen in der
     #   Fundstelle mit EINEM Trennzeichen zurueck, die Dateiliste zeigt ihn
     #   mit zweien. Wer am '--' schneidet, kuerzt den einen Fall gar nicht -

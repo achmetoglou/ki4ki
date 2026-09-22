@@ -258,7 +258,7 @@ def verlinken_mehrfach(text, dokumente):
         aus = zit.sub(_z, aus)
         def _schlicht(m, seiten=seiten, dq=dq, kennung=kennung, quelle=aus):
             s = int(m.group(1))
-            # \u26d4 Nur verlinken, wenn es die Seite WIRKLICH gibt. Seit
+            # ⛔ Nur verlinken, wenn es die Seite WIRKLICH gibt. Seit
             #   auch Nicht-PDF im Abdruckverzeichnis stehen, findet die
             #   Klammer eine Textdatei oder eine Tabelle - die hat aber
             #   keine Seiten, und der Klick landete auf "Dieses Dokument
@@ -267,7 +267,7 @@ def verlinken_mehrfach(text, dokumente):
             #   liefert eine Fehlermeldung.
             if not (0 < s <= len(seiten)):
                 return m.group(0)
-            # \u2b50 Die Aussage davor mitgeben, sonst oeffnet der Sprung die
+            # ⭐ Die Aussage davor mitgeben, sonst oeffnet der Sprung die
             #   Seite ohne gelbe Markierung.
             satz = _satz_davor(quelle, m.start())
             anhang = ("&zitat=" + quote(satz[:400], safe="")) if satz else ""

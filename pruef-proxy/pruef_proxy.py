@@ -2617,6 +2617,39 @@ def _titel_aus_json(docpath):
 _OFFICE_ORIGINAL = (".docx", ".doc", ".odt", ".rtf", ".pptx", ".ppt", ".odp")
 
 
+def _basis_von(pfad):
+    """Unter welcher der beiden Wurzeln liegt dieser Pfad?
+
+    ⛔ Derselbe Ordner ist ZWEIMAL eingehaengt: ./dokumente steht im
+      Container einmal nur lesbar (KI4KI_PDFS) und einmal schreibbar
+      (KI4KI_EINGANG). Wer einen Pfad aus dem einen Baum gegen die andere
+      Wurzel rechnet, bekommt "../<zweiter name>/<bereich>/..." - der
+      Bereich heisst dann ".." und der Schluessel trifft nie.
+
+      Gemessen am 22.09.: FUENF der sechs Aufrufstellen von
+      _schluessel_der_datei durchlaufen den Eingangsbaum und waren dadurch
+      wirkungslos. Nur pdfs_einlesen() lief ueber KI4KI_PDFS und war heil.
+      Sichtbar wurde es an zwei Stellen, die niemand zusammen gedacht
+      haette: Jeder Link auf ein Nicht-PDF endete auf "Dieses Dokument
+      liegt nicht vor" (_archivdatei fand nie etwas), und der Loeschklick
+      liess das Original in der Ablagestufe liegen (BUGS §24).
+
+    ⚠ os.path.abspath, NICHT realpath: Im Container sind die beiden
+      Einhaengepunkte getrennt, realpath fuehrt sie nicht zusammen; auf der
+      Platte waere eine davon ein Verweis, und realpath machte aus dem
+      Eingangsbaum wieder den Lesebaum. Die laengere Wurzel gewinnt, damit
+      eine Wurzel unterhalb der anderen richtig zugeordnet wird.
+    """
+    p = os.path.abspath(str(pfad or ""))
+    for w in sorted({PDF_ORDNER, EINGANG_ORDNER}, key=len, reverse=True):
+        if not w:
+            continue
+        a = os.path.abspath(w)
+        if p == a or p.startswith(a + os.sep):
+            return w
+    return PDF_ORDNER
+
+
 def _schluessel_der_datei(wurzel, dateiname):
     """(Schluessel, Abdruck) dieses Dokuments - oder (None, None).
 
@@ -2634,7 +2667,8 @@ def _schluessel_der_datei(wurzel, dateiname):
       abdruck_finden alle Fenster durchgeht - beim ANLEGEN des Verzeichnisses
       wuerde es jeden Eintrag falsch machen.
     """
-    rel = os.path.relpath(os.path.join(wurzel, dateiname), PDF_ORDNER)
+    basis = _basis_von(wurzel)
+    rel = os.path.relpath(os.path.join(wurzel, dateiname), basis)
     teile = rel.replace(os.sep, "/").split("/", 1)
     if len(teile) < 2:
         return None, None
@@ -2644,7 +2678,7 @@ def _schluessel_der_datei(wurzel, dateiname):
             if os.path.exists(os.path.join(wurzel, stamm + e)):
                 teile = os.path.relpath(
                     os.path.join(wurzel, stamm + e),
-                    PDF_ORDNER).replace(os.sep, "/").split("/", 1)
+                    basis).replace(os.sep, "/").split("/", 1)
                 break
     try:
         kpfad = schluessel.kennpfad(teile[0], teile[1])
@@ -2970,6 +3004,35 @@ def _seitentexte_pdf(schluessel):
     if ocr_gesamt > gesamt and abs(len(ocr) - len(seiten)) <= 2:
         return ocr if len(ocr) == len(seiten) else (ocr + [""] * (len(seiten) - len(ocr)))[:len(seiten)]
     return seiten
+
+
+def _sprungquelle(name):
+    """(Schluessel, Seitentexte) - aber NUR, wenn die Seite aufschlagbar ist.
+
+    ⛔ Der Unterschied zu _seitentexte_von, an dem sich der 22.09.
+      entschieden hat: Text hat fast jedes Dokument, ein SEITENBILD nur eine
+      PDF. _seitentexte_pdf faellt bei fehlender PDF auf den Bestandstext
+      zurueck - das ist fuer Scans so gebaut, damit die OCR-Seiten eine
+      duenne Textebene ersetzen. Eine Excel-Tabelle bekam dadurch "Seiten"
+      und damit einen Belegsprung; der Klick landete auf einer Ansicht ohne
+      Bild.
+
+      Mein erster Anlauf am selben Tag fragte "gibt es Seiten?" und war
+      deshalb wirkungslos - Seiten gab es ja. Die richtige Frage ist, ob
+      eine Datei da ist, die sich aufschlagen laesst.
+
+    ⚠ Das nimmt Tabellen, Text und Mails den SPRUNG, nicht den Beleg:
+      Geprueft wird weiter am Text, und der Dokumentlink fuehrt zur
+      Originaldatei. Ein Sprung auf eine Seite, die es als Bild nicht gibt,
+      verspricht mehr, als die Anlage halten kann.
+    """
+    sch = _pdf_schluessel(name)
+    if not sch:
+        return None, []
+    pfad = PDFS.get(sch)
+    if not pfad or not os.path.exists(pfad):
+        return None, []
+    return sch, (_seitentexte_pdf(sch) or [])
 
 
 def _seitentexte_von(name):
@@ -4612,16 +4675,16 @@ def nennungen_verlinken(text, quellen=None):
                       if len(w) > 6 and w.lower() not in _FUELLWOERTER][:12]
         ziel = "/stelle?dok=%s&seite=%s&zitat=%s" % (
             quote(name), seite, quote(" ".join(_fachworte)))
-        # \u2b50 SICHTBARE KENNZEICHNUNG: Der
+        # ⭐ SICHTBARE KENNZEICHNUNG: Der
         #   Unterschied geprueft/genannt lag bisher NUR in der Kursivschrift
         #   und "S." statt "Seite" - das war im Text kaum zu erkennen.
         #   Jetzt steht ein Symbol IM Verweis, das
         #   die Fusszeile erklaert. Kursiv bleibt zusaetzlich.
-        #   \u26a0 MARKER als Konstante, damit das Zeichen mit einer Aenderung
+        #   ⚠ MARKER als Konstante, damit das Zeichen mit einer Aenderung
         #     tauschbar ist, falls es im Browser nicht auffaellt.
         # VERIFIZIERT: Die Seite ist nachgeschlagen (hoechste
         #   Wortdeckung), nicht geraten - deshalb ein normaler Verweis mit
-        #   Seitenzahl, kein \u00b0-Marker, keine Kursivschrift.
+        #   Seitenzahl, kein °-Marker, keine Kursivschrift.
         raus.append("[%s, Seite\u00a0%s](%s)" % (sicher, seite, ziel))
         bis = e
     raus.append(text[bis:])
@@ -4725,7 +4788,7 @@ def _belegverzeichnis(namen):
         if a:
             nach_abdruck.setdefault(a, roh)
         lesbar[roh] = _anzeigename(roh)
-    # \u26d4 Mehrdeutige Anzeigenamen kommen NICHT vor. Zwei verschiedene
+    # ⛔ Mehrdeutige Anzeigenamen kommen NICHT vor. Zwei verschiedene
     #   Pfade koennen denselben lesbaren Titel ergeben ("Angebot 2024/x"
     #   und "Angebot/2024 x") - dann zeigte ein Sprung auf das falsche
     #   Dokument, und das ist genau die Kollisionsklasse, die dieser Umbau
@@ -4803,14 +4866,14 @@ def _beleg_dokument(geschrieben, nach_titel, nach_abdruck, lesbar=None):
         roh = nach_titel[k.lower()]
         return (assistent._titel_saubern(roh),
                 (lesbar or {}).get(roh) or _lesbarer_klammertitel(None, roh))
-    # \u2b50 Der ANZEIGETITEL. Genau das schreibt das Modell in die Klammer,
+    # ⭐ Der ANZEIGETITEL. Genau das schreibt das Modell in die Klammer,
     #   seit Klammer und Fusszeile ihn anzeigen - gemessen am 22.09.:
     #   "(Muller-Sohne-Prufberichte-Prufprotokoll-Charge-11, S. 1)".
     #   Ohne diesen Nachschlag hat sich die Umstellung selbst das Bein
     #   gestellt: Sie brachte dem Modell eine Form bei, die die Pruefung
     #   nicht kannte.
     #
-    # \u26d4 Nur bei GENAU EINEM Treffer. Tragen zwei Dokumente desselben
+    # ⛔ Nur bei GENAU EINEM Treffer. Tragen zwei Dokumente desselben
     #   Arbeitsbereichs denselben Anzeigetitel, wird keines gewaehlt - ein
     #   Sprung auf das falsche waere genau die Kollisionsklasse, gegen die
     #   dieser Umbau gebaut ist.
@@ -7893,13 +7956,13 @@ class Griff(BaseHTTPRequestHandler):
         # ---- Zitate und Seiten pruefen ------------------------------------
         beruehrt = {}
         for dok in zustand["dokumente"] or ([faden_dok] if faden_dok else []):
-            sch = _pdf_schluessel(dok)
+            sch, seiten = _sprungquelle(dok)
             if sch:
                 try:
-                    # \u2b50 DERSELBE Name wie in der Klammer - sonst
+                    # ⭐ DERSELBE Name wie in der Klammer - sonst
                     #   findet verlinken_mehrfach ihn im Text nicht.
                     beruehrt[_lesbar.get(dok) or _anzeigename(dok)] = (
-                        sch, _seitentexte_pdf(sch) or [])
+                        sch, seiten)
                 except Exception:
                     pass
         ok = nein = 0
@@ -8804,11 +8867,15 @@ class Griff(BaseHTTPRequestHandler):
         if not (dokument_erlaubt(ka, self.headers) and dokument_erlaubt(kb, self.headers)):
             return False
         try:
-            sa = _seitentexte_pdf(ka) or []
-            sb = _seitentexte_pdf(kb) or []
+            # ⛔ _sprungquelle, nicht _seitentexte_pdf: Der Vergleich setzt in
+            #   JEDE Zelle einen Seitenverweis. Das geht nur, wo es eine Seite
+            #   zum Aufschlagen gibt - eine Tabelle oder eine Textdatei
+            #   bekaeme sonst Verweise auf Seiten ohne Bild (22.09.).
+            ka, sa = _sprungquelle(ka)
+            kb, sb = _sprungquelle(kb)
         except Exception:
             return False
-        if not sa or not sb:
+        if not ka or not kb or not sa or not sb:
             return False
         modus = "widerspruch" if assistent.ist_widerspruchsfrage(frage) else "vergleich"
         such = aspekt or ""

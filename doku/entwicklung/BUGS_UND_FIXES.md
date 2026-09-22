@@ -962,7 +962,14 @@ Löschklick **alle drei** Ablageorte räumt. Zwei von drei ist keine
 Löschung — bei Kundenakten ist das genau der Fall, in dem jemand glaubt,
 eine Unterlage sei fort, und sie liegt weiter auf der Platte.
 
-**Noch nicht untersucht.** Zwei Verdachtsmomente:
+✅ **Am 22.09. nachmittags geklaert und behoben — siehe Punkt 25.**
+Die Ursache war keine der beiden Vermutungen unten, sondern die zweite
+Einhängung desselben Ordners: `_eigene_spuren_tilgen()` durchläuft den
+Eingangsbaum und rechnete den Schlüssel gegen den Lesebaum — es konnte
+**nie** ein Treffer entstehen. Derselbe Fehler ließ jeden Link auf ein
+Nicht-PDF ins Leere laufen.
+
+Die beiden damaligen Vermutungen, zum Nachlesen:
 
 1. `_eigene_spuren_tilgen()` findet den Abdruck nicht, weil das
    Abdruckverzeichnis zum Zeitpunkt des Löschens noch den Stand vor dem
@@ -976,6 +983,118 @@ selbst an ihren Platz; das echte System schiebt sie erst durch den Eingang
 dorthin. Die Prüfung deckt den Fehler deshalb nicht ab — dieselbe
 Fehlerklasse wie beim Morgenlauf mit vier PDF: grün aus dem falschen
 Grund.
+
+---
+
+## 25 — Derselbe Ordner, zwei Einhängungen: fünf von sechs Wegen wirkungslos
+
+**Gemessen 22.09. am laufenden System.** Behoben.
+
+Im Arbeitsbereich `zz-schluesselprobe` endete **jeder** Link auf ein
+Nicht-PDF auf „Dieses Dokument liegt nicht vor." Die Anlage beantwortet
+einen unbekannten Namen und ein gesperrtes Dokument absichtlich
+**wortgleich**, damit niemand über die Fehlermeldung Namen erraten kann —
+von außen waren die beiden Fälle deshalb nicht zu trennen.
+
+`pruef-proxy/linkprobe.py` hat es von innen gemessen (nur Zahlen und
+Endungen, keine Namen):
+
+```
+Dokumente im Bestand: 81
+  Seitenansicht moeglich (PDF da) :    8
+  nur Originaldatei (kein Sprung) :    0
+  TOTER LINK (nichts auszuliefern):    3    .docx 1, .txt 1, .xlsx 1
+  ohne Abdruck (Altbestand)       :   70
+```
+
+Genau die drei Nicht-PDF. Das Rechte-Tor war unschuldig.
+
+### Die Ursache
+
+`./dokumente` ist im Compose **zweimal eingehängt**: einmal nur lesbar
+(`KI4KI_PDFS`), einmal schreibbar (`KI4KI_EINGANG`). `_schluessel_der_datei()`
+rechnete den Pfad aber immer gegen `KI4KI_PDFS`. Wer eine Datei aus dem
+Eingangsbaum hereingab, bekam `../<zweiter Name>/<bereich>/…` — der Bereich
+hieß `..`, der Schlüssel war Unsinn und traf nie.
+
+| Aufrufstelle | durchläuft | Zustand |
+|---|---|---|
+| `pdfs_einlesen` | `KI4KI_PDFS` | ✅ heil — darum gingen die 8 PDF |
+| `_archivdatei` | Eingangsbaum | ❌ fand **nie** etwas |
+| `_eigene_spuren_tilgen` | Eingangsbaum | ❌ → **das war Punkt 24** |
+| `_liegengebliebene_einraeumen` | Eingangsbaum | ❌ |
+
+⭐ **Punkt 24 und die toten Links sind derselbe Fehler.** Sie sahen so
+verschieden aus, dass sie zwei Tage lang getrennt gejagt wurden.
+
+**Behoben** durch `_basis_von(pfad)`: Die Wurzel wird aus dem Pfad bestimmt,
+nicht angenommen. Eine Funktion statt fünf Aufrufstellen.
+
+### ⛔ Warum die Prüfreihe das nicht sehen konnte
+
+`schluesselwege_test.py` setzte `KI4KI_PDFS` und `KI4KI_EINGANG` seit jeher
+auf **denselben** Pfad. Eine Umgebung, die gutmütiger ist als die echte
+Anlage, kann diese Fehlerklasse nicht enthalten — dieselbe Klasse wie
+„WAL-Reste" am 12.09. `test_zwei_einhaengungen` baut die zweite Einhängung
+jetzt eigens nach und war vor der Reparatur rot, mit dem Messwert daneben:
+derselbe Bericht, zwei Schlüssel (`…--7sfhn943l6` gegen `…--585ksgdwxq`).
+
+---
+
+## 26 — „Seiten" heißt nicht „Seitenbild"
+
+**Gemessen 22.09.** Behoben. **Mein zweiter Anlauf am selben Tag.**
+
+Der Belegsprung auf eine Excel-Tabelle öffnete eine Ansicht ohne Bild
+(„Dieses PDF enthält keinen durchsuchbaren Text").
+
+Mein Fix vom Vormittag fragte „gibt es Seiten?" — und war wirkungslos,
+**weil es Seiten gab**: `_seitentexte_pdf()` fällt bei fehlender PDF auf den
+Bestandstext zurück. Das ist für Scans so gebaut, damit OCR-Seiten eine
+dünne Textebene ersetzen. Eine Tabelle bekam dadurch „Seiten".
+
+⭐ **Die Lehre:** Ich habe die Frage gestellt, die nahelag, statt der, auf die
+es ankam. Text hat fast jedes Dokument — ein **Seitenbild** nur eine PDF.
+
+**Behoben** durch `_sprungquelle(name)`: liefert nur dann Schlüssel und
+Seiten, wenn eine Datei da ist, die sich aufschlagen lässt. Tabellen, Text
+und Mails verlieren damit den **Sprung**, nicht den **Beleg** — geprüft wird
+weiter am Text, und der Dokumentlink führt zur Originaldatei.
+
+---
+
+## 27 — Die gewandelte Word-PDF lag im falschen Ordner
+
+**Gemessen 22.09.** Behoben. **Von mir verursacht.**
+
+| | Wohin |
+|---|---|
+| Word-Original (Ablaufplan 1) | `archiv/<Kunde>/<Auftrag>/Bericht.docx` |
+| gewandelte PDF (Ablaufplan 2) | `archiv/Bericht.pdf` ← **flach** |
+
+Ich habe in Ablaufplan 1 die Archivstruktur auf Unterordner umgestellt und
+Ablaufplan 2 nicht mitgezogen. Die Office-Regel im Proxy sucht die PDF aber
+**im selben Ordner** wie das Original.
+
+**Zwei Folgen:** Word-Dokumente hatten keine Seitenansicht, und jede
+gewandelte PDF bekam einen **eigenen Schlüssel** — ein Dokument, das niemand
+kennt. Bei **1.137 Office-Dateien** im KAP-Bestand wären das 1.137 solche
+Geisterdokumente gewesen.
+
+**Behoben:** `X-Ziel` rechnet jetzt **dieselbe** Formel wie Ablaufplan 1
+(`/files/dokumente/<bereich>/archiv/<unter>`, Bereich = Segment vor dem
+letzten `input`). Ohne `input` im Pfad wird **kein** Ziel genannt — ein
+geratenes Ziel legte die PDF sonst unter den Eingang, und der nächste
+Durchgang sammelte sie wieder ein: Der Riegel gegen Endlosschleifen hätte
+eine erzeugt.
+
+⚠ **Wirkt nur für neu aufgenommene Dokumente.** Was vorher gewandelt wurde,
+liegt weiter flach im Archiv.
+
+⭐ **Die Lehre:** Zwei Ablaufpläne, die getrennt laufen und eine gemeinsame
+Annahme haben — und kein Werkzeug hat sie verglichen.
+`test_office_pdf_liegt_neben_dem_original` tut das jetzt; mit der alten
+Zeile wird sie rot.
 
 ---
 

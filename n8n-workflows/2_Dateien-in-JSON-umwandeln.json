@@ -617,7 +617,7 @@
             },
             {
               "name": "X-Ziel",
-              "value": "={{ encodeURIComponent(String($binary.data.directory || '').replace(/\\/input(\\/.*)?$/, '/archiv') + '/' + String($binary.data.fileName || 'dokument').replace(/\\.[^.]+$/, '') + '.pdf') }}"
+              "value": "={{ String($binary.data.directory || '').split('/').filter(Boolean).lastIndexOf('input') < 1 ? '' : encodeURIComponent('/files/dokumente/' + String($binary.data.directory || '').split('/').filter(Boolean)[String($binary.data.directory || '').split('/').filter(Boolean).lastIndexOf('input') - 1] + '/archiv/' + String($binary.data.directory || '').split('/').filter(Boolean).slice(String($binary.data.directory || '').split('/').filter(Boolean).lastIndexOf('input') + 1).concat([String($binary.data.fileName || 'dokument').replace(/\\.[^.]+$/, '') + '.pdf']).join('/')) }}"
             }
           ]
         },

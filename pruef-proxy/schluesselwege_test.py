@@ -50,6 +50,12 @@ def lege_an(*teile, **kw):
     return pfad
 
 
+def schluessel_von(bereich, unterpfad):
+    """Der Schluessel zu einem Pfad im Pruefbaum - eine Stelle fuer alle."""
+    import schluessel
+    return schluessel.schluessel(bereich, unterpfad)
+
+
 def baum_bauen():
     """Die Fehlerklasse, um die es geht: derselbe Dateiname bei zwei Kunden
     und in zwei Bereichen. Dazu ein Office-Original mit gewandelter PDF."""
@@ -719,7 +725,7 @@ def test_umlautdeckung():
            "Vorbedingung: der Name loest auf - sonst prueft nichts davon etwas")
 
     # (Der Wortlaut ist GEBAUT, nicht ausgedacht: Ohne Vereinheitlichung
-    #  zerfallen die Umlautwoerter ("pr\u00fcfbericht" -> "fbericht"), aber
+    #  zerfallen die Umlautwoerter ("prüfbericht" -> "fbericht"), aber
     #  es bleiben DREI lange Woerter uebrig. Nur so laeuft der Waechter bis
     #  zum Vergleich - mit weniger steigt er vorher mit "unpruefbar, nicht
     #  sperren" aus, und diese Zeile waere gruen, egal was der Code tut.
@@ -829,7 +835,7 @@ def test_belegklammer():
     print("\nBelegklammer am Abdruck")
     bestand.bereiche_setzen(["kap", "auw", "wissensdatenbank"])
 
-    # \u26d4 Eigene Dokumente anlegen statt auf den Baum der vorigen
+    # ⛔ Eigene Dokumente anlegen statt auf den Baum der vorigen
     #   Pruefungen zu bauen. Im ersten Anlauf hing diese Pruefung an einer
     #   Datei, die der Loeschweg vorher weggeraeumt hatte - sie war rot,
     #   ohne dass am Code etwas fehlte.
@@ -857,7 +863,7 @@ def test_belegklammer():
            "Vorbedingung: der Name im Arbeitsbereich hat nur EIN Trennzeichen")
     nach_titel, nach_abdruck, _karte = p._belegverzeichnis([im_bereich])
 
-    # \u2b50 Die Zusicherung: der nackte Abdruck genuegt.
+    # ⭐ Die Zusicherung: der nackte Abdruck genuegt.
     dok, lesbar = p._beleg_dokument(abdruck_b, nach_titel, nach_abdruck)
     pruefe(dok is not None and p._pdf_schluessel(dok) == meins,
            "der nackte Abdruck findet das Dokument, ist %r" % (dok,))
@@ -868,7 +874,7 @@ def test_belegklammer():
     dok2, _l = p._beleg_dokument(im_bereich[:-3], nach_titel, nach_abdruck)
     pruefe(dok2 is not None, "der volle Name findet weiterhin, ist %r" % (dok2,))
 
-    # \u26d4 Gegenprobe 1: ein Abdruck, den es gibt, dessen Dokument aber
+    # ⛔ Gegenprobe 1: ein Abdruck, den es gibt, dessen Dokument aber
     #   NICHT in diesem Arbeitsbereich liegt. Fail-closed - sonst belegt die
     #   Anlage mit der Akte eines fremden Kunden.
     dok3, _l = p._beleg_dokument(abdruck_a, nach_titel, nach_abdruck)
@@ -876,11 +882,11 @@ def test_belegklammer():
            "ein Abdruck aus einem anderen Bereich wird NICHT belegt, ist %r"
            % (dok3,))
 
-    # \u26d4 Gegenprobe 2: ein erfundener Abdruck trifft nichts.
+    # ⛔ Gegenprobe 2: ein erfundener Abdruck trifft nichts.
     dok4, _l = p._beleg_dokument("zzzz999999", nach_titel, nach_abdruck)
     pruefe(dok4 is None, "ein erfundener Abdruck trifft nichts, ist %r" % (dok4,))
 
-    # \u26d4 Gegenprobe 3: gewoehnlicher Klammertext bleibt Klammertext.
+    # ⛔ Gegenprobe 3: gewoehnlicher Klammertext bleibt Klammertext.
     for text in ("siehe oben", "Abb. 3", "vgl. Norm", ""):
         d, _l = p._beleg_dokument(text, nach_titel, nach_abdruck)
         pruefe(d is None, "Klammertext %r wird nicht zum Beleg" % text)
@@ -923,7 +929,7 @@ def test_trennzeichen_egal():
         pruefe(bestand._anzeige(name) == "DS-24-005",
                "%s ergibt den Anzeigetitel, ist %r" % (wie, bestand._anzeige(name)))
 
-    # \u2b50 Und der Katalog, um den es eigentlich geht.
+    # ⭐ Und der Katalog, um den es eigentlich geht.
     bestand.eintragen("DS-24-005", {"titel": "Eine Arbeit", "verfasser": "Muster"})
     einfach = s[:-4].replace("--", "-")
     ang = bestand.angaben(einfach)
@@ -933,7 +939,7 @@ def test_trennzeichen_egal():
     pruefe(bestand.kennung(einfach) == "DS",
            "kennung() ebenso, ist %r" % bestand.kennung(einfach))
 
-    # \u26d4 Gegenprobe 1: Ein Name, dessen Ende zufaellig zehn Zeichen hat,
+    # ⛔ Gegenprobe 1: Ein Name, dessen Ende zufaellig zehn Zeichen hat,
     #   aber KEIN bekannter Abdruck ist, bleibt unangetastet. Ohne diese
     #   Zeile waere das Abschneiden wieder syntaktisch - genau das, was
     #   dieser Umbau ueberall vermeidet.
@@ -942,7 +948,7 @@ def test_trennzeichen_egal():
            "ein Name ohne bekannten Abdruck bleibt unveraendert, ist %r"
            % bestand._anzeige(fremd))
 
-    # \u26d4 Gegenprobe 2: Ohne Abdruckverzeichnis faellt es auf das '--'
+    # ⛔ Gegenprobe 2: Ohne Abdruckverzeichnis faellt es auf das '--'
     #   zurueck und schneidet NICHT wild.
     bestand.abdruecke_setzen({})
     pruefe(bestand._anzeige(s) == "DS-24-005",
@@ -983,7 +989,7 @@ def test_belegsprung():
     pruefe(lesbar == "KundeQ-Angebot",
            "der Anzeigename ist kurz und lesbar, ist %r" % lesbar)
 
-    # \u2b50 Die eigentliche Zusicherung: Was die Klammer SCHREIBT und wovon
+    # ⭐ Die eigentliche Zusicherung: Was die Klammer SCHREIBT und wovon
     #   der Sprung ausgeht, ist DERSELBE Name. Genau das stimmte am 22.09.
     #   nicht - beide Stellen waren fuer sich richtig, nur nicht miteinander.
     _nt, _na, karte = p._belegverzeichnis([roh])
@@ -1002,7 +1008,7 @@ def test_belegsprung():
            % aus[-70:])
     pruefe("seite=1" in aus, "und auf die gepruefte Seite")
 
-    # \u26d4 Gegenprobe: Mit dem VOLLEN Namen als Schluessel - so stand es bis
+    # ⛔ Gegenprobe: Mit dem VOLLEN Namen als Schluessel - so stand es bis
     #   zum 22.09. - entsteht kein Sprung. Ohne diese Zeile waere die obige
     #   auch dann gruen, wenn verlinken_mehrfach einfach alles verlinkt.
     aus2, _o, _n = fadenfrage.verlinken_mehrfach(
@@ -1010,7 +1016,7 @@ def test_belegsprung():
     pruefe("/stelle?dok=" not in aus2,
            "Gegenprobe: mit dem vollen Namen als Schluessel entsteht keiner")
 
-    # \u26d4 Und die Falle, die der Plan schon kannte: Zwei verschiedene Pfade
+    # ⛔ Und die Falle, die der Plan schon kannte: Zwei verschiedene Pfade
     #   koennen denselben lesbaren Titel ergeben. Dann darf NICHT gekuerzt
     #   werden - sonst zeigte ein Sprung auf das falsche Dokument, und das
     #   ist genau die Kollisionsklasse, die dieser Umbau beseitigt.
@@ -1071,7 +1077,7 @@ def test_zitatpruefung_umlaute():
         pruefe(fadenfrage._steht_auf(z, seite) is True,
                "%s: das Zitat steht auf der Seite" % wie)
 
-    # \u26d4 Die Gegenproben. Ohne sie waeren die vier Zeilen oben auch dann
+    # ⛔ Die Gegenproben. Ohne sie waeren die vier Zeilen oben auch dann
     #   gruen, wenn _steht_auf einfach immer True liefert - und dann wuerde
     #   jedes erfundene Zitat blau verlinkt.
     pruefe(fadenfrage._steht_auf(zitat_umlaut, fremd) is False,
@@ -1102,8 +1108,8 @@ def test_klammer_kennt_anzeigetitel():
     print("\nKlammer kennt den Anzeigetitel")
     bestand.bereiche_setzen(["kap", "auw", "zz-probe"])
 
-    # \u26d4 Die Ordner tragen ECHTE Umlaute, wie auf dem Server. Der
-    #   Schluessel schleift sie ab ("Qualit\u00e4t" -> "Qualitat"), das Modell
+    # ⛔ Die Ordner tragen ECHTE Umlaute, wie auf dem Server. Der
+    #   Schluessel schleift sie ab ("Qualität" -> "Qualitat"), das Modell
     #   schreibt sie wieder hin. Genau diese Paarung muss der Vergleich
     #   aushalten. Ein erster Anlauf nannte den Ordner "Qualitaet" mit ae -
     #   dann verglich die Pruefung zwei wirklich verschiedene Woerter und
@@ -1124,7 +1130,7 @@ def test_klammer_kennt_anzeigetitel():
     pruefe(lesbar == "Schafer-Qualitat-Liste",
            "Vorbedingung: der Schluessel schleift die Umlaute ab (%r)" % lesbar)
 
-    # \u2b50 Die Zusicherung: genau die Form, die das Modell schreibt.
+    # ⭐ Die Zusicherung: genau die Form, die das Modell schreibt.
     dok, _l = p._beleg_dokument(lesbar, nt, na, karte)
     pruefe(dok is not None and p._pdf_schluessel(dok) == sch,
            "der Anzeigetitel findet das Dokument, ist %r" % (dok,))
@@ -1145,7 +1151,7 @@ def test_klammer_kennt_anzeigetitel():
     pruefe(p._beleg_dokument(roh[:-3], nt, na, karte)[0] is not None,
            "der volle Name geht weiterhin")
 
-    # \u26d4 Gegenprobe 1: ein FREMDER Anzeigetitel trifft nichts. Ohne diese
+    # ⛔ Gegenprobe 1: ein FREMDER Anzeigetitel trifft nichts. Ohne diese
     #   Zeile waere alles oben auch dann gruen, wenn jeder Klammertext das
     #   erstbeste Dokument bekommt.
     for fremd in ("Irgendwas-Anderes", "Schafer-Qualitat-Andere",
@@ -1153,7 +1159,7 @@ def test_klammer_kennt_anzeigetitel():
         d, _l = p._beleg_dokument(fremd, nt, na, karte)
         pruefe(d is None, "fremder Titel %r trifft nichts, ist %r" % (fremd, d))
 
-    # \u26d4 Gegenprobe 2: Sind ZWEI Dokumente unter demselben Anzeigetitel
+    # ⛔ Gegenprobe 2: Sind ZWEI Dokumente unter demselben Anzeigetitel
     #   im Arbeitsbereich, darf keines gewaehlt werden - sonst zeigte der
     #   Sprung auf das falsche. Genau die Kollisionsklasse, gegen die dieser
     #   Umbau gebaut ist.
@@ -1214,18 +1220,18 @@ def test_index_kennt_alle_dokumente():
         return schluessel.fingerabdruck(
             schluessel.kennpfad("zz-alle", "archiv/KundeX/" + name))
 
-    # \u2b50 Die Zusicherung: jedes DOKUMENT steht im Abdruckverzeichnis.
+    # ⭐ Die Zusicherung: jedes DOKUMENT steht im Abdruckverzeichnis.
     for name in ("Bericht.pdf", "Kennwerte.xlsx", "Liste.txt", "Notiz.docx"):
         pruefe(abdruck(name) in p.PDFS_ABDRUCK,
                "%-14s steht im Abdruckverzeichnis" % name)
 
-    # \u26d4 Gegenprobe 1: Ein Foto ist kein Dokument und gehoert NICHT
+    # ⛔ Gegenprobe 1: Ein Foto ist kein Dokument und gehoert NICHT
     #   hinein - sonst waere die Zusicherung oben auch dann gruen, wenn
     #   einfach jede Datei aufgenommen wird.
     pruefe(abdruck("Foto.jpg") not in p.PDFS_ABDRUCK,
            "ein Foto steht NICHT im Abdruckverzeichnis")
 
-    # \u26d4 Gegenprobe 2: PDFS bleibt PDF-only. Nur eine PDF hat Seiten,
+    # ⛔ Gegenprobe 2: PDFS bleibt PDF-only. Nur eine PDF hat Seiten,
     #   auf die ein Beleg springen kann; ein Eintrag ohne Datei brächte den
     #   Belegsprung ins Leere.
     sch_x = schluessel.schluessel("zz-alle", "archiv/KundeX/Kennwerte.xlsx")
@@ -1234,7 +1240,7 @@ def test_index_kennt_alle_dokumente():
     pruefe(sch_x not in p.PDFS,
            "die Excel-Tabelle hat KEINEN Dateipfad - sie hat keine Seiten")
 
-    # \u2b50 Und die Folge, um die es eigentlich geht: der Name laesst sich
+    # ⭐ Und die Folge, um die es eigentlich geht: der Name laesst sich
     #   kuerzen, also findet die Belegklammer das Dokument wieder.
     import bestand
     bestand.bereiche_setzen(["zz-alle", "kap", "auw"])
@@ -1277,21 +1283,21 @@ def test_sprung_nur_wenn_es_eine_seite_gibt():
            "und er nimmt die Aussage mit (gelbe Markierung), ist %r"
            % aus[-90:])
 
-    # \u26d4 Die Zusicherung, um die es geht: OHNE Seiten kein Sprung.
+    # ⛔ Die Zusicherung, um die es geht: OHNE Seiten kein Sprung.
     ohne, _o, _n = fadenfrage.verlinken_mehrfach(
         text, {"Charge-9": ("kap-Liste--ab12cd34ef.txt", [])})
     pruefe("/stelle?dok=" not in ohne,
            "ohne Seiten entsteht KEIN Sprung, ist %r" % ohne[-70:])
     pruefe(ohne == text, "und der Text bleibt unveraendert")
 
-    # \u26d4 Eine Seitenzahl ueber den Bestand hinaus ebenso wenig.
+    # ⛔ Eine Seitenzahl ueber den Bestand hinaus ebenso wenig.
     zu_hoch, _o, _n = fadenfrage.verlinken_mehrfach(
         "Aussage (Charge-9, S. 7).",
         {"Charge-9": ("kap-Charge-9--ab12cd34ef.pdf", seiten)})
     pruefe("/stelle?dok=" not in zu_hoch,
            "Seite 7 von 1 ergibt keinen Sprung")
 
-    # \u26d4 Gegenprobe: Das woertliche Zitat muss weiterhin verlinkt werden -
+    # ⛔ Gegenprobe: Das woertliche Zitat muss weiterhin verlinkt werden -
     #   sonst waere alles oben auch dann gruen, wenn gar nichts mehr
     #   verlinkt wird.
     zitat = ('Es gilt \u201eDie Zugfestigkeit betraegt 344 MPa.\u201c '
@@ -1300,6 +1306,128 @@ def test_sprung_nur_wenn_es_eine_seite_gibt():
         zitat, {"Charge-9": ("kap-Charge-9--ab12cd34ef.pdf", seiten)})
     pruefe("/stelle?dok=" in mit and ok == 1,
            "das woertliche Zitat wird weiterhin verlinkt (ok=%d)" % ok)
+
+
+def test_zwei_einhaengungen():
+    """Derselbe Ordner unter zwei Namen - der Schluessel muss trotzdem stimmen.
+
+    \u26d4 Gemessen am 22.09. am laufenden System: Im Compose ist ./dokumente
+      ZWEIMAL eingehaengt - als /daten/pdfs (nur lesen) und als /daten/eingang
+      (schreibend). _schluessel_der_datei rechnete den Pfad aber immer gegen
+      PDF_ORDNER. Wer eine Datei aus dem Eingangsbaum hereingab, bekam den
+      Bereich ".." und damit einen Schluessel, der nie traf.
+
+      Betroffen waren FUENF der sechs Aufrufstellen - alle, die den
+      Eingangsbaum durchlaufen. Nur pdfs_einlesen() lief ueber PDF_ORDNER
+      und war deshalb heil. Sichtbar wurde das an zwei Stellen, die niemand
+      zusammen gedacht haette:
+
+        - Jeder Link auf ein Nicht-PDF endete auf "Dieses Dokument liegt
+          nicht vor" (_archivdatei fand die Datei nie).
+        - Der Loeschklick liess das Original in der Ablagestufe liegen
+          (BUGS \u00a724) - dieselbe Rechnung, dieselbe falsche Wurzel.
+
+    \u2b50 Warum die Pruefreihe das nicht gesehen hat: Sie setzt seit jeher
+      KI4KI_PDFS und KI4KI_EINGANG auf DENSELBEN Pfad. Eine Umgebung, die
+      gutmuetiger ist als die echte Anlage, kann diese Fehlerklasse nicht
+      enthalten. Deshalb wird die zweite Einhaengung hier eigens gebaut.
+    """
+    import pruef_proxy as p
+    print("\nZwei Einhaengungen desselben Ordners")
+
+    zweit = BAUM + "-zweit"
+    if not os.path.islink(zweit):
+        os.symlink(BAUM, zweit)
+    merk = p.EINGANG_ORDNER
+    p.EINGANG_ORDNER = zweit          # wie /daten/eingang neben /daten/pdfs
+    try:
+        p.pdfs_einlesen()             # der Index entsteht ueber PDF_ORDNER
+
+        # ⭐ Die Zusicherung: Eine Datei, die ueber den ZWEITEN Namen
+        #   gefunden wird, bekommt denselben Schluessel wie ueber den ersten.
+        ordner_a = os.path.join(BAUM, "kap", "archiv", "KundeA")
+        ordner_b = os.path.join(zweit, "kap", "archiv", "KundeA")
+        sl_a, ab_a = p._schluessel_der_datei(ordner_a, "Bericht.docx")
+        sl_b, ab_b = p._schluessel_der_datei(ordner_b, "Bericht.docx")
+        pruefe(sl_a is not None, "ueber den ersten Namen entsteht ein Schluessel")
+        pruefe(sl_b == sl_a and ab_b == ab_a,
+               "ueber den zweiten Namen entsteht DERSELBE (%r / %r)"
+               % ((sl_a or "")[-24:], (sl_b or "")[-24:]))
+
+        # ⭐ Und die Folge, um die es geht: Die Originaldatei wird
+        #   gefunden. Das ist der Unterschied zwischen einem Link, der eine
+        #   Word-Datei oeffnet, und einem, der "liegt nicht vor" meldet.
+        stamm = p._stamm(sl_a)
+        datei = p._archivdatei(stamm)
+        pruefe(datei is not None and datei.endswith("Bericht.docx"),
+               "_archivdatei findet das Word-Original, ist %r"
+               % os.path.basename(datei or ""))
+
+        # ⛔ Gegenprobe 1: Ein Dokument, das es nicht gibt, darf weiterhin
+        #   NICHTS finden. Ohne diese Zeile waere die Zusicherung oben auch
+        #   dann gruen, wenn _archivdatei einfach die erstbeste Datei
+        #   zurueckgibt - und dann oeffnete ein Beleg das falsche Dokument.
+        pruefe(p._archivdatei("Gibtsnicht--zzzz999999") is None,
+               "ein unbekannter Name findet weiterhin nichts")
+
+        # ⛔ Gegenprobe 2: Auch ueber den zweiten Namen darf ein fremder
+        #   Bereich nicht mitgerissen werden.
+        auw = p._schluessel_der_datei(
+            os.path.join(zweit, "auw", "archiv", "KundeA"), "Angebot.pdf")[1]
+        kap = p._schluessel_der_datei(
+            os.path.join(zweit, "kap", "archiv", "KundeA"), "Angebot.pdf")[1]
+        pruefe(auw is not None and kap is not None and auw != kap,
+               "zwei Bereiche bleiben auch ueber den zweiten Namen getrennt")
+    finally:
+        p.EINGANG_ORDNER = merk
+        p.pdfs_einlesen()
+
+
+def test_sprung_nur_mit_seitenbild():
+    """Ein Belegsprung entsteht nur, wo es eine Seite zum Aufschlagen gibt.
+
+    ⛔ Gemessen am 22.09. am laufenden System: Die Antwort zur
+      Excel-Tabelle trug einen Sprung auf /stelle - der oeffnete eine
+      Ansicht ohne Bild ("Dieses PDF enthaelt keinen durchsuchbaren Text").
+      Ursache: _seitentexte_pdf faellt bei fehlender PDF auf den
+      Bestandstext zurueck (fuer Scans gebaut). Text hat fast jedes
+      Dokument - ein Seitenbild nur eine PDF.
+
+    ⭐ Diese Pruefung misst den RIEGEL, nicht die Aufloesung. Dass der
+      Schluessel gefunden wird, wird eigens mitgeprueft: Waere schon das
+      kaputt, waere die Zusicherung unten auch dann gruen, wenn gar nichts
+      mehr auffindbar ist.
+    """
+    import pruef_proxy as p
+    print("\nSprung nur mit Seitenbild")
+
+    lege_an("kap", "archiv", "KundeC", "Tabelle.xlsx", inhalt=b"PK\x03\x04xl")
+    p.pdfs_einlesen()
+
+    tabelle = p._stamm(schluessel_von("kap", "archiv/KundeC/Tabelle.xlsx"))
+    pdf = p._stamm(schluessel_von("kap", "archiv/KundeA/Angebot.pdf"))
+
+    # ⭐ Erst der Nachweis, dass beide ueberhaupt auffindbar sind.
+    pruefe(p._pdf_schluessel(tabelle) is not None,
+           "die Tabelle ist auffindbar (der Riegel ist das Thema, nicht die "
+           "Aufloesung)")
+    pruefe(p._pdf_schluessel(pdf) is not None, "die PDF ist auffindbar")
+
+    # ⭐ Die Zusicherung: nur die PDF taugt als Sprungziel.
+    sch_pdf, _s = p._sprungquelle(pdf)
+    pruefe(sch_pdf is not None, "die PDF darf angesprungen werden")
+
+    sch_tab, seiten_tab = p._sprungquelle(tabelle)
+    pruefe(sch_tab is None and seiten_tab == [],
+           "die Tabelle NICHT - sie hat keine Seite zum Aufschlagen, ist %r"
+           % (sch_tab,))
+
+    # ⛔ Gegenprobe: Der alte Weg haette hier sehr wohl "Seiten"
+    #   gemeldet. Ohne diese Zeile bliebe offen, ob die Zeile darueber den
+    #   neuen Riegel misst oder nur eine leere Tabelle.
+    pruefe(p._seitentexte_von(tabelle)[1] is not None,
+           "_seitentexte_von antwortet fuer dieselbe Tabelle weiterhin - "
+           "geprueft wird also der Sprung, nicht die Textquelle")
 
 
 def main():
@@ -1318,7 +1446,9 @@ def main():
                   test_zitatpruefung_umlaute,
                   test_klammer_kennt_anzeigetitel,
                   test_index_kennt_alle_dokumente,
-                  test_sprung_nur_wenn_es_eine_seite_gibt]
+                  test_sprung_nur_wenn_es_eine_seite_gibt,
+                  test_zwei_einhaengungen,
+                  test_sprung_nur_mit_seitenbild]
     try:
         for t in pruefungen:
             t()
