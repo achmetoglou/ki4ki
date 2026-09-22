@@ -233,6 +233,86 @@ und gleicht ab, was n8n **wirklich geladen** hat. Aufruf auf dem Host:
 2. **`LESBAR_BYTE`** (siehe oben), gehört zu Teil 3.
 3. **Die Protokoll-Wiederholung** bei jedem Minutentakt (§3, Punkt 2).
 
+## 3g - Stand 22.09., Mittag: Teil 3 abgenommen, Formatprobe laeuft
+
+**Einstieg fuer die naechste Sitzung.** Zweig `pfad-identitaet`.
+
+### Was heute erreicht wurde
+
+✅ **Teil 3 ist abgenommen** (vormittags): Zwei gleichnamige Pruefberichte
+in zwei Kundenordnern, beide auffindbar, beide mit eigenem blauem Beleg auf
+die richtige Seite mit gelber Markierung.
+
+✅ **Die Formatprobe traegt**: 14 Dokumente im Bereich `zz-schluesselprobe`,
+darunter Word, Excel, Text und Outlook-Post. Umlaute und `&` im
+Ordnernamen, drei Ebenen tief - die Schluessel stimmen alle.
+Die Fachfragen werden richtig beantwortet: **263 °C** (Excel),
+**14 Tage** (Text), **371 MPa** (Word), **318/344 MPa** (PDF).
+
+### Die Kette der Fehler, die das gekostet hat
+
+Elf Anlaeufe, elf Fehler - jeder erst sichtbar, nachdem der vorige weg war.
+`BUGS_UND_FIXES.md` **16-24**. Die drei wichtigsten:
+
+| | |
+|---|---|
+| **23** | Eine stoerrige Datei riss den **ganzen Stapel** mit. In der Unterkette war nur der PDF-Weg abgesichert; Tika, Office-Dienst und die vier Extract-Bausteine hatten keine Fehlerbehandlung. Zehn Dateien, ein Ergebnis, alle mit null Zeichen - und "Succeeded" gemeldet. Bei 4.300 Dateien haette das den Nachtlauf gekostet. |
+| **(ohne Nummer)** | `pdfs_einlesen()` lief nur ueber `.pdf`. Ein Excel-, Text- oder Word-Dokument stand in keinem Abdruckverzeichnis - dreifach beschaedigt: `nur_altweg` zaehlte falsch, der Name liess sich nicht kuerzen, der Beleg fand es nicht. |
+| **24** | ⛔ **OFFEN**: Der Loeschklick raeumt zwei von drei Ablageorten. Das Original in der Ablagestufe bleibt liegen. |
+
+⭐ **Die Lehre des Tages, zweimal gelernt:** Eine Probe aus vier
+gleichartigen Dateien beweist nichts. Der Morgenlauf mit vier PDF war gruen
+**aus dem falschen Grund** - er hat den einzigen abgesicherten Weg geprueft
+und die Bruechigkeit der uebrigen fuenf vollstaendig verdeckt.
+
+### ⛔ Offen, in dieser Reihenfolge
+
+1. **Die drei letzten Fixes am laufenden System pruefen** (`a9759f8`):
+   kein "nicht belegt" mehr bei der Excel-Tabelle, kein toter Link mehr
+   beim Textdokument, gelbe Markierung bei den PDF-Sprungzielen.
+2. ⛔ **Die Positivliste sitzt HINTER dem Upload.** Eine `.msg` wird
+   hochgeladen, eingebettet - und erst danach aussortiert. Drei
+   Outlook-Nachrichten liegen deshalb im Arbeitsbereich
+   `zz-schluesselprobe` und muessen dort geloescht werden. Der Filter
+   gehoert VOR "Dateien in JSON umwandeln".
+3. **`nur_altweg` nachmessen.** Es stand bei 73 statt 67, weil der Index
+   nur PDF kannte. Nach dem Index-Fix sollte es auf 67 zurueckfallen.
+   Faellt es nicht, ist etwas anderes offen - und dann taugt der Zaehler
+   weiterhin nicht als Abschaltsignal fuer die Uebergangsstuetze.
+4. Dann erst **KAP** (~12,7 h, ueber Nacht).
+
+### Zahlen am echten KAP-Bestand (`bau/formate-zaehlen.py`, 22.09.)
+
+```
+Dateien insgesamt: 4325
+  Docling (pdf)        783
+  Office->PDF         1137   doc 559, docx 345, pptx 140, ppt 92
+  Excel                134
+  Text/CSV             175
+  Tika-Rueckfall       386   001: 72, xlsm: 65, msg: 65, tra: 34, ...
+  ohne Text           1707   jpg 787, tif 691, db 87
+```
+
+⭐ **Von 4.300 Dateien haben nur rund 2.300 ueberhaupt Text.** Die 1.707
+Bilddateien landen in der Aussortierstufe mit Begruendung - ihre Zuordnung
+zu Kunde und Auftrag bleibt erhalten (gemessen: derselbe Schluessel auf
+jeder Stufe), sie sind also spaeter nachholbar, **ohne** den Lauf zu
+wiederholen.
+
+⚠ Emrach hat sie durchgesehen: Mikroskopaufnahmen mit Massstab, Fotos von
+Pruefstaenden und Bauteilen, Diagramme, handschriftliche Skizzen **und
+eingescannte Vertraege**. Also drei verschiedene Beduerfnisse
+(Bildbeschreibung, Texterkennung, beides) - ein eigener Bauabschnitt nach
+KAP.
+
+### Was heute bewusst NICHT gebaut wurde
+
+- **Die Art eines Dokuments** (Auftrag 3f). Mails bleiben bis dahin
+  draussen.
+- **Bildbeschreibung fuer Einzeldateien.** Erst KAP, dann die Bilder.
+- **Belegsprung fuer Text und Tabellen.** Sie haben keine Seiten; ein
+  Sprung braeuchte eine Wandlung nach PDF wie bei Word.
+
 ## 3f - AUFTRAG: Die Art eines Dokuments (offen, nach dem KAP-Lauf)
 
 **Emrach am 22.09.:** *"In den Mails sind Woerter wie 'Prozessimulation'
