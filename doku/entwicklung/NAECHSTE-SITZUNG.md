@@ -233,6 +233,60 @@ und gleicht ab, was n8n **wirklich geladen** hat. Aufruf auf dem Host:
 2. **`LESBAR_BYTE`** (siehe oben), gehört zu Teil 3.
 3. **Die Protokoll-Wiederholung** bei jedem Minutentakt (§3, Punkt 2).
 
+## 3f - AUFTRAG: Die Art eines Dokuments (offen, nach dem KAP-Lauf)
+
+**Emrach am 22.09.:** *"In den Mails sind Woerter wie 'Prozessimulation'
+drin. Mein Bedenken ist, dass das RAG-System auf die Frage 'wie sieht eine
+Prozessimulation aus' dann diese Mails zitiert. Die KI braucht irgendwie
+einen Sinnesverstand."*
+
+**Warum das kein Modellproblem ist.** Das Modell sieht nie den Bestand,
+sondern acht Textstuecke. In einem steht *"die Prozessimulation haben wir
+mit 240 Grad gerechnet, passt so"*. Dass das eine interne Mail von Dienstag
+ist, steht nicht dabei. Kein Modell kann unterscheiden, was ihm niemand
+mitteilt - das ist eine Frage der Information, nicht der Klugheit.
+
+**Drei Teile, in dieser Reihenfolge:**
+
+1. **Art bestimmen.** Aus dem Pfad, den der Schluessel seit Teil 3 traegt:
+   `.../Angebote/...` -> Angebot, `.../Pruefberichte/...` -> Pruefbericht,
+   `.msg` -> Korrespondenz. `bestand.art_von()` gibt es schon, leitet die
+   Art aber aus einer KENNUNG ab (`DS-24-005`) - fuer Pfadbestaende fehlt
+   das Gegenstueck.
+2. **Art mitschicken.** Sie muss IM Textstueck stehen, das beim Modell
+   ankommt (`[Korrespondenz - Kunde X - 2024]`). Ohne das nuetzt die beste
+   Erkennung nichts.
+3. **Regel im Bereichsprompt.** Fachliche Aussagen nur aus Fachunterlagen;
+   Korrespondenz fuer Absprachen und Entscheidungen, gekennzeichnet. Und:
+   Steht eine fachliche Aussage NUR in Korrespondenz, sagt die Anlage das -
+   statt die Mail zu zitieren, als waere sie eine Spezifikation.
+
+⚠ **Stumpf bauen, nicht auf Urteilskraft setzen.** Gemma und Qwen befolgen
+"waege die Belastbarkeit der Quelle ab" unzuverlaessig, eine mechanische
+Regel ("steht [Korrespondenz] davor, kennzeichne es") zuverlaessig.
+
+⭐ **Pruefbar erst mit echter Korrespondenz.** An erfundenen Mails sieht man
+nicht, ob die Regel im Alltag traegt. Deshalb: erst der KAP-Lauf ohne
+Mails, dann bauen, dann die 65 hereinholen - dieselben Dateien, dieselben
+Schluessel, kein zweiter 12,7-Stunden-Lauf.
+
+### Weiter gedacht (Emrach, 22.09.): ganze Postfaecher
+
+*"Mitarbeiter, die das Unternehmen verlassen - deren Postfaecher werden
+vielleicht mal eingespeist, damit der Nachfolger Kontext und Absprachen
+kennt, falls kein vernuenftiger Uebergabe stattfand."*
+
+⛔ Das aendert den Zuschnitt und gehoert VOR dem Bau bedacht, nicht danach:
+
+- Aus 65 Mails werden dann Zehntausende. Die Art allein reicht nicht -
+  es braucht **Faeden** (Betreff, Verlauf) und ein **Datum**, sonst
+  zitiert die Anlage die verworfene Zwischenfassung statt der Absprache.
+- Ein Postfach enthaelt **Privates und Personenbezogenes**. Das ist keine
+  Aufraeumfrage, sondern eine Rechtsfrage (Betriebsrat, DSGVO,
+  Zweckbindung) - und sie ist vor der Technik zu klaeren.
+- **Anhaenge** sind eigene Dokumente. Ohne Regel dafuer liegt dasselbe
+  Angebot dreimal im Bestand: im Ordner, in der Mail, im Anhang.
+
 ## 3e - Teil 3: GEBAUT und am laufenden System belegt (Stand 22.09.)
 
 ### ⭐ Was die Abnahme vom 22.09. gezeigt hat
