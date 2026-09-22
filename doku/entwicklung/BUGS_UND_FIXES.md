@@ -942,6 +942,43 @@ Probe. Der Morgenlauf hat den Umbau bestätigt und die Brüchigkeit der
 
 ---
 
+## 24 · Löschen in der Oberfläche räumt das Original nicht mit (22.09.2026, OFFEN)
+
+**Gemessen am 22.09.** Vier Dokumente in der Oberfläche gelöscht. Das
+Protokoll des Proxys zeigt vier Treffer:
+
+```
+[Loeschen] Markdown-Fassung entfernt (aus der Oberflaeche geloescht)   ×4
+```
+
+Die Markdown-Fassungen im Volume `austausch-md` sind weg (§14 greift), der
+Bestandszähler fällt richtig von 75 auf 71 — **die Originale in der
+Ablagestufe unterhalb des Bereichs bleiben liegen.** Zu ihnen gibt es keine
+einzige Meldung, der Zweig hat also gar nicht zugeschlagen. Emrach musste
+fünf Dateien von Hand wegräumen.
+
+⛔ **Warum das zählt:** §14 hat als Anspruch festgehalten, dass ein
+Löschklick **alle drei** Ablageorte räumt. Zwei von drei ist keine
+Löschung — bei Kundenakten ist das genau der Fall, in dem jemand glaubt,
+eine Unterlage sei fort, und sie liegt weiter auf der Platte.
+
+**Noch nicht untersucht.** Zwei Verdachtsmomente:
+
+1. `_eigene_spuren_tilgen()` findet den Abdruck nicht, weil das
+   Abdruckverzeichnis zum Zeitpunkt des Löschens noch den Stand vor dem
+   Einräumen hat.
+2. Die Office-Regel in `_schluessel_der_datei()` ordnet die Datei einem
+   anderen Schlüssel zu, wenn ein gleichnamiges Original danebenliegt.
+
+⭐ **Und ein Befund über die Prüfung selbst:** `schluesselwege_test.py`
+(`test_loeschweg`) ist an dieser Stelle **grün**. Sie legt die Datei aber
+selbst an ihren Platz; das echte System schiebt sie erst durch den Eingang
+dorthin. Die Prüfung deckt den Fehler deshalb nicht ab — dieselbe
+Fehlerklasse wie beim Morgenlauf mit vier PDF: grün aus dem falschen
+Grund.
+
+---
+
 ## Offen / vor einer Vermarktung zu klären
 
 - **Erste vollständige Installation von null** auf der Zielumgebung — erst damit
