@@ -307,8 +307,10 @@ KAP.
 
 ### Was heute bewusst NICHT gebaut wurde
 
-- **Die Art eines Dokuments** (Auftrag 3f). Mails bleiben bis dahin
-  draussen.
+- **Die Art eines Dokuments** (Auftrag 3f). Entschieden 22.09. abends:
+  Mails werden AUFGENOMMEN, aber die Antwort nennt die Herkunft
+  („aus der E-Mail vom …“). Bis das gebaut ist, bleiben sie draussen -
+  verlustfrei, weil der Schluessel auf jeder Stufe derselbe ist.
 - **Bildbeschreibung fuer Einzeldateien.** Erst KAP, dann die Bilder.
 - **Belegsprung fuer Text und Tabellen.** Sie haben keine Seiten; ein
   Sprung braeuchte eine Wandlung nach PDF wie bei Word.
