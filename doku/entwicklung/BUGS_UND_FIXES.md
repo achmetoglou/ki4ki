@@ -729,6 +729,80 @@ Grund der Änderung bekannt.
 
 ---
 
+## 18 · Die Belegklammer kannte nur volle Titel (22.09.2026, BEHOBEN)
+
+⛔ **Das war der eigentliche Grund, warum kein Beleg entstand** — nicht der
+Umlaut-Fehler aus §16, der davor gefunden und behoben wurde.
+
+**Symptom.** Die Antwort nannte beide Zahlen richtig und schrieb den Abdruck
+in die Klammer: `(ww2imi8pf9, S. 1)`. Es entstand trotzdem nie ein Beleg.
+**Bei zwei verschiedenen Modellen (Gemma und Qwen) identisch** — das schloss
+das Modell als Ursache aus.
+
+**Ursache.** `_beleg()` schlug den Klammertext in einem Verzeichnis nach, das
+nach **vollem Titel** geschlüsselt war:
+
+```python
+if k.lower() not in _bekannt and not re.fullmatch(r"[A-Z]{1,4}-\d{2}-\d{3}", k):
+    return m.group(0)          # Klammertext, kein Dokument des Bereichs
+```
+
+`ww2imi8pf9` ist kein voller Titel und keine Kennung → Ausstieg, **bevor**
+irgendeine Seitenprüfung lief. Der Wächter war also nicht zu streng, er hat
+das Dokument nie erkannt.
+
+⛔ **Warum das in Teil 3 durchgerutscht ist:** Der Plan hat `mit_verweisen`
+auf den Abdruck umgestellt (Aufgabe 7) und dabei 32 Aufrufstellen von
+`_pdf_schluessel` mitgenommen. Diese Klammerprüfung ist ein **eigener**
+Vergleich — dieselbe Klasse wie `dokument_erlaubt` und der Löschweg, die im
+Plan einzeln aufgeführt sind. Sie stand nicht in der Liste der elf Stellen.
+**Elf waren es also nicht, zwölf.**
+
+**Lösung.** Die Entscheidung ist aus der Verschachtelung heraus in
+`_beleg_dokument()` gewandert — dadurch überhaupt erst prüfbar. Erkannt wird
+der Abdruck, und zwar über die Mitgliedschaft im Verzeichnis **dieses**
+Arbeitsbereichs.
+
+⭐ **Fail-closed und belegt:** Ein Abdruck, den es zwar gibt, dessen Dokument
+aber nicht in diesem Arbeitsbereich liegt, erzeugt **keinen** Beleg — sonst
+belegte die Anlage eine Aussage mit der Akte eines fremden Kunden. Die
+Mutationsprobe macht genau zwei Zeilen rot und lässt die vier Gegenproben
+grün.
+
+⭐ Nebenbei behoben: In der Klammer steht jetzt der **lesbare** Titel
+(`KundeBeta-Pruefbericht`) statt des ganzen Schlüssels.
+
+---
+
+## 19 · Das doppelte Trennzeichen überlebt AnythingLLM nicht (22.09.2026, BEHOBEN)
+
+**Gemessen, nicht vermutet.** Die Dateiliste in der Oberfläche zeigt
+`…-Pruefbericht--ww2imi8pf9.md` mit **zwei** Trennzeichen, der Name in der
+Fundstelle kommt mit **einem** zurück.
+
+`anzeigetitel()` schnitt am `--` ab. Bei einem Trennzeichen kürzte es
+**gar nicht** — und damit wäre nach dem Neueinlesen der ganze Schaden aus
+**§13** zurück: `angaben()` findet keinen Katalogeintrag, `kennung()`
+liefert `None`, `art_von()` weiß nicht mehr, dass `DS-24-005` eine
+Dissertation ist, und `metadaten._grund()` — die **erste Zeile** der
+Rechteprüfung — trifft nie.
+
+⭐ **Die Mutationsprobe zeigt genau das:** Baut man das Abschneiden am
+Abdruck aus, liefert `angaben()` `None`. Der Schaden ist also nicht
+hergeleitet, sondern vorgeführt.
+
+**Lösung.** Abgeschnitten wird am **Abdruck**, nicht am Trennzeichen:
+rückwärts zehn alphanumerische Zeichen zählen und gegen das Verzeichnis
+prüfen. Ob dazwischen `--`, `-` oder ein Gedankenstrich steht, ist damit
+gleichgültig — der Abdruck enthält keines dieser Zeichen.
+
+⛔ **Der Abdruck wird übergeben, nicht geraten.** Ohne Verzeichnis fällt die
+Funktion auf das `--` zurück und kürzt bei einem einzelnen Trennzeichen
+**nichts** — sonst verlöre jeder Name, der zufällig auf zehn Zeichen endet,
+sein Ende. Beide Fälle stehen als Gegenprobe im Test.
+
+---
+
 ## Offen / vor einer Vermarktung zu klären
 
 - **Erste vollständige Installation von null** auf der Zielumgebung — erst damit

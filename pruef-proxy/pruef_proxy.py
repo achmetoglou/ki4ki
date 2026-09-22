@@ -2694,6 +2694,11 @@ def pdfs_einlesen():
             #   Stuetze unbegruendet ist.
             PDFS.setdefault(d[:-4], voll)
             PDFS_GRUND.setdefault(_grundform(d[:-4]), d[:-4])
+    try:
+        import bestand as _bst
+        _bst.abdruecke_setzen(PDFS_ABDRUCK)
+    except Exception:
+        pass
     return len(PDFS)
 
 
@@ -4640,6 +4645,76 @@ _FUELLWOERTER = {
     "grundsaetzlich", "grundsätzlich", "typischerweise", "beziehungsweise",
     "vergleich", "vergleichen", "gegenuebergestellt", "gegenübergestellt",
 }
+
+_KENNUNG_KLAMMER = re.compile(r"[A-Z]{1,4}-\d{2}-\d{3}")
+
+
+def _belegverzeichnis(namen):
+    """Zwei Verzeichnisse fuer die Belegklammern EINES Arbeitsbereichs.
+
+    nach_titel   - gesaeuberter Titel (klein) -> roher Name
+    nach_abdruck - Abdruck -> roher Name
+
+    \u26d4 Nur Dokumente dieses Arbeitsbereichs. Ein Abdruck, den es zwar
+      gibt, dessen Dokument hier aber nicht liegt, darf keinen Beleg
+      erzeugen - sonst belegt die Anlage eine Aussage mit der Akte eines
+      fremden Kunden. Deshalb wird gegen DIESES Verzeichnis geprueft und
+      nicht gegen den Gesamtindex.
+
+    \u26a0 Der Name im Arbeitsbereich ist NICHT der Schluessel: AnythingLLM
+      zieht das doppelte Trennzeichen zu einem zusammen. Der Abdruck
+      uebersteht das, der lesbare Teil nicht - genau dafuer gibt es ihn.
+    """
+    nach_titel, nach_abdruck = {}, {}
+    for roh in (namen or []):
+        nach_titel[assistent._titel_saubern(roh).strip().lower()] = roh
+        a = schluessel.abdruck_finden(schluessel.ohne_uuid(roh), PDFS_ABDRUCK)
+        if a:
+            nach_abdruck.setdefault(a, roh)
+    return nach_titel, nach_abdruck
+
+
+def _lesbarer_klammertitel(abdruck, roh):
+    """Was in der Klammer STEHT - kurz und fuer Menschen lesbar.
+
+    Der Anzeigetitel wird aus dem SCHLUESSEL gebildet, nicht aus dem Namen
+    im Arbeitsbereich: Nur der Schluessel traegt das doppelte Trennzeichen,
+    an dem der Abdruck abgeschnitten wird.
+    """
+    voll = PDFS_ABDRUCK.get(abdruck) if abdruck else None
+    try:
+        import bestand as _bst
+        return _bst._anzeige(voll or roh)
+    except Exception:
+        return assistent._titel_saubern(roh)
+
+
+def _beleg_dokument(geschrieben, nach_titel, nach_abdruck):
+    """Welches Dokument meint eine Belegklammer? (name, lesbar) oder (None, None).
+
+    \u2b50 Der ABDRUCK zuerst. Gemessen am 22.09. an zwei Modellen: In der
+      Klammer steht nur der Abdruck, nie der ganze Schluessel - das Modell
+      schreibt keine 137 Zeichen ab. Eine Pruefung, die nur volle Titel
+      kennt, erzeugt deshalb nie einen Beleg, und zwar lautlos.
+
+    Danach der volle Titel (Dokumente aus der Zeit vor dem Umbau) und die
+    Kennungsform DS-24-005. Alles andere ist gewoehnlicher Klammertext.
+    """
+    k = str(geschrieben or "").strip()
+    if not k:
+        return None, None
+    a = schluessel.abdruck_finden(k, nach_abdruck)
+    if a:
+        roh = nach_abdruck[a]
+        return assistent._titel_saubern(roh), _lesbarer_klammertitel(a, roh)
+    if k.lower() in nach_titel:
+        roh = nach_titel[k.lower()]
+        return (assistent._titel_saubern(roh),
+                _lesbarer_klammertitel(None, roh))
+    if _KENNUNG_KLAMMER.fullmatch(k):
+        return k, k
+    return None, None
+
 
 def _umlaut_flach(t):
     """Behelfsschreibung und echte Umlaute auf EINE Form bringen.
@@ -7665,14 +7740,15 @@ class Griff(BaseHTTPRequestHandler):
         # bleibt die Aussage stehen, aber als "nicht belegt" markiert.
         unbelegt = 0
         belegt_z = 0
-        _bekannt = {assistent._titel_saubern(n).strip().lower(): n for n in namen}
+        _nach_titel, _nach_abdruck = _belegverzeichnis(namen)
 
         def _beleg(m):
             nonlocal unbelegt, belegt_z
-            k, n = m.group(1).strip(), int(m.group(2))
-            if k.lower() not in _bekannt and not re.fullmatch(r"[A-Z]{1,4}-\d{2}-\d{3}", k):
+            n = int(m.group(2))
+            k, lesbar = _beleg_dokument(m.group(1), _nach_titel,
+                                        _nach_abdruck)
+            if not k:
                 return m.group(0)          # Klammertext, kein Dokument des Bereichs
-            k = assistent._titel_saubern(_bekannt.get(k.lower(), k))
             anfang = max(text.rfind(x, 0, m.start()) for x in (". ", "\n", "! ", "? ", "• ", "- "))
             satz = text[anfang + 1:m.start()].strip(" *:„“\"")
             if len(satz) < 25:
@@ -7683,9 +7759,9 @@ class Griff(BaseHTTPRequestHandler):
                 seite = None
             if seite is None:
                 unbelegt += 1
-                return "(%s, S. %d — nicht belegt)" % (k, n)
+                return "(%s, S. %d — nicht belegt)" % (lesbar, n)
             belegt_z += 1
-            return "(%s, S. %d)" % (k, seite)
+            return "(%s, S. %d)" % (lesbar, seite)
         text = gespraechsmodus._BELEG.sub(_beleg, text)
         # ---- Zitate und Seiten pruefen ------------------------------------
         beruehrt = {}

@@ -810,6 +810,150 @@ def test_leere_eingangsordner():
            "der Eingang selbst bleibt stehen, auch wenn er leer waere")
 
 
+def test_belegklammer():
+    """Die Klammer (Abdruck, S. n) muss das Dokument finden.
+
+    \u26d4 Gefunden am 22.09. am laufenden System, mit zwei verschiedenen
+      Modellen: Die Antwort nannte beide Zahlen richtig und schrieb den
+      Abdruck in die Klammer - aber es entstand nie ein Beleg. Die
+      Klammerpruefung kannte nur volle Titel.
+
+    \u26d4 Der Name im Arbeitsbereich ist NICHT der Schluessel: AnythingLLM
+      zieht das doppelte Trennzeichen zu einem zusammen. Die Pruefung baut
+      genau diesen Namen nach - mit dem Schluessel waere sie gruen und am
+      laufenden System trotzdem rot.
+    """
+    import schluessel
+    import bestand
+    import pruef_proxy as p
+    print("\nBelegklammer am Abdruck")
+    bestand.bereiche_setzen(["kap", "auw", "wissensdatenbank"])
+
+    # \u26d4 Eigene Dokumente anlegen statt auf den Baum der vorigen
+    #   Pruefungen zu bauen. Im ersten Anlauf hing diese Pruefung an einer
+    #   Datei, die der Loeschweg vorher weggeraeumt hatte - sie war rot,
+    #   ohne dass am Code etwas fehlte.
+    for bereich, kunde, inhalt in (("kap", "KundeZ", b"Z"),
+                                   ("auw", "KundeY", b"Y")):
+        ordner = os.path.join(BAUM, bereich, "archiv", kunde)
+        os.makedirs(ordner, exist_ok=True)
+        with open(os.path.join(ordner, "Angebot.pdf"), "wb") as fh:
+            fh.write(b"%PDF-1.4\n" + inhalt + b"\n")
+    p.pdfs_einlesen()
+
+    meins = schluessel.schluessel("kap", "archiv/KundeZ/Angebot.pdf")
+    abdruck_b = schluessel.fingerabdruck(
+        schluessel.kennpfad("kap", "archiv/KundeZ/Angebot.pdf"))
+    abdruck_a = schluessel.fingerabdruck(
+        schluessel.kennpfad("auw", "archiv/KundeY/Angebot.pdf"))
+    pruefe(abdruck_a != abdruck_b, "Vorbedingung: zwei verschiedene Abdruecke")
+    pruefe(abdruck_b in p.PDFS_ABDRUCK and abdruck_a in p.PDFS_ABDRUCK,
+           "Vorbedingung: beide stehen im Index - sonst prueft nichts davon "
+           "etwas (Index hat %d Eintraege)" % len(p.PDFS_ABDRUCK))
+
+    # So heisst das Dokument in AnythingLLM - EIN Trennzeichen.
+    im_bereich = meins[:-4].replace("--", "-") + ".md"
+    pruefe("--" not in im_bereich,
+           "Vorbedingung: der Name im Arbeitsbereich hat nur EIN Trennzeichen")
+    nach_titel, nach_abdruck = p._belegverzeichnis([im_bereich])
+
+    # \u2b50 Die Zusicherung: der nackte Abdruck genuegt.
+    dok, lesbar = p._beleg_dokument(abdruck_b, nach_titel, nach_abdruck)
+    pruefe(dok is not None and p._pdf_schluessel(dok) == meins,
+           "der nackte Abdruck findet das Dokument, ist %r" % (dok,))
+    pruefe(lesbar == "KundeZ-Angebot",
+           "und die Klammer zeigt den lesbaren Titel, ist %r" % (lesbar,))
+
+    # Der volle Name muss weiter gehen - sonst bricht der Altbestand.
+    dok2, _l = p._beleg_dokument(im_bereich[:-3], nach_titel, nach_abdruck)
+    pruefe(dok2 is not None, "der volle Name findet weiterhin, ist %r" % (dok2,))
+
+    # \u26d4 Gegenprobe 1: ein Abdruck, den es gibt, dessen Dokument aber
+    #   NICHT in diesem Arbeitsbereich liegt. Fail-closed - sonst belegt die
+    #   Anlage mit der Akte eines fremden Kunden.
+    dok3, _l = p._beleg_dokument(abdruck_a, nach_titel, nach_abdruck)
+    pruefe(dok3 is None,
+           "ein Abdruck aus einem anderen Bereich wird NICHT belegt, ist %r"
+           % (dok3,))
+
+    # \u26d4 Gegenprobe 2: ein erfundener Abdruck trifft nichts.
+    dok4, _l = p._beleg_dokument("zzzz999999", nach_titel, nach_abdruck)
+    pruefe(dok4 is None, "ein erfundener Abdruck trifft nichts, ist %r" % (dok4,))
+
+    # \u26d4 Gegenprobe 3: gewoehnlicher Klammertext bleibt Klammertext.
+    for text in ("siehe oben", "Abb. 3", "vgl. Norm", ""):
+        d, _l = p._beleg_dokument(text, nach_titel, nach_abdruck)
+        pruefe(d is None, "Klammertext %r wird nicht zum Beleg" % text)
+
+
+def test_trennzeichen_egal():
+    """Am Abdruck abschneiden, nicht am Trennzeichen.
+
+    \u26d4 AnythingLLM liefert den Namen in der Fundstelle mit EINEM
+      Trennzeichen zurueck, die Dateiliste zeigt ihn mit zweien. Wer am
+      '--' schneidet, kuerzt den einen Fall gar nicht - und dann findet
+      angaben() nach dem Neueinlesen keinen Katalogeintrag mehr, kennung()
+      liefert None und metadaten._grund() trifft nie. Das ist der Schaden
+      aus BUGS 13, nur durch eine andere Tuer.
+    """
+    import schluessel
+    import bestand
+    import pruef_proxy as p
+    print("\nTrennzeichen egal, Abdruck entscheidet")
+    bestand.bereiche_setzen(["wissensdatenbank", "kap", "auw"])
+
+    ordner = os.path.join(BAUM, "wissensdatenbank", "archiv")
+    os.makedirs(ordner, exist_ok=True)
+    with open(os.path.join(ordner, "DS-24-005.pdf"), "wb") as fh:
+        fh.write(b"%PDF-1.4\nDS\n")
+    p.pdfs_einlesen()
+    bestand.abdruecke_setzen(p.PDFS_ABDRUCK)
+
+    s = schluessel.schluessel("wissensdatenbank", "archiv/DS-24-005.pdf")
+    pruefe("--" in s, "Vorbedingung: der Schluessel traegt zwei Trennzeichen")
+
+    formen = {
+        "zwei Trennzeichen": s,
+        "ein Trennzeichen": s.replace("--", "-"),
+        "Gedankenstrich": s.replace("--", "\u2013"),
+        "ohne Endung": s[:-4].replace("--", "-"),
+        "als .md": s[:-4].replace("--", "-") + ".md",
+    }
+    for wie, name in formen.items():
+        pruefe(bestand._anzeige(name) == "DS-24-005",
+               "%s ergibt den Anzeigetitel, ist %r" % (wie, bestand._anzeige(name)))
+
+    # \u2b50 Und der Katalog, um den es eigentlich geht.
+    bestand.eintragen("DS-24-005", {"titel": "Eine Arbeit", "verfasser": "Muster"})
+    einfach = s[:-4].replace("--", "-")
+    ang = bestand.angaben(einfach)
+    pruefe((ang or {}).get("verfasser") == "Muster",
+           "angaben() findet den Eintrag auch bei EINEM Trennzeichen, ist %r"
+           % (ang or {}).get("verfasser"))
+    pruefe(bestand.kennung(einfach) == "DS",
+           "kennung() ebenso, ist %r" % bestand.kennung(einfach))
+
+    # \u26d4 Gegenprobe 1: Ein Name, dessen Ende zufaellig zehn Zeichen hat,
+    #   aber KEIN bekannter Abdruck ist, bleibt unangetastet. Ohne diese
+    #   Zeile waere das Abschneiden wieder syntaktisch - genau das, was
+    #   dieser Umbau ueberall vermeidet.
+    fremd = "wissensdatenbank-Bericht-Kennwerte"
+    pruefe(bestand._anzeige(fremd) == fremd,
+           "ein Name ohne bekannten Abdruck bleibt unveraendert, ist %r"
+           % bestand._anzeige(fremd))
+
+    # \u26d4 Gegenprobe 2: Ohne Abdruckverzeichnis faellt es auf das '--'
+    #   zurueck und schneidet NICHT wild.
+    bestand.abdruecke_setzen({})
+    pruefe(bestand._anzeige(s) == "DS-24-005",
+           "ohne Verzeichnis traegt der Rueckfall aufs '--', ist %r"
+           % bestand._anzeige(s))
+    pruefe(bestand._anzeige(einfach) == einfach,
+           "ohne Verzeichnis wird bei EINEM Trennzeichen nichts geraten, ist %r"
+           % bestand._anzeige(einfach))
+    bestand.abdruecke_setzen(p.PDFS_ABDRUCK)
+
+
 def main():
     baum_bauen()
     pruefungen = [test_index, test_pdfstelle, test_belegvorrat,
@@ -819,7 +963,9 @@ def main():
                   test_loeschweg,
                   test_stuetze_laeuft_ab,
                   test_umlautdeckung,
-                  test_leere_eingangsordner]
+                  test_leere_eingangsordner,
+                  test_belegklammer,
+                  test_trennzeichen_egal]
     try:
         for t in pruefungen:
             t()

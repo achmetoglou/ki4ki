@@ -163,7 +163,33 @@ def _endung_von(kpfad):
     return e.lower() if _ENDUNG.match(e) else ""
 
 
-def anzeigetitel(schluessel_text, bereich=None, bereiche=()):
+def _abdruck_abschneiden(stamm, abdruck):
+    """Den Abdruck am Ende abschneiden - gleich, mit welchem Trennzeichen.
+
+    Gezaehlt werden nur Buchstaben und Ziffern, ruecklaeufig. Damit ist es
+    egal, ob dazwischen '--', '-' oder ein Gedankenstrich steht: Der
+    Abdruck selbst enthaelt keines dieser Zeichen.
+
+    \u26d4 Der Abdruck muss uebergeben werden - er wird hier NICHT geraten.
+      Ohne ihn waere das Abschneiden wieder syntaktisch, und jeder Name,
+      der zufaellig auf zehn Zeichen endet, verloere sein Ende.
+    """
+    if not abdruck:
+        return None
+    gesammelt = []
+    i = len(stamm)
+    while i > 0 and len(gesammelt) < ABDRUCK_LAENGE:
+        i -= 1
+        if stamm[i].isalnum():
+            gesammelt.append(stamm[i].lower())
+    if len(gesammelt) < ABDRUCK_LAENGE:
+        return None
+    if "".join(reversed(gesammelt)) != abdruck:
+        return None
+    return stamm[:i].rstrip(" -_.\u2013\u2014") or None
+
+
+def anzeigetitel(schluessel_text, bereich=None, bereiche=(), abdruecke=()):
     """Der lesbare Teil ohne Bereichsvorspann und ohne Abdruck.
 
     Wofuer: Der Schluessel beginnt mit dem Bereichsnamen. Damit steht eine
@@ -185,9 +211,20 @@ def anzeigetitel(schluessel_text, bereich=None, bereiche=()):
     roh = str(schluessel_text or "")
     endung = _endung_von(roh)
     stamm = roh[:-len(endung)] if endung else roh
-    if "--" not in stamm:
+    # \u2b50 Zuerst ueber MITGLIEDSCHAFT abschneiden, wenn die Abdruecke
+    #   bekannt sind. Gemessen am 22.09.: AnythingLLM gibt den Namen in der
+    #   Fundstelle mit EINEM Trennzeichen zurueck, die Dateiliste zeigt ihn
+    #   mit zweien. Wer am '--' schneidet, kuerzt den einen Fall gar nicht -
+    #   und dann findet angaben() nach dem Neueinlesen keinen
+    #   Katalogeintrag, kennung() liefert None und metadaten._grund(), die
+    #   erste Zeile der Rechtepruefung, trifft nie.
+    gekuerzt = _abdruck_abschneiden(stamm, abdruck_finden(stamm, abdruecke)) \
+        if abdruecke else None
+    if gekuerzt is None and "--" in stamm:
+        gekuerzt = stamm.rsplit("--", 1)[0]
+    if gekuerzt is None:
         return stamm or RUECKFALL        # kein Schluessel: unveraendert
-    stamm = stamm.rsplit("--", 1)[0]
+    stamm = gekuerzt
     for b in ([bereich] if bereich else []) + list(bereiche):
         v = _bereinigen(str(b or ""))
         if v and stamm.startswith(v + "-"):

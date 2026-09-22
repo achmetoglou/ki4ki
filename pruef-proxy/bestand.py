@@ -131,6 +131,16 @@ def _grund(n):
 
 
 _BEREICHE = []
+# Die bekannten Abdruecke. Der Proxy fuellt sie beim Einlesen des Index.
+# Ohne sie faellt _anzeige() auf das doppelte Trennzeichen zurueck - und
+# raet nichts, wenn nur eines dasteht.
+_ABDRUECKE = {}
+
+
+def abdruecke_setzen(verzeichnis):
+    """Das Abdruckverzeichnis, an dem _anzeige() den Abdruck erkennt."""
+    global _ABDRUECKE
+    _ABDRUECKE = verzeichnis or {}
 
 
 def bereiche_setzen(namen):
@@ -153,7 +163,8 @@ def _anzeige(name):
     """
     try:
         import schluessel as _s
-        return _s.anzeigetitel(name, bereiche=_BEREICHE)
+        return _s.anzeigetitel(name, bereiche=_BEREICHE,
+                               abdruecke=_ABDRUECKE)
     except Exception:
         return str(name or "")
 

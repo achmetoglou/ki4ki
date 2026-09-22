@@ -261,6 +261,29 @@ liest; meine Probedokumente standen in Behelfsschreibung. Siehe
 `BUGS_UND_FIXES.md` **16**. Behoben, und die Probedokumente tragen jetzt
 echte Umlaute - damit prueft die Wiederholung den Umbau und nicht den Fix.
 
+### ⛔ Zweiter Anlauf (22.09., Mittag): der Beleg fehlte immer noch
+
+Der Umlaut-Fix aus BUGS 16 lief nachweislich im Container - und es entstand
+trotzdem kein Beleg. **Bei Gemma UND Qwen gleich**, also nicht das Modell.
+
+Der wahre Grund stand eine Ebene tiefer: Die Klammerpruefung `_beleg()`
+kannte nur volle Titel, das Modell schreibt aber nur den Abdruck. Sie stieg
+aus, bevor irgendeine Seitenpruefung lief. **BUGS 18.**
+
+⛔ **Das ist eine zwoelfte Vergleichsstelle**, die der Plan zu Teil 3 nicht
+aufgefuehrt hat. Die elf bekannten sind umgestellt; diese hier war ein
+eigener Vergleich derselben Klasse wie `dokument_erlaubt` und der
+Loeschweg. Wer nach weiteren sucht: Es sind die Stellen, die einen
+GESCHRIEBENEN Namen gegen die Identitaet eines Dokuments halten - nicht die
+32 Aufrufer von `_pdf_schluessel`.
+
+⭐ **Und ein Fund, der ohne diesen Umweg nicht aufgefallen waere:** Das
+doppelte Trennzeichen des Schluessels ueberlebt AnythingLLM nicht. Die
+Dateiliste zeigt `--`, die Fundstelle liefert `-`. `anzeigetitel()` schnitt
+am `--` ab - nach dem Neueinlesen waere damit der ganze Schaden aus **13**
+zurueckgekommen: kein Katalogeintrag, keine Kennung, kein K3-Tor. **BUGS 19**,
+behoben; abgeschnitten wird jetzt am Abdruck, nicht am Trennzeichen.
+
 ### ⛔ Offen: die Belegmessung (Aufgabe 7, Schritt 5)
 
 Nach dem naechsten `./aktualisiere.sh` dieselbe Frage im selben Bereich
