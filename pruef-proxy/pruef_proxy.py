@@ -3006,6 +3006,38 @@ def _seitentexte_pdf(schluessel):
     return seiten
 
 
+def _belegquelle(name):
+    """(Schluessel, Seitentexte) fuer die Verlinkung einer Antwort.
+
+    Drei Faelle, und die Unterscheidung ist der ganze Punkt:
+
+      PDF liegt vor      -> Schluessel + Seiten: Sprung auf die Seite, die
+                            belegte Stelle gelb markiert.
+      nur das Original   -> Schluessel + []    : Link auf das DOKUMENT.
+                            Kein Sprung - eine Tabelle, eine Textdatei oder
+                            eine Mail hat keine Seitenansicht -, aber der
+                            Leser kommt an die Datei, aus der die Zahl stammt.
+      nichts auffindbar  -> (None, [])         : kein Link.
+
+    ⛔ Gemessen am 22.09.: Zuerst fuehrte JEDER Link auf ein Nicht-PDF
+      ins Leere. Dann nahm ich alle Links weg - und damit stand in der
+      Antwort gar kein Weg mehr zum Dokument. Beides falsch. Richtig ist,
+      nur das zu versprechen, was die Anlage halten kann.
+    """
+    sch = _pdf_schluessel(name)
+    if not sch:
+        return None, []
+    pfad = PDFS.get(sch)
+    if pfad and os.path.exists(pfad):
+        return sch, (_seitentexte_pdf(sch) or [])
+    try:
+        if _archivdatei(_stamm(sch)):
+            return sch, []
+    except Exception:
+        pass
+    return None, []
+
+
 def _sprungquelle(name):
     """(Schluessel, Seitentexte) - aber NUR, wenn die Seite aufschlagbar ist.
 
@@ -7956,7 +7988,7 @@ class Griff(BaseHTTPRequestHandler):
         # ---- Zitate und Seiten pruefen ------------------------------------
         beruehrt = {}
         for dok in zustand["dokumente"] or ([faden_dok] if faden_dok else []):
-            sch, seiten = _sprungquelle(dok)
+            sch, seiten = _belegquelle(dok)
             if sch:
                 try:
                     # ⭐ DERSELBE Name wie in der Klammer - sonst

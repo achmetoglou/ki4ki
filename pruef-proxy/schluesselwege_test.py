@@ -1288,7 +1288,17 @@ def test_sprung_nur_wenn_es_eine_seite_gibt():
         text, {"Charge-9": ("kap-Liste--ab12cd34ef.txt", [])})
     pruefe("/stelle?dok=" not in ohne,
            "ohne Seiten entsteht KEIN Sprung, ist %r" % ohne[-70:])
-    pruefe(ohne == text, "und der Text bleibt unveraendert")
+    # ⭐ GEAENDERTE ANFORDERUNG (22.09., nachmittags): Frueher stand hier
+    #   "und der Text bleibt unveraendert". Das war zu streng. Emrach hat am
+    #   laufenden System gesehen, was dabei herauskommt: In der Antwort stand
+    #   gar kein Link mehr, und der Leser kam nicht an die Tabelle, aus der
+    #   die Zahl stammt. Richtig ist, nur das zu versprechen, was die Anlage
+    #   halten kann - also den Weg zum DOKUMENT ohne Seitensprung.
+    pruefe("(/pdf/" in ohne,
+           "aber der Weg zum Dokument steht drin, ist %r" % ohne[-60:])
+    pruefe("S. 1](" not in ohne,
+           "und OHNE Seitenzahl - sie laesst sich nicht aufschlagen, "
+           "also wird sie nicht versprochen")
 
     # ⛔ Eine Seitenzahl ueber den Bestand hinaus ebenso wenig.
     zu_hoch, _o, _n = fadenfrage.verlinken_mehrfach(
@@ -1421,6 +1431,25 @@ def test_sprung_nur_mit_seitenbild():
     pruefe(sch_tab is None and seiten_tab == [],
            "die Tabelle NICHT - sie hat keine Seite zum Aufschlagen, ist %r"
            % (sch_tab,))
+
+    # ⭐ Der Unterschied zwischen den beiden Quellen ist der ganze Punkt:
+    #   SPRINGEN darf man nur auf eine Seite, VERLINKEN aber jedes Dokument,
+    #   das ausgeliefert werden kann.
+    bsch, bseiten = p._belegquelle(tabelle)
+    pruefe(bsch is not None and bseiten == [],
+           "die Tabelle bekommt einen Dokumentlink ohne Seiten, ist %r"
+           % ((bsch or "")[-24:],))
+
+    # ⛔ Gegenprobe: Ein Dokument, das es weder als PDF noch als Datei
+    #   gibt, bekommt GAR NICHTS. Ohne diese Zeile waere die Zeile darueber
+    #   auch dann gruen, wenn _belegquelle einfach jeden Namen durchwinkt -
+    #   und dann stuende wieder ein toter Link in der Antwort.
+    fort = os.path.join(BAUM, "kap", "archiv", "KundeC", "Tabelle.xlsx")
+    os.remove(fort)
+    p.pdfs_einlesen()
+    pruefe(p._belegquelle(tabelle) == (None, []),
+           "ist die Datei weg, entsteht kein Link, ist %r"
+           % (p._belegquelle(tabelle),))
 
     # ⛔ Gegenprobe: Der alte Weg haette hier sehr wohl "Seiten"
     #   gemeldet. Ohne diese Zeile bliebe offen, ob die Zeile darueber den

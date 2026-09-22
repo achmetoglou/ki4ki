@@ -264,9 +264,16 @@ def verlinken_mehrfach(text, dokumente):
             #   keine Seiten, und der Klick landete auf "Dieses Dokument
             #   liegt nicht vor" (gemessen 22.09.). Ein toter Link ist
             #   schlimmer als gar keiner: Er verspricht einen Nachweis und
-            #   liefert eine Fehlermeldung.
+            #   liefert eine Fehlermeldung. Statt des Sprungs kommt deshalb
+            #   unten der Dokumentlink.
             if not (0 < s <= len(seiten)):
-                return m.group(0)
+                # ⭐ Kein Sprung - aber sehr wohl ein Weg zum Dokument.
+                #   Die Seitenzahl faellt dabei WEG: Wir koennen sie nicht
+                #   aufschlagen, also versprechen wir sie auch nicht.
+                #   Gemessen 22.09.: Ohne diesen Zweig stand in der Antwort
+                #   gar kein Link mehr, und der Leser kam nicht an die
+                #   Tabelle, aus der die Zahl stammt.
+                return "[%s](/pdf/%s)" % (kennung, dq)
             # ⭐ Die Aussage davor mitgeben, sonst oeffnet der Sprung die
             #   Seite ohne gelbe Markierung.
             satz = _satz_davor(quelle, m.start())

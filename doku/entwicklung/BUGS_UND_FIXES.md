@@ -1057,9 +1057,23 @@ dünne Textebene ersetzen. Eine Tabelle bekam dadurch „Seiten".
 es ankam. Text hat fast jedes Dokument — ein **Seitenbild** nur eine PDF.
 
 **Behoben** durch `_sprungquelle(name)`: liefert nur dann Schlüssel und
-Seiten, wenn eine Datei da ist, die sich aufschlagen lässt. Tabellen, Text
-und Mails verlieren damit den **Sprung**, nicht den **Beleg** — geprüft wird
-weiter am Text, und der Dokumentlink führt zur Originaldatei.
+Seiten, wenn eine Datei da ist, die sich aufschlagen lässt.
+
+⛔ **Und dann war es zu viel des Guten.** Mit dem Riegel allein stand in
+der Antwort **gar kein Link** mehr — auch nicht auf den Dokumentnamen.
+Emrach hat das sofort gesehen: „mh... schau mal keine links“. Ich hatte
+vom einen Extrem ins andere repariert.
+
+`_belegquelle(name)` unterscheidet jetzt drei Fälle:
+
+| Lage | Ergebnis |
+|---|---|
+| PDF liegt vor | Sprung auf die Seite, Stelle gelb markiert |
+| nur das Original | Link auf das **Dokument**, kein Sprung, **ohne Seitenzahl** |
+| nichts auffindbar | kein Link |
+
+⭐ Die Regel dahinter: **nur versprechen, was die Anlage halten kann.**
+Die Seitenzahl fällt weg, weil sie sich nicht aufschlagen lässt.
 
 ---
 
