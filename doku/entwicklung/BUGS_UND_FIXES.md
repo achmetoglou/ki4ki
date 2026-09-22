@@ -654,6 +654,81 @@ mit ihm ein Volume weg, das sonst bei jedem Durchgang weiterwaechst.
 
 ---
 
+## 16 · Der Zitatwächter las ue nicht wie ü (22.09.2026, BEHOBEN)
+
+**Gefunden an der Abnahme, nicht beim Lesen.** Die vier Probedokumente waren
+angekommen, beide Prüfberichte getrennt auffindbar, beide Zahlen in der
+Antwort — aber **kein blauer Beleg**. Die Fußzeile meldete `durchsucht:`
+statt `Quelle:`; das war der einzige Hinweis, und er war korrekt.
+
+**Ursache.** `_dok_hat_aussage()` verlangt mindestens drei gemeinsame
+Fachwörter (über sechs Zeichen) zwischen Aussage und Seitentext. Verglichen
+wurde **Umlaut gegen Umlaut**:
+
+```
+Antwort (Modell):  Prüfbericht · beträgt · Zugfestigkeit
+Seite (Dokument):  Pruefbericht · betraegt · Zugfestigkeit
+gemeinsam: 1  →  Beleg gesperrt      (nötig: 3)
+```
+
+Gegenprobe mit demselben Text in echten Umlauten: gemeinsam 3, Beleg
+entsteht. **Die Schreibweise allein kippt das Ergebnis.**
+
+⚠ **Das trifft nicht nur Probedokumente.** Ältere Ausfertigungen, Ausfuhren
+aus fremden Anlagen und schwache Texterkennung schreiben regelmäßig `ue`
+statt `ü`. Dass die Füllwortliste selbst **beide** Schreibweisen führt
+(`gegenueber` **und** `gegenüber`), zeigt: Die Doppelform war bekannt — der
+Vergleich hat sie nie gelernt.
+
+⭐ **Ein zweiter Fehler derselben Familie, im selben Atemzug gefunden:** Die
+Zerlegung stand an einer Stelle als `[^0-9a-zA-Z…]`, an der anderen als
+`[^0-9a-zA-z…]`. Das kleine `z` lässt Unterstrich und eckige Klammern als
+Wortzeichen durch — Aussage und Seitentext wurden also **verschieden**
+zerlegt, und ein Wort mit Unterstrich deckte nie.
+
+**Lösung.** Eine gemeinsame Funktion `_fachwoerter()` für **alle sechs**
+Vergleichsstellen: eine Zerlegung, eine Schreibweise. `ue`/`ae`/`oe`/`ss`
+und die echten Umlaute sind dort dasselbe Wort.
+
+⚠ **Nicht angefasst:** die Fachwortliste für die gelbe Markierung
+(`/stelle?zitat=…`). Sie sucht Wörter **im** Seitentext — dort muss die
+Schreibweise des Dokuments stehen bleiben, sonst markiert sie nichts.
+
+⭐ **Die Prüfung ist beim ersten Anlauf zweimal durchgefallen**, und beides
+steht als Kommentar im Test:
+1. Sie benutzte einen Phantasienamen. `_dok_hat_aussage` steigt bei einem
+   unbekannten Dokument sofort mit `True` aus („unprüfbar → nicht sperren") —
+   drei Zeilen waren grün, ohne etwas zu prüfen.
+2. Der erste Wortlaut ließ nach dem Wegfall der Umlaute **unter** drei
+   Fachwörter übrig, also griff wieder dieselbe Ausstiegsklausel. Die Zeile
+   blieb bei der Mutationsprobe grün. Der Wortlaut ist deshalb **gebaut**:
+   drei lange Wörter überleben das Zerfallen, damit der Wächter bis zum
+   Vergleich läuft.
+
+---
+
+## 17 · Leere Unterordner blieben im Eingang stehen (22.09.2026, BEHOBEN)
+
+Seit Teil 3 spiegeln `archiv/` und `aussortiert/` die Unterordner des
+Eingangs. Nach einem Durchgang liegt der Inhalt im Archiv — im Eingang bleibt
+die leere Hülle stehen. Emrach: *„die leeren ordner stehen nur noch lose da."*
+
+**Lösung.** `_leere_eingangsordner_raeumen()` läuft mit der Minutenwache und
+entfernt leere Unterordner **unterhalb** von `input/`.
+
+⛔ **Mit Karenz (15 Minuten).** Ohne sie räumt die Wache einem Menschen den
+Ordner weg, während er per SFTP noch Dateien hineinlädt — der Upload liefe
+ins Leere. Der Eingang selbst bleibt immer stehen, auch leer.
+
+⚠ **Eine Falle, die erst die Prüfung zeigte:** Entfernt man `Normen/Kleben`,
+bekommt `Normen` dadurch einen frischen Zeitstempel und sieht aus wie eben
+angefasst — die Karenz sperrte sich selbst aus, verschachtelte Hüllen
+hätten je Ebene einen weiteren Durchgang gebraucht. Ordner, die derselbe
+Durchgang selbst geleert hat, sind davon ausgenommen: Bei ihnen ist der
+Grund der Änderung bekannt.
+
+---
+
 ## Offen / vor einer Vermarktung zu klären
 
 - **Erste vollständige Installation von null** auf der Zielumgebung — erst damit

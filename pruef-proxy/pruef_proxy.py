@@ -694,6 +694,66 @@ def _gleicher_inhalt(a, b):
         return True          # im Zweifel KEIN Tausch
 
 
+# Wie lange ein leerer Unterordner unberuehrt sein muss, bevor die Wache ihn
+# entfernt. Kurz genug, dass nach einem Durchgang aufgeraeumt ist; lang
+# genug, dass niemandem der Ordner unter den Haenden wegkommt, waehrend er
+# noch Dateien hineinlaedt.
+KARENZ_LEERER_ORDNER = 15 * 60
+
+
+def _leere_eingangsordner_raeumen():
+    """Unterordner im Eingang entfernen, sobald sie leer und ruhig sind.
+
+    Seit dem Umbau spiegeln Archiv und Aussortiert die Unterordner des
+    Eingangs. Nach einem Durchgang liegt der Inhalt im Archiv und im
+    Eingang bleibt die leere Huelle stehen.
+
+    ⛔ Nur LEERE Ordner, nur UNTERHALB von input/, und nur nach einer
+      Karenz. Ohne die Karenz raeumt die Wache einem Menschen den Ordner
+      weg, waehrend er per SFTP noch Dateien hineinlaedt - der Upload liefe
+      dann ins Leere. Der Eingang selbst bleibt immer stehen, auch leer:
+      Ihn legt niemand neu an, und n8n sieht jede Minute dort nach.
+    """
+    try:
+        bereiche = sorted(os.listdir(EINGANG_ORDNER))
+    except Exception:
+        return 0
+    jetzt = time.time()
+    weg = 0
+    # ⛔ Ordner, die DIESER Durchgang selbst geleert hat. Entfernt man
+    #   Normen/Kleben, bekommt Normen dadurch einen frischen Zeitstempel und
+    #   sieht aus wie eben angefasst - die Karenz wuerde sich selbst
+    #   aussperren, und verschachtelte Huellen braeuchten je Ebene einen
+    #   weiteren Durchgang. Bei diesen Ordnern kennen wir den Grund der
+    #   Aenderung, also gilt die Karenz fuer sie nicht.
+    selbst_geleert = set()
+    for bereich in bereiche:
+        eingang = os.path.join(EINGANG_ORDNER, bereich, "input")
+        if not os.path.isdir(eingang):
+            continue
+        # Von unten nach oben, damit verschachtelte leere Ordner in EINEM
+        # Durchgang zusammenfallen (Normen/Kleben/ vor Normen/).
+        for wurzel, _unter, _dateien in os.walk(eingang, topdown=False):
+            if os.path.abspath(wurzel) == os.path.abspath(eingang):
+                continue
+            try:
+                if os.listdir(wurzel):
+                    continue
+                jung = (jetzt - os.path.getmtime(wurzel)
+                        < KARENZ_LEERER_ORDNER)
+                if jung and wurzel not in selbst_geleert:
+                    continue
+                os.rmdir(wurzel)
+                weg += 1
+                selbst_geleert.add(os.path.dirname(wurzel))
+            except OSError:
+                pass          # Rechte oder Wettlauf - beim naechsten Mal
+    if weg:
+        print("[Eingang] %d leere Unterordner entfernt" % weg,
+              file=sys.stderr, flush=True)
+    return weg
+
+
 def _liegengebliebene_einraeumen():
     """PDFs, die laenger als eine Stunde in input/ liegen, obwohl ihre
     Textfassung laengst im Bestand ist, an ihren Platz bringen.
@@ -1168,6 +1228,7 @@ def _loesch_wache():
                 traceback.print_exc(file=sys.stderr)
         try:
             _liegengebliebene_einraeumen()
+            _leere_eingangsordner_raeumen()
         except Exception:
             traceback.print_exc(file=sys.stderr)
         try:
@@ -4098,9 +4159,7 @@ def _themenfremde_nennungen_tilgen(text):
         _paren = re.compile(r" ?\(([^()]*[A-Z]{1,3}-\d{2}-\d{3}[^()]*)\)")
 
         def _woerter(x):
-            return {w for w in re.sub(r"[^0-9a-zA-ZäöüÄÖÜß]+", " ",
-                                      (x or "").lower()).split()
-                    if len(w) > 6 and w not in _FUELLWOERTER}
+            return _fachwoerter(x)
 
         def _seiten(code):
             for kand in (_pdf_schluessel(code), code):
@@ -4582,6 +4641,48 @@ _FUELLWOERTER = {
     "vergleich", "vergleichen", "gegenuebergestellt", "gegenübergestellt",
 }
 
+def _umlaut_flach(t):
+    """Behelfsschreibung und echte Umlaute auf EINE Form bringen.
+
+    'Pruefbericht' und 'Prüfbericht' sind dasselbe Wort. Aeltere
+    Ausfuehrungen, Ausfuhren aus fremden Anlagen und schwache Texterkennung
+    schreiben regelmaessig ue statt u-Umlaut; das Modell antwortet fast
+    immer mit dem Umlaut.
+    """
+    t = str(t or "").lower()
+    for a, b in ((u"\u00e4", "ae"), (u"\u00f6", "oe"), (u"\u00fc", "ue"),
+                 (u"\u00df", "ss")):
+        t = t.replace(a, b)
+    return t
+
+
+_FUELL_FLACH = {_umlaut_flach(w) for w in _FUELLWOERTER}
+
+
+def _fachwoerter(text, ab=6, ohne_fuell=True):
+    """Die Woerter, mit denen Aussage und Seitentext verglichen werden.
+
+    ⛔ EINE Zerlegung fuer beide Seiten. Vorher stand an der einen Stelle
+      [^0-9a-zA-Z...] und an der anderen [^0-9a-zA-z...] - das kleine z
+      laesst Unterstrich und eckige Klammern als Wortzeichen durch. Aussage
+      und Seitentext wurden also verschieden zerlegt, und ein Wort mit
+      Unterstrich deckte nie.
+
+    ⛔ Und sie liest ue/ae/oe wie den Umlaut. Am 22.09. kostete genau das
+      einen Beleg: gemeinsame Fachwoerter 1 statt 3, Verweis gesperrt, keine
+      Meldung. Dass die Fuellwortliste selbst beide Schreibweisen fuehrt
+      ("gegenueber" UND "gegen\u00fcber"), zeigt, dass die Doppelform bekannt
+      war - der Vergleich hat sie nur nie gelernt.
+
+    ⚠ Das Vereinheitlichen aendert Wortlaengen (aus vier Zeichen
+      "gr\u00f6\u00dfe" werden sieben "groesse"). Die Schwelle `ab` wirkt also auf
+      der vereinheitlichten Form - fuer beide Seiten gleich, damit der
+      Vergleich fair bleibt.
+    """
+    woerter = re.sub(r"[^0-9a-z]+", " ", _umlaut_flach(text)).split()
+    return {w for w in woerter
+            if len(w) > ab and not (ohne_fuell and w in _FUELL_FLACH)}
+
 
 def _dok_hat_aussage(name, kontext):
     """True, wenn das Dokument die Aussage plausibel enthaelt - zum Sperren
@@ -4598,15 +4699,11 @@ def _dok_hat_aussage(name, kontext):
         return True
     if not seiten:
         return True
-    ziel6 = {w for w in re.sub(r"[^0-9a-zA-ZäöüÄÖÜß]+",
-                               " ", (kontext or "").lower()).split()
-             if len(w) > 6 and w not in _FUELLWOERTER}
+    ziel6 = _fachwoerter(kontext)
     if len(ziel6) < 3:
         return True
     for txt in seiten:
-        sw6 = {w for w in re.sub(r"[^0-9a-zA-ZäöüÄÖÜß]+",
-                                 " ", (txt or "").lower()).split()
-               if len(w) > 6 and w not in _FUELLWOERTER}
+        sw6 = _fachwoerter(txt)
         if len(ziel6 & sw6) >= 3:
             return True
     return False
@@ -4636,8 +4733,7 @@ def _verifizierte_seite(name, kontext, bevorzugt=None):
     _sch, seiten = _seitentexte_von(name)
     if not seiten:
         return None
-    ziel = {w for w in re.sub(r"[^0-9a-zA-zäöüÄÖÜß]+", " ",
-                              (kontext or "").lower()).split() if len(w) > 4}
+    ziel = _fachwoerter(kontext, ab=4, ohne_fuell=False)
     if len(ziel) < 4:
         return None
     # ⭐ >4-Woerter trennten das richtige Dokument nicht vom falschen
@@ -4645,17 +4741,16 @@ def _verifizierte_seite(name, kontext, bevorzugt=None):
     #   trennen FACHWOERTER (>6 Z.) sauber: richtig >=3, falsch <=2. Also muss
     #   die gewaehlte Seite zusaetzlich >=3 unterscheidende Woerter decken -
     #   aber nur, wenn die Aussage ueberhaupt genug Fachwoerter hat.
-    ziel6 = {w for w in ziel if len(w) > 6 and w not in _FUELLWOERTER}
+    ziel6 = {w for w in ziel if len(w) > 6 and w not in _FUELL_FLACH}
     streng = len(ziel6) >= 3
     beste, wert = None, 0.0
     bestanden = set()          # Seiten, die die volle Pruefung bestehen
     for i, txt in enumerate(seiten, 1):
-        sw = {w for w in re.sub(r"[^0-9a-zA-zäöüÄÖÜß]+", " ",
-                                (txt or "").lower()).split() if len(w) > 4}
+        sw = _fachwoerter(txt, ab=4, ohne_fuell=False)
         if not sw:
             continue
         if streng and len(ziel6 & {w for w in sw
-                                   if len(w) > 6 and w not in _FUELLWOERTER}) < 3:
+                                   if len(w) > 6 and w not in _FUELL_FLACH}) < 3:
             continue   # zu wenig unterscheidende Deckung -> diese Seite nicht
         d = len(ziel & sw) / len(ziel)
         if d >= 0.25:
@@ -7611,7 +7706,20 @@ class Griff(BaseHTTPRequestHandler):
                  "zusammenfassen": "zusammengefasst", "zaehlen": "gezählt", "bestand": "Katalog", "dokument_finden": "gesucht",
                  "abkuerzung": "Abkürzung", "exportieren": "Export", "seite_zeigen": "Seite", "bestand_durchsuchen": "Bestand durchsucht",
                  "stoerfall_suchen": "Störfallsuche", "pruefungsfrage": "Katalogfrage"}
-        _doks = ", ".join(assistent._titel_saubern(d) for d in zustand["dokumente"][:3])
+        # ⭐ Der LESBARE Titel, nicht der ganze Schluessel. Mit dem
+        #   Pfad-Schluessel stuenden hier 137 Zeichen je Dokument
+        #   ("zz-probe-KundeAlpha-Pruefbericht--mughd27kva"); bei drei
+        #   Dokumenten ist die Zeile dann laenger als die Antwort.
+        #   Unterschieden bleibt weiterhin "Quelle:" (wirklich zitiert)
+        #   von "durchsucht:" (gesucht, nicht belegt) - genau dieser
+        #   Unterschied hat am 22.09. den fehlenden Beleg gemeldet.
+        try:
+            import bestand as _bst
+            _lesbar = _bst._anzeige
+        except Exception:
+            _lesbar = lambda t: t          # noqa: E731
+        _doks = ", ".join(_lesbar(assistent._titel_saubern(d))
+                          for d in zustand["dokumente"][:3])
         _was = sorted({_kurz.get(n, n) for n, _, _ in e["aufrufe"] if n != "waechter"})
         fuss = []
         if _modell_b:

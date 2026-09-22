@@ -15,6 +15,7 @@ import os
 import shutil
 import sys
 import tempfile
+import time
 
 HIER = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, HIER)
@@ -689,6 +690,126 @@ def test_stuetze_laeuft_ab():
     p.pdfs_einlesen()
 
 
+def test_umlautdeckung():
+    """Der Zitatwaechter darf an der Schreibweise nicht scheitern.
+
+    ⛔ Gefunden an der Abnahme vom 22.09., nicht beim Lesen: Das Modell
+      antwortet mit echten Umlauten, das Dokument war in Behelfsschreibung
+      gesetzt (ue/ae/oe). Die gemeinsamen Fachwoerter fielen von 3 auf 1,
+      _dok_hat_aussage sperrte den Beleg - und die einzige Meldung war das
+      Wort "durchsucht" in der Fusszeile.
+
+    ⚠ Das trifft nicht nur Probedokumente: Aeltere Ausfuehrungen, Ausfuhren
+      aus fremden Anlagen und schlechte Texterkennung schreiben regelmaessig
+      ue statt u-Umlaut. Dass die Fuellwortliste selbst BEIDE Schreibweisen
+      fuehrt ("gegenueber" und "gegenüber"), zeigt: Die Doppelform war
+      bekannt, der Vergleich hat sie nie gelernt.
+    """
+    import schluessel
+    import pruef_proxy as p
+    print("\nUmlaute im Zitatwaechter")
+    # ⛔ Ein AUFLOESBARER Name. Mit einem Phantasienamen steigt
+    #   _dok_hat_aussage sofort mit True aus ("unpruefbar -> nicht sperren")
+    #   und der Wortvergleich laeuft nie - drei Zeilen waeren gruen, ohne
+    #   etwas zu pruefen. Genau so ist diese Pruefung im ersten Anlauf
+    #   dagestanden.
+    p.pdfs_einlesen()
+    dok = schluessel.schluessel("kap", "archiv/KundeA/Angebot.pdf")
+    pruefe(p._pdf_schluessel(dok) == dok,
+           "Vorbedingung: der Name loest auf - sonst prueft nichts davon etwas")
+
+    # (Der Wortlaut ist GEBAUT, nicht ausgedacht: Ohne Vereinheitlichung
+    #  zerfallen die Umlautwoerter ("pr\u00fcfbericht" -> "fbericht"), aber
+    #  es bleiben DREI lange Woerter uebrig. Nur so laeuft der Waechter bis
+    #  zum Vergleich - mit weniger steigt er vorher mit "unpruefbar, nicht
+    #  sperren" aus, und diese Zeile waere gruen, egal was der Code tut.
+    #  Genau so ist sie im ersten Anlauf dagestanden.)
+    aussage = ("Der Pr\u00fcfbericht nennt die Pr\u00fcfgeschwindigkeit "
+               "und das Pr\u00fcfklima; die Zugfestigkeit betr\u00e4gt 412 MPa")
+    behelf = ("Pruefbericht Zugversuch - Kunde Alpha. Probekoerper nach "
+              "Norm, Pruefgeschwindigkeit 5 mm je Minute. Pruefklima 23 "
+              "Grad. Ergebnis: Die Zugfestigkeit betraegt 412 MPa.")
+    echt = (behelf.replace("Pruef", "Pr\u00fcf").replace("betraegt", "betr\u00e4gt")
+                  .replace("Probekoerper", "Probek\u00f6rper"))
+    fremd = ("Verfahrensanweisung Kleben. Die Oberfl\u00e4che wird "
+             "angeschliffen und entfettet, danach Primer auftragen.")
+
+    merk = p._seitentexte_pdf
+    try:
+        # 1) Behelfsschreibung im Dokument, Umlaute in der Aussage.
+        p._seitentexte_pdf = lambda _n: [behelf]
+        pruefe(p._dok_hat_aussage(dok, aussage) is True,
+               "ue/ae im Dokument decken Umlaute in der Aussage")
+
+        # 2) Und die Gegenrichtung - sonst waere Zeile 1 auch dann gruen,
+        #    wenn die Funktion nur noch True liefert.
+        p._seitentexte_pdf = lambda _n: [echt]
+        pruefe(p._dok_hat_aussage(dok, aussage) is True,
+               "gleiche Schreibweise deckt weiterhin")
+
+        # 3) ⛔ Die Gegenprobe, die das Ganze erst tragfaehig macht: Ein
+        #    Dokument, das die Aussage NICHT enthaelt, muss weiter gesperrt
+        #    werden. Ohne diese Zeile sagt kein Gruen oben etwas aus.
+        p._seitentexte_pdf = lambda _n: [fremd]
+        pruefe(p._dok_hat_aussage(dok, aussage) is False,
+               "ein fremdes Dokument bleibt gesperrt")
+
+        # 4) Beide Seiten in Behelfsschreibung - darf sich nicht
+        #    verschlechtern.
+        p._seitentexte_pdf = lambda _n: [behelf]
+        flach = ("Der Pruefbericht nennt die Pruefgeschwindigkeit und das "
+                 "Pruefklima; die Zugfestigkeit betraegt 412 MPa")
+        pruefe(p._dok_hat_aussage(dok, flach) is True,
+               "beide in Behelfsschreibung: unveraendert erlaubt")
+    finally:
+        p._seitentexte_pdf = merk
+
+    # 5) Die Zerlegung selbst: Seitentext und Aussage muessen GLEICH
+    #    zerlegt werden. Bis zum 22.09. stand an der einen Stelle
+    #    [^0-9a-zA-Z...] und an der anderen [^0-9a-zA-z...] - das zweite
+    #    behaelt Unterstrich und eckige Klammern als Wortzeichen.
+    pruefe(p._fachwoerter("Pr\u00fcfbericht_Zugversuch")
+           == p._fachwoerter("Pruefbericht Zugversuch"),
+           "Unterstrich trennt wie ein Leerzeichen, ist %r vs %r"
+           % (sorted(p._fachwoerter("Pr\u00fcfbericht_Zugversuch")),
+              sorted(p._fachwoerter("Pruefbericht Zugversuch"))))
+
+
+def test_leere_eingangsordner():
+    """Leere Unterordner im Eingang verschwinden - aber nicht zu frueh.
+
+    Emrach am 22.09.: "die leeren ordner stehen nur noch lose da".
+    """
+    import pruef_proxy as p
+    print("\nLeere Unterordner im Eingang")
+    eingang = os.path.join(BAUM, "kap", "input")
+    alt = os.path.join(eingang, "FertigerKunde")
+    voll = os.path.join(eingang, "NochVoll")
+    frisch = os.path.join(eingang, "GeradeAngelegt")
+    tief = os.path.join(eingang, "Normen", "Kleben")
+    for d in (alt, voll, frisch, tief):
+        os.makedirs(d, exist_ok=True)
+    open(os.path.join(voll, "Angebot.pdf"), "wb").write(b"%PDF-1.4\n")
+    # Zwei Stunden alt: Karenz abgelaufen.
+    for d in (alt, tief, os.path.dirname(tief)):
+        os.utime(d, (time.time() - 7200, time.time() - 7200))
+
+    p._leere_eingangsordner_raeumen()
+
+    pruefe(not os.path.isdir(alt), "der leere, ruhige Ordner ist weg")
+    pruefe(not os.path.isdir(tief) and not os.path.isdir(os.path.dirname(tief)),
+           "verschachtelte leere Ordner fallen in EINEM Durchgang zusammen")
+    # ⛔ Die drei Gegenproben. Ohne sie waere "der leere Ordner ist weg"
+    #   auch dann gruen, wenn die Wache einfach alles wegraeumt.
+    pruefe(os.path.isdir(voll) and os.path.exists(os.path.join(voll, "Angebot.pdf")),
+           "ein Ordner MIT Datei bleibt unangetastet")
+    pruefe(os.path.isdir(frisch),
+           "ein eben angelegter leerer Ordner bleibt - sonst raeumt die Wache "
+           "einem Menschen den Ordner weg, waehrend er noch hochlaedt")
+    pruefe(os.path.isdir(eingang),
+           "der Eingang selbst bleibt stehen, auch wenn er leer waere")
+
+
 def main():
     baum_bauen()
     pruefungen = [test_index, test_pdfstelle, test_belegvorrat,
@@ -696,7 +817,9 @@ def main():
                   test_belegvergleich,
                   test_rechtepruefung,
                   test_loeschweg,
-                  test_stuetze_laeuft_ab]
+                  test_stuetze_laeuft_ab,
+                  test_umlautdeckung,
+                  test_leere_eingangsordner]
     try:
         for t in pruefungen:
             t()

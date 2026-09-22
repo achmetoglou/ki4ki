@@ -233,7 +233,46 @@ und gleicht ab, was n8n **wirklich geladen** hat. Aufruf auf dem Host:
 2. **`LESBAR_BYTE`** (siehe oben), gehört zu Teil 3.
 3. **Die Protokoll-Wiederholung** bei jedem Minutentakt (§3, Punkt 2).
 
-## 3e - Teil 3: GEBAUT, die Abnahme steht noch aus (21.09., spaeter Abend)
+## 3e - Teil 3: GEBAUT und am laufenden System belegt (Stand 22.09.)
+
+### ⭐ Was die Abnahme vom 22.09. gezeigt hat
+
+Vier erfundene Dokumente in den Arbeitsbereich `zz-schluesselprobe`, mit
+Unterordnern. Gemessen an `/pruef-status`:
+
+| | vorher | nachher | Lesart |
+|---|---|---|---|
+| `bestand` | 67 | **71** | vier neue Eintraege, **vier verschiedene** |
+| `nur_altweg` | 67 | **67** | ⭐ jedes der vier traegt einen Abdruck |
+| `altweg_belege` | 0 | **0** | der alte Weg wurde nicht gebraucht |
+
+⭐ Die **71** ist die aussagekraeftige Zahl, nicht die 67: Die zwei
+Pruefberichte heissen auf der Platte gleich und liegen nur in verschiedenen
+Kundenordnern. Unter dem alten Schluessel waere einer als Dublette verworfen
+worden und der Zaehler bei 70 stehengeblieben.
+
+In der Oberflaeche standen die Pfad-Schluessel mit Unterordner
+(`...-KundeAlpha-Pruefbericht--<abdruck>.md`), die Frage nach der
+Zugfestigkeit brachte **beide** Zahlen aus **zwei** getrennten Quellen.
+
+⛔ **Was dabei NICHT ging - und warum es nicht am Umbau lag:** Es entstand
+kein blauer Beleg. Ursache war der Zitatwaechter, der `ue` nicht wie `ü`
+liest; meine Probedokumente standen in Behelfsschreibung. Siehe
+`BUGS_UND_FIXES.md` **16**. Behoben, und die Probedokumente tragen jetzt
+echte Umlaute - damit prueft die Wiederholung den Umbau und nicht den Fix.
+
+### ⛔ Offen: die Belegmessung (Aufgabe 7, Schritt 5)
+
+Nach dem naechsten `./aktualisiere.sh` dieselbe Frage im selben Bereich
+stellen. **Erwartet: zwei blaue Belege**, die auf zwei verschiedene
+Dokumente springen. Erst das ist der Beweis, dass der Belegweg ueber den
+Abdruck traegt - vorher wird **nicht** neu eingelesen.
+
+⚠ Eine Gegenprobe an echten Bestandsdokumenten gibt es nicht: Die 67 alten
+tragen keinen Abdruck und laufen ueber die Uebergangsstuetze. Die vier
+Probedokumente sind zurzeit die einzigen mit Abdruck.
+
+## 3e-alt - Stand vom 21.09. (spaeter Abend)
 
 Plan: `/home/runlvl89/.claude/plans/ki4ki-wissensdatenbank-des-snazzy-willow.md`
 (14 Aufgaben, 92 Schritte). Gebaut wird in einem Klon, gepusht auf

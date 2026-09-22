@@ -5,8 +5,8 @@ Kein echter Bestand, keine Kundendaten - alle Zahlen und Namen sind
 ausgedacht. Jedes Dokument prueft GENAU EINE Sache; ohne den Umbau
 scheitert jedes an seiner eigenen Stelle:
 
-  KundeAlpha/Pruefbericht.pdf   ⎫ gleicher Dateiname, zwei Kunden.
-  KundeBeta/Pruefbericht.pdf    ⎭ Ohne den Umbau ueberlebt nur EINER -
+  KundeAlpha/Prüfbericht.pdf   ⎫ gleicher Dateiname, zwei Kunden.
+  KundeBeta/Prüfbericht.pdf    ⎭ Ohne den Umbau ueberlebt nur EINER -
                                   der andere verschwindet still.
   KundeAlpha/Angebot & Kalkulation.pdf
                                   AnythingLLM macht aus '&' ein 'and'.
@@ -29,38 +29,38 @@ from reportlab.pdfgen import canvas
 
 SEITEN = {
     os.path.join("KundeAlpha", "Pruefbericht.pdf"): [
-        ("Pruefbericht Zugversuch - Kunde Alpha", [
-            "Werkstoff: Polyamid 6.6, glasfaserverstaerkt (30 Prozent).",
-            "Probekoerper nach Norm, Pruefgeschwindigkeit 5 mm je Minute.",
+        ("Prüfbericht Zugversuch - Kunde Alpha", [
+            "Werkstoff: Polyamid 6.6, glasfaserverstärkt (30 Prozent).",
+            "Probekörper nach Norm, Prüfgeschwindigkeit 5 mm je Minute.",
             "",
-            "Ergebnis: Die Zugfestigkeit betraegt 412 MPa.",
-            "Bruchdehnung 3,1 Prozent. Pruefklima 23 Grad, 50 Prozent Feuchte.",
+            "Ergebnis: Die Zugfestigkeit beträgt 412 MPa.",
+            "Bruchdehnung 3,1 Prozent. Prüfklima 23 Grad, 50 Prozent Feuchte.",
         ]),
-        ("Pruefbericht Zugversuch - Kunde Alpha, Seite 2", [
-            "Anmerkung zur Streuung: Fuenf Proben, Standardabweichung 9 MPa.",
-            "Die Kennlinie zeigt kein ausgepraegtes Fliessen.",
-            "Freigabe durch die Pruefstelle am 14. Maerz.",
+        ("Prüfbericht Zugversuch - Kunde Alpha, Seite 2", [
+            "Anmerkung zur Streuung: Fünf Proben, Standardabweichung 9 MPa.",
+            "Die Kennlinie zeigt kein ausgeprägtes Fließen.",
+            "Freigabe durch die Prüfstelle am 14. März.",
         ]),
     ],
     os.path.join("KundeBeta", "Pruefbericht.pdf"): [
-        ("Pruefbericht Zugversuch - Kunde Beta", [
+        ("Prüfbericht Zugversuch - Kunde Beta", [
             "Werkstoff: Polypropylen, talkumgefuellt (20 Prozent).",
-            "Probekoerper nach Norm, Pruefgeschwindigkeit 5 mm je Minute.",
+            "Probekörper nach Norm, Prüfgeschwindigkeit 5 mm je Minute.",
             "",
-            "Ergebnis: Die Zugfestigkeit betraegt 287 MPa.",
-            "Bruchdehnung 5,8 Prozent. Pruefklima 23 Grad, 50 Prozent Feuchte.",
+            "Ergebnis: Die Zugfestigkeit beträgt 287 MPa.",
+            "Bruchdehnung 5,8 Prozent. Prüfklima 23 Grad, 50 Prozent Feuchte.",
         ]),
-        ("Pruefbericht Zugversuch - Kunde Beta, Seite 2", [
-            "Anmerkung zur Streuung: Fuenf Proben, Standardabweichung 14 MPa.",
-            "Die Kennlinie zeigt ein ausgepraegtes Fliessen bei 240 MPa.",
-            "Freigabe durch die Pruefstelle am 22. Maerz.",
+        ("Prüfbericht Zugversuch - Kunde Beta, Seite 2", [
+            "Anmerkung zur Streuung: Fünf Proben, Standardabweichung 14 MPa.",
+            "Die Kennlinie zeigt ein ausgeprägtes Fließen bei 240 MPa.",
+            "Freigabe durch die Prüfstelle am 22. März.",
         ]),
     ],
     os.path.join("KundeAlpha", "Angebot & Kalkulation.pdf"): [
         ("Angebot und Kalkulation - Kunde Alpha", [
-            "Leistung: Serienpruefung Zugversuch, 120 Probekoerper.",
+            "Leistung: Serienpruefung Zugversuch, 120 Probekörper.",
             "",
-            "Der angebotene Stueckpreis betraegt 47 Euro je Probekoerper.",
+            "Der angebotene Stückpreis beträgt 47 Euro je Probekörper.",
             "Gesamtsumme 5.640 Euro, Laufzeit acht Wochen.",
         ]),
     ],
@@ -68,7 +68,7 @@ SEITEN = {
         ("Verfahrensanweisung Kleben", [
             "Geltungsbereich: Klebverbindungen an thermoplastischen Bauteilen.",
             "",
-            "Die Aushaertezeit betraegt 36 Stunden bei Raumtemperatur.",
+            "Die Aushaertezeit beträgt 36 Stunden bei Raumtemperatur.",
             "Vorbehandlung: Beflammen, danach hoechstens 20 Minuten Wartezeit.",
         ]),
         ("Verfahrensanweisung Kleben, Seite 2", [
@@ -110,7 +110,7 @@ def main():
         print("  %6d Byte  %s" % (os.path.getsize(p), name))
     print("\n%d Dokumente unter %s" % (len(SEITEN), ziel))
     print("\nWas sie beweisen sollen:")
-    print("  - zwei gleichnamige Pruefberichte in zwei Kundenordnern muessen")
+    print("  - zwei gleichnamige Prüfberichte in zwei Kundenordnern muessen")
     print("    BEIDE im Bestand landen (412 MPa und 287 MPa)")
     print("  - das Angebot mit '&' im Namen muss anklickbar bleiben")
     print("  - die Verfahrensanweisung liegt drei Ebenen tief")
