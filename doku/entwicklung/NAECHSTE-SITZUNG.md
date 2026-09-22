@@ -233,6 +233,88 @@ und gleicht ab, was n8n **wirklich geladen** hat. Aufruf auf dem Host:
 2. **`LESBAR_BYTE`** (siehe oben), gehört zu Teil 3.
 3. **Die Protokoll-Wiederholung** bei jedem Minutentakt (§3, Punkt 2).
 
+## 3i - HIER WEITERMACHEN (Stand 22.09., spaetabends)
+
+⛔ **Der KAP-Lauf ist angehalten. n8n ist gestoppt.** Der Chat und die
+Suche laufen weiter - nur die Aufnahme ruht.
+
+### Der Befund in drei Zeilen
+
+Ueber 7 Minuten gemessen, bei laufender Aufnahme:
+
+```
+kap/archiv:   44 -> 135   (+91 gewandelte PDFs)
+kap/input:   811 -> 811   (unveraendert)
+Bestand:      81 -> 81    (nichts hochgeladen)
+```
+
+Die Kette **wandelt** Office-Dateien nach PDF und legt sie richtig ab
+(Reparatur 27 greift). Danach passiert **nichts**: kein Markdown, kein
+Upload, keine Ablageentscheidung - und das Original bleibt im Eingang.
+Der Durchgang meldet trotzdem "Succeeded".
+
+### Was schon ausgeschlossen ist
+
+| Verdacht | Ergebnis |
+|---|---|
+| n8n laeuft mit einer alten Fassung | ✅ widerlegt: `ablauf_pruefen.py` inkl. "Was n8n WIRKLICH geladen hat" ist **0 Fehler** |
+| Positivliste, Bildabweisung, Office-Ziel | ✅ alle gruen geprueft |
+| Fehlerabfang an den 8 riskanten Bausteinen | ✅ gruen |
+
+### ⛔ Der verbleibende Verdacht - noch NICHT bestaetigt
+
+```
+Cannot read properties of undefined (reading 'entries')
+   at WorkflowExecute.assignPairedItems
+```
+
+Der Knoten **"Dateien in JSON umwandeln"** laeuft im Modus
+`Run once for each item` - von n8n 2.31.4 selbst als veraltet markiert, mit
+dem Hinweis: *"add a Loop Over Items node before this node and use Run once
+with all items"*.
+
+⚠ Mein Fix vom Vormittag (`onError: continueRegularOutput`) hat diesen
+Fehler **nur stummgeschaltet, nicht behoben**. Der Durchgang laeuft weiter -
+mit leeren Haenden. Genau die Sorte Gruen, vor der dieses Projekt sich
+sonst schuetzt, diesmal von mir selbst eingebaut.
+
+### Der naechste Schritt, in dieser Reihenfolge
+
+1. **Bestaetigen, nicht annehmen.** n8n starten, SOFORT die Laufsperre
+   setzen, dann in der Executions-Liste einen Durchgang mit Laufzeit in
+   MINUTEN oeffnen (die 7-Sekunden-Laeufe sind nur Sperr-Abbrueche):
+
+   ```bash
+   docker start ki4ki-n8n && sleep 25 && \
+   docker exec ki4ki-n8n mkdir -p /files/json/.lauf.sperre
+   ```
+
+   Gesucht: rotes Kreuz an "Dateien in JSON umwandeln", die Meldung, und ob
+   die Knoten dahinter Haekchen haben.
+   Sperre loesen: `docker exec ki4ki-n8n rmdir /files/json/.lauf.sperre`
+   (sie raeumt sich ohnehin nach 120 Minuten selbst weg).
+
+2. **Erst dann umbauen:** `Run once for each item` raus, `Loop Over Items`
+   davor. Das ist ein echter Umbau am Ablaufplan - mit einer Pruefung in
+   `bau/ablauf_pruefen.py`, die ihn rot machen kann, bevor er auf 4.300
+   Dateien losgelassen wird.
+
+3. **Aufraeumen:** In `kap/archiv` liegen ~135 gewandelte PDFs ohne
+   zugehoeriges Dokument. Sie gehoeren weg, bevor der echte Lauf startet -
+   sonst zaehlen sie als Dokumente mit eigenem Schluessel mit.
+
+### ⚠ Drei Fehlgriffe von mir an diesem Nachmittag, alle derselben Art
+
+- Aus drei `.msg` im Arbeitsbereich auf **2.000 Bilder** geschlossen.
+- Aus **einem Byte** Groessenunterschied auf eine beschaedigte Datei.
+- Aus "im Eingang bewegt sich nichts" auf einen **Abbruch** - waehrend ein
+  Durchgang noch lief. Danach in die Gegenrichtung ueberkorrigiert
+  ("die Kette ist doch in Ordnung"), was die Messung dann widerlegte.
+
+⭐ Jedes Mal half dieselbe Frage: **Was habe ich gemessen, und was habe
+ich daraus nur abgeleitet?** Und jedes Mal kostete die Messung weniger Zeit
+als die Vermutung.
+
 ## 3h - Stand 22.09., abends: alle Links tragen, KAP kann laufen
 
 **Einstieg fuer die naechste Sitzung.** Zweig `pfad-identitaet`.
