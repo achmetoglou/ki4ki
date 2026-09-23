@@ -239,6 +239,90 @@ und gleicht ab, was n8n **wirklich geladen** hat. Aufruf auf dem Host:
 2. **`LESBAR_BYTE`** (siehe oben), gehört zu Teil 3.
 3. **Die Protokoll-Wiederholung** bei jedem Minutentakt (§3, Punkt 2).
 
+## 5c - ⛔ HIER WEITERMACHEN (24.09.): zwei Fehler an den Belegen
+
+Die Aufnahmekette traegt (§5b). Aber die aufgenommenen Dokumente sind
+**nicht benutzbar** - zwei Fehler, beide an den Schluesseln.
+
+⛔ **Keinen weiteren Ordner einlesen**, bevor das geklaert ist. Sonst
+vervielfachen wir Dokumente, deren Belege nicht funktionieren.
+
+### ⛔ Fehler 1: jeder Beleg-Klick endet auf "Dieses Dokument liegt nicht vor"
+
+Gemessen an einer echten Frage ("Welche Rechnungen hat Lanxess bekommen?"):
+**alle** angebotenen Dokument-Verweise laufen ins Leere.
+
+Was schon ausgeschlossen ist:
+
+| Verdacht | Ergebnis |
+|---|---|
+| Der Proxy sieht die Dateien nicht | ✅ nein - `./dokumente:/daten/pdfs:ro`, dieselbe Platte wie n8n |
+| Das Verzeichnis ist veraltet | ✅ nein - `_pdfs_erneuern_wenn_faellig()` laedt alle 15 Sekunden nach |
+| Die Datei fehlt | ✅ nein - `kap archiv 49`, die PDFs liegen da |
+
+⭐ **Noch NICHT gemessen:** Was steht in `PDFS_ABDRUCK`? Der Abdruck ist
+der Teil, ueber den ausschliesslich verglichen wird ("der einzige Teil des
+Schluessels, der alle neun Normalisierungen des Hauses uebersteht"). Die
+naechste Messung ist: Steht `3hifpjz74w` (oder ein anderer Abdruck aus der
+Antwort) im Verzeichnis - ja oder nein? Das halbiert den Suchraum sofort.
+
+### ⛔ Fehler 2: die Schluessel stehen roh im Antworttext
+
+```
+kap-Lanxess-Deutschland-GmbH-Chempark-Dormagen-274821-Verwaltung-
+Rechnung-274821-Lanxess-IKV-TS-2--3hifpjz74w
+```
+
+Emrach: *"das ist ja Wirrwarr an Signaturen im Text"*. Zu Recht - das ist
+unlesbar.
+
+⭐ Die **Fusszeile** kuerzt bereits ueber `bestand._anzeige`. Der
+Antworttext nicht: Der Systemprompt verlangt den Beleg als
+"(Kennung, S. n)", und die Kennung ist seit dem Pfad-Schluessel-Umbau
+ueber hundert Zeichen lang.
+
+⭐ **Erster Faden:** In der Compose steht `KI4KI_NENNUNG_TILGEN=1` - was
+tut dieser Schalter, und warum greift er hier nicht? Falls er fuer die
+alten, kurzen Kennungen gebaut wurde, ist das die Stelle.
+
+### ⛔ Fehler 3 (dieselbe Wurzel): die Bestandsliste ist unlesbar
+
+Die Katalog-Tabelle zeigt in der Spalte KENNUNG den vollen Schluessel -
+ueber hundert Zeichen, ueber mehrere Zeilen umgebrochen, und **die Tabelle
+laeuft rechts aus dem Bild**. Emrach: *"wuaaa.. das ist bloed mit dem
+Titel so... ausserdem schneidet die Tabelle rechts ab."*
+
+⚠ **Nicht in `anzeigetitel()` kuerzen.** Die Funktion wird auch zum
+NACHSCHLAGEN benutzt (`angaben()`, `kennung()`, `art_von()`, 18
+Aufrufstellen laut eigener Dokumentation). Wer sie kuerzt, bricht die
+Katalogzuordnung - genau davor warnt ihr Docstring.
+
+⭐ Die Kuerzung gehoert in die **Anzeige**: `assistent._liste()` baut die
+Tabelle. Dort das letzte Pfadsegment (den eigentlichen Dateinamen) zeigen
+und den vollen Schluessel nur als Verweisziel behalten.
+
+⚠ `dialogtest.py` prueft das Tabellenformat an mehreren Stellen wortgenau
+(Zeilen 549, 691). Die Pruefungen fangen einen Fehlgriff - aber sie
+muessen mitgezogen werden.
+
+### ⚠ Alle drei gehoeren zusammen
+
+Beide Fehler haengen am selben Umbau: Seit `pfad-identitaet` sind die
+Schluessel lang und pfadbasiert. Was in der Fusszeile schon gekuerzt wird,
+steht im Antworttext roh - und was im Antworttext steht, findet das
+PDF-Verzeichnis nicht wieder.
+
+⛔ Ein Dokument, das aufgenommen ist, aber nicht aufschlagbar, ist fuer
+den Produktanspruch (Schluesse UND Belege) nur die halbe Miete.
+
+### Danach erst
+
+- Der **Durchsatz**: 39 Dokumente in 25 Minuten. Docling ist mit ~1 s je
+  Dokument NICHT der Engpass (gemessen), die Analyse laeuft schon auf dem
+  kleinen Modell. Wo die Zeit hingeht, ist **ungemessen** - dafuer braucht
+  es die Zeitleiste einer n8n-Ausfuehrung.
+- Der **grosse KAP-Lauf** (hochgerechnet 67 Stunden)
+
 ## 5b - ✅ ABGENOMMEN 23.09. abends: die Aufnahmekette traegt
 
 Dieselben 39 Dokumente aus `aussortiert/` zurueck nach `input/` - bekannte
