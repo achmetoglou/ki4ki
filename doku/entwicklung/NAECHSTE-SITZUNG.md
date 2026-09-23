@@ -233,7 +233,105 @@ und gleicht ab, was n8n **wirklich geladen** hat. Aufruf auf dem Host:
 2. **`LESBAR_BYTE`** (siehe oben), gehört zu Teil 3.
 3. **Die Protokoll-Wiederholung** bei jedem Minutentakt (§3, Punkt 2).
 
-## 3i - HIER WEITERMACHEN (Stand 22.09., spaetabends)
+## 3j - HIER WEITERMACHEN (Stand 23.09. vormittags)
+
+### Lage
+
+⛔ **n8n ist gestoppt bzw. mit gesetzter Laufsperre.** Die Aufnahmekette
+wandelt Office-Dateien nach PDF und **verliert danach ihre Elemente**: kein
+Markdown, kein Upload, keine Ablage - und der Durchgang meldet "Succeeded".
+
+Der Bereich `kap` ist aufgeraeumt (23.09. vormittags):
+
+```
+input        0     (813 geloescht - lagen lokal vor)
+archiv       0     (144 verwaiste Wandlungen geloescht)
+parkplatz 3450+    zwei Kundenordner neu hochgeladen
+documents/kap 1    von Hand hochgeladene Geheimhaltung, NICHT aus dem Lauf
+mdablage     14    alle aus zz-schluesselprobe, nichts von kap
+```
+
+### ⛔ Die Publish-Frage: NICHT veroeffentlichen
+
+In n8n steht der Publish-Knopf orange, angeboten wird Version `d0810e64`.
+**Nicht klicken.** Begruendung, gemessen statt vermutet: Der Office-Fix vom
+22.09. nachmittags hat nachweislich gelaufen (die gewandelte Word-PDF landete
+um 16:0x im gespiegelten Unterordner statt flach - das kann nur die neue
+Fassung). Die aktive Fassung ist also aktuell. Was in dem Entwurf steckt,
+weiss niemand.
+
+⚠ Offen bleibt, WAS `export:workflow` in n8n 2.x exportiert - Entwurf oder
+veroeffentlichte Fassung. Solange das unklar ist, ist
+`test_was_n8n_wirklich_geladen_hat` schwaecher, als sein Name verspricht.
+Das gehoert geklaert, bevor man sich wieder darauf verlaesst.
+
+### Was schon ausgeschlossen ist (23.09., am Ablaufplan geprueft)
+
+| Verdacht | Ergebnis |
+|---|---|
+| Eine Dateiendung laeuft ins Nichts | ✅ nein - die Weichen haengen als Kette, alles Unbekannte faellt auf Tika zurueck |
+| Der Merge am Ende wartet auf beide Zweige | ✅ nein - zwei Eingaenge, Betriebsart "anhaengen" |
+| n8n laeuft mit einer alten Fassung | ✅ unwahrscheinlich, siehe Publish-Frage |
+| Positivliste, Bildabweisung, Office-Ziel, Fehlerabfang | ✅ `ablauf_pruefen.py` 0 Fehler |
+
+### ⭐ Der naechste Schritt: nachstellen statt nachsehen
+
+Die n8n-Oberflaeche brauchen wir nicht. Ein kleiner, kontrollierter Durchgang
+sagt dasselbe und ist messbar:
+
+1. **Drei Dateien** verschiedener Art (eine `.pdf`, eine `.doc`, eine `.db`)
+   aus `kap/parkplatz` nach `kap/input` legen.
+2. Laufsperre loesen: `docker exec ki4ki-n8n rmdir /files/json/.lauf.sperre`
+3. Einen Durchgang abwarten, dann messen:
+   `docker exec ki4ki-pruef-proxy python3 /app/laufstand.py`
+   und `.../linkprobe.py`
+4. **Erwartet, wenn es traegt:** input 0, archiv 3 (bzw. 2 + 1 aussortiert),
+   Bestand waechst.
+   **Erwartet, wenn es bricht:** archiv bekommt nur die gewandelten PDF,
+   input bleibt voll, Bestand unveraendert.
+5. Dann die Menge erhoehen (25) und dieselbe Messung. Traegt es bei 3 und
+   bricht bei 25, liegt es an der Menge; bricht es schon bei 3, an einem
+   Dateityp - dann einzeln bisektieren.
+
+⚠ `KI4KI_MENGE_JE_LAUF` steuert die Menge je Durchgang (Standard 25).
+
+### Der fachliche Verdacht (noch NICHT bestaetigt)
+
+`assignPairedItems` bricht, wenn eine Unter-Ausfuehrung kein Element
+zurueckgibt. Der Unterablauf endet auf einem **Merge** - der gibt zurueck,
+was ankommt, und sagt **nicht** zu, dass ueberhaupt etwas ankommt.
+
+⭐ Der Skill `n8n-subworkflows` nennt genau das als Vertragsfehler:
+*"Shape the output with a final Set node, named Return"* und *"Return
+errors, don't always throw"*. Er widerspricht zugleich dem naheliegenden
+Umbau: `mode: each` ist **richtig** gewaehlt (n8n markiert es nur als
+veraltet); ein `Loop Over Items` im Unterablauf waere laut Skill ein
+Anti-Muster.
+
+→ Wahrscheinliche Reparatur: ein **Return-Knoten** am Ende von Ablaufplan 2,
+der IMMER genau ein Element liefert - im Fehlerfall `{ok: false, grund: ...}`.
+Erst messen, dann bauen.
+
+### Danach: der Zielkatalog (23.09. ausgezaehlt)
+
+| Ebene | Stand |
+|---|---|
+| **Leitfaden K1-K5** (Gate-Bedingungen) | Code fuer alle fuenf vorhanden - **aber nie gegen die Gate-Bedingungen gemessen**. Das Anforderungsdokument sagt zu K2-K5 noch "existiert nicht" (Stand 26.08.), das ist ueberholt. |
+| **Gespraechsqualitaet** (§1-§6) | 28 Anforderungen: 3 ✅ / 19 🟡 / 6 ❌ |
+| **Ganz offen** | Recap des Standes · Weg zum Menschen · Kennwerte mit Messbedingung · Widersprueche nebeneinander · Abkuerzungen · Export |
+
+⚠ **Die Zitate aus dem Implementierungsleitfaden in §7 sind aus zweiter
+Hand.** Sie stehen in unserem eigenen Dokument, zugeschrieben mit
+Seitenangaben (S. 7, 14, 82), ausgewertet am 31.07. in einer frueheren
+Sitzung. Die PDF selbst wurde hier nie gelesen. Belastbar ist die
+Seitenangabe, nicht das Zitat.
+
+⭐ **Die strategische Frage, die Emrach entschieden hat:** Erst die Kette
+reparieren, dann die Gate-Pakete ehrlich durchmessen, dann der
+**Stoerfall-Bestand** (UC 1 des Leitfadens) - KAP laeuft als Nebenbahn mit,
+ist aber nicht der Pilotfall.
+
+## 3i - Stand 22.09., spaetabends
 
 ⛔ **Der KAP-Lauf ist angehalten. n8n ist gestoppt.** Der Chat und die
 Suche laufen weiter - nur die Aufnahme ruht.
