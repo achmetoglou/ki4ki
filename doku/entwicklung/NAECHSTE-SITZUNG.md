@@ -239,6 +239,86 @@ und gleicht ab, was n8n **wirklich geladen** hat. Aufruf auf dem Host:
 2. **`LESBAR_BYTE`** (siehe oben), gehört zu Teil 3.
 3. **Die Protokoll-Wiederholung** bei jedem Minutentakt (§3, Punkt 2).
 
+## 4i - ⭐⭐⭐ DIE TODESSPIRALE: abgebrochene Anfragen rechnen weiter
+
+Im Ollama-Protokoll gefunden, waehrend `ollama stop` haengen blieb:
+
+```
+slot id 0 | task 764  | n_gen = 1131 | tg = 0.41 t/s
+slot id 1 | task 434  | n_gen = 1459 | tg = 0.41 t/s
+```
+
+⛔ **0,41 Token pro Sekunde.** Nicht 53,9 - null Komma vier. Und zwei
+Auftraege liefen **immer noch**, obwohl die Anfragen laengst abgebrochen
+waren.
+
+### Die Kette
+
+1. Eine Anfrage laeuft in die Zeitgrenze, der Browser gibt auf.
+2. **Ollama rechnet trotzdem weiter** - niemand sagt ihm, dass keiner
+   mehr zuhoert.
+3. Der Auftrag belegt weiter einen Rechenplatz und das halb auf der CPU
+   liegende Modell.
+4. Die naechste Frage teilt sich die lahme Haelfte mit dem Zombie.
+5. Beide werden langsamer → mehr Abbrueche → mehr Zombies.
+
+⭐ **Deshalb wurde es im Lauf des Abends immer schlimmer statt besser.**
+Bei 0,41 t/s braucht eine Antwort von 2.000 Token 81 Minuten. Kein
+Token-Deckel der Welt haette das gerettet - und ich habe vier Stunden an
+Token-Deckeln gedreht.
+
+⚠ `ollama stop` blieb auf `Stopping...` stehen: Solange gerechnet wird,
+laesst sich das Modell nicht entladen. Auch das war ein Symptom, kein
+eigenes Problem.
+
+### Der Weg zurueck (23.09., gemessen)
+
+```
+Ausgangslage        927 MiB frei   (Docling 5 Worker + 3 Modelle + 2 Zombies)
+nach Docling=1   12.313 MiB frei   (-11,4 GB durch die Worker)
+nach ollama-Neustart
+                 44.629 MiB frei   (Zombies weg, alle Modelle entladen)
+```
+
+⭐ Von **927 MiB auf 44.629 MiB**. Die Modelle laden bei der naechsten
+Frage von selbst nach - in einen fast leeren Speicher, also vollstaendig
+auf die Karte.
+
+### ⛔ Der Fehler, der daraus zu beheben ist
+
+**Wenn der Proxy aufgibt, muss er Ollama absagen.** Heute laesst
+`urlopen` die Verbindung nach `TIMEOUT` einfach fallen; Ollama merkt
+davon nichts und rechnet ins Leere. Jede gescheiterte Anfrage
+hinterlaesst einen Zombie, der die naechste verlangsamt.
+
+Zu bauen (mit Pruefung, nicht heute Nacht):
+
+| | |
+|---|---|
+| Abbruch weiterreichen | Die Verbindung sauber schliessen, damit Ollama die Erzeugung abbricht - Ollama beendet einen Lauf, wenn der Client geht, aber nur bei einem ECHTEN Verbindungsabbruch |
+| Zombies sichtbar machen | Beim Start und periodisch `ollama ps` auswerten: laeuft etwas, das niemand angefordert hat? Ins Sichtfenster `ki4ki-ueberblick.sh system` |
+| Nicht mehrere gleichzeitig | Pro Gespraech laeuft schon nur eine Frage (WARTE_TEXT). Ueber Gespraeche hinweg nicht - zwei Nutzer, zwei Slots, halbe Geschwindigkeit |
+
+### ⚠ Was dieser Tag ueber Messen lehrt
+
+Ich habe nacheinander vermutet und gedreht: Token-Deckel, Zeitgrenze,
+Lebenszeichen, Rundenzahl. Jede Aenderung war fuer sich richtig. **Keine
+war die Ursache.**
+
+Die Ursache bestand aus drei Dingen, die sich gegenseitig verstaerkten
+und alle drei in zwanzig Sekunden messbar waren:
+
+```
+nvidia-smi                     -> 927 MiB frei von 46 GB
+docker exec ... ollama ps      -> gemma4:12b 49%/51% CPU/GPU
+docker logs ki4ki-ollama       -> 0.41 t/s, zwei Zombie-Auftraege
+```
+
+⭐ **Regel, teuer gelernt:** Wenn etwas langsam ist, misst man ZUERST
+die Maschine - Speicher, Auslastung, was laeuft ueberhaupt. Erst danach
+die Einstellungen. "Langsam" ist eine Aussage ueber den Zustand der
+Anlage, nicht ueber den Parameter, den man gerade in der Hand haelt.
+
 ## 4h - ⭐⭐⭐ BEWIESEN UND BEHOBEN: das Chat-Modell rechnete zur Haelfte auf der CPU
 
 ```
