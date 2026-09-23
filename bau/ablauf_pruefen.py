@@ -131,8 +131,10 @@ def test_nichtdokumente():
     js = quelle[anfang:ende] + """
 const faelle = ["._Bericht.pdf", "._Angebot 2024.pdf", ".DS_Store",
                 "Thumbs.db", "desktop.ini", ".localized", ".versteckt",
+                "~$Angebot_275603.docx", "~$Bericht.doc", "~$Folien.pptx",
                 "Bericht.pdf", "Angebot Nr. 4711", "2024.09.20 Protokoll.pdf",
-                "Zeichnung_._Detail.pdf"];
+                "Zeichnung_._Detail.pdf", "Angebot ~$ Nachtrag.docx",
+                "Messreihe=1.docx"];
 console.log(JSON.stringify(faelle.map(n => [n, NICHTDOKUMENT(n)])));
 """
     ergebnis = dict((n, a) for n, a in json.loads(node_lauf(js)))
@@ -141,14 +143,21 @@ console.log(JSON.stringify(faelle.map(n => [n, NICHTDOKUMENT(n)])));
                            ("._Angebot 2024.pdf", "macOS-Metadatei"),
                            (".DS_Store", "Ordner-Merkdatei"),
                            ("Thumbs.db", "Ordner-Merkdatei"),
-                           ("desktop.ini", "System-Merkdatei")):
+                           ("desktop.ini", "System-Merkdatei"),
+                           ("~$Angebot_275603.docx", "Office-Sperrdatei"),
+                           ("~$Bericht.doc", "Office-Sperrdatei"),
+                           ("~$Folien.pptx", "Office-Sperrdatei")):
         pruefe(ergebnis.get(name) == erwartet,
                "%-24s wird erkannt als %r (ist %r)"
                % (name, erwartet, ergebnis.get(name)))
     # ⭐ Die Gegenprobe: echte Dokumente duerfen NICHT rausfliegen. Ohne sie
     #    waere ein Filter, der einfach alles wegwirft, ebenso "bestanden".
+    # ⛔ "Angebot ~$ Nachtrag.docx" ist ein echtes Dokument, in dessen NAMEN
+    #   die Zeichenfolge vorkommt. Nur der Anfang zaehlt - sonst wirft der
+    #   Filter Dokumente weg, die jemand so benannt hat.
     for name in ("Bericht.pdf", "Angebot Nr. 4711", "2024.09.20 Protokoll.pdf",
-                 "Zeichnung_._Detail.pdf"):
+                 "Zeichnung_._Detail.pdf", "Angebot ~$ Nachtrag.docx",
+                 "Messreihe=1.docx"):
         pruefe(ergebnis.get(name) == "",
                "%-24s bleibt drin (ist %r)" % (name, ergebnis.get(name)))
 
