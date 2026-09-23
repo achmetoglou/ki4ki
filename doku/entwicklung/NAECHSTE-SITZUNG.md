@@ -239,6 +239,87 @@ und gleicht ab, was n8n **wirklich geladen** hat. Aufruf auf dem Host:
 2. **`LESBAR_BYTE`** (siehe oben), gehört zu Teil 3.
 3. **Die Protokoll-Wiederholung** bei jedem Minutentakt (§3, Punkt 2).
 
+## 5a - ⭐⭐⭐ URSACHE GEFUNDEN UND BEHOBEN: Ablaufplan 3 hatte denselben Fehler
+
+Der Befund aus §5 ist geklaert - und es war **meine halbe Arbeit vom
+Vormittag**.
+
+### Die Messkette, Schritt fuer Schritt
+
+```
+1. Aussortier-Gruende, nur 23.09.   -> 36x "im Arbeitsbereich nicht wiedergefunden"
+2. AnythingLLM-Protokoll, 60 Min    -> EIN Upload. Nicht 40, nicht 3: einer.
+3. Markdown-Ablage                  -> 18 Dateien, heute frueh 14 -> 4 neue,
+                                       davon 3 aus den Probelaeufen
+   => der Verlust liegt VOR "Markdown speichern"
+4. Ablaufplan 3 angesehen           -> 3 Knoten, KEIN Return, KEIN Fehlerabfang
+```
+
+⭐ Jeder Schritt hat den Suchraum halbiert, und keiner brauchte laenger
+als eine Minute. "36 von 40 gescheitert" war nach vier Messungen
+"Ablaufplan 3, Zeile soundso".
+
+### ⛔ Der Fehler
+
+`3_Markdown-Datei-erzeugen.json` hatte **exakt** den Defekt, der am
+Vormittag in Ablaufplan 2 behoben wurde (§3m):
+
+```
+Markdown vom Dienst   httpRequest   onError=-    kein Fehlerabfang
+Antwort auspacken     code          onError=-    kein Fehlerabfang
+Endknoten: Antwort auspacken        kein Return
+```
+
+Scheitert der Markdown-Dienst bei EINEM Dokument, bricht die
+Unterausfuehrung ab, im Elternteil bricht `assignPairedItems`, und der
+ganze Block kommt leer heraus. Genau das ist passiert: 40 Dokumente
+hinein, eines heraus.
+
+### ⛔ Und warum die Pruefung es durchgelassen hat
+
+`test_rueckgabe_garantiert` hatte den Dateinamen **fest eingetragen**:
+
+```python
+plan = _plan_lesen("2_Dateien-in-JSON-umwandeln.json")
+```
+
+⭐ **Eine Pruefung, die nur EINE Fundstelle einer Fehlerklasse ansieht,
+findet die anderen nie.** Das ist dasselbe Muster wie am 04.08.
+("13 Stellen, 3 gefunden") und wie beim Waechter (2 Aufrufstellen, 1
+repariert). Ich habe es heute frueh selbst zitiert und am selben Tag
+wiederholt.
+
+Die Pruefung sucht sich die Unterketten jetzt **selbst**: alles unter
+`n8n-workflows/`, das einen `executeWorkflowTrigger` hat. Kommt morgen
+ein Ablaufplan 4 dazu, ist er automatisch mitgeprueft.
+
+### Gebaut
+
+Ablaufplan 3 hat jetzt dasselbe wie Ablaufplan 2: `Rueckfall` am
+Ausloeser, `Merge`, `Return`, Fehlerabfang an beiden riskanten Knoten.
+3 Knoten → 6.
+
+### Womit die Pruefung rot wird
+
+```
+Pruefung nur auf Plan 2 (vorher)        0 Fehler   <- liess den Ausfall durch
+Pruefung auf ALLE Unterketten           5 Fehler   (alle in Plan 3)
+nach der Reparatur                      0 Fehler
+Mutation: Rueckfall-Verbindung gekappt  2 Fehler
+```
+
+### ⛔ Abnahme - der Probelauf noch einmal
+
+Nach `./aktualisiere.sh` denselben Weg: einen kleinen Ordner in `input`,
+dann messen. **Erwartet:** Die Zahl der aussortierten Dokumente mit
+"im Arbeitsbereich nicht wiedergefunden" geht auf nahe null, und die
+Zahl der Uploads im AnythingLLM-Protokoll entspricht der Zahl der
+Dokumente:
+
+```bash
+docker logs --since 30m ki4ki-anythingllm 2>&1 | grep -c "converted & ready"
+```
+
 ## 5 - ⭐⭐⭐ HIER WEITERMACHEN (24.09.): der Probelauf mit EINEM Kundenordner
 
 ⛔ **Den grossen KAP-Lauf NICHT starten.** Der Probelauf hat einen echten

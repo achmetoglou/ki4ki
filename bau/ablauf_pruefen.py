@@ -517,8 +517,27 @@ def test_rueckgabe_garantiert():
       dem kein Baustein sie verschlucken kann - und wenn kein Baustein
       die Ausfuehrung vorher abbrechen kann.
     """
-    print("\nAblaufplan 2 gibt immer genau ein Element zurueck")
-    plan = _plan_lesen("2_Dateien-in-JSON-umwandeln.json")
+    print("\nJede Unterkette gibt immer genau ein Element zurueck")
+    # \u26d4 NICHT nur Ablaufplan 2. Genau dieser fest eingetragene
+    #   Dateiname hat am 23.09. abends den naechsten Ausfall durchgelassen:
+    #   Ablaufplan 3 hatte denselben Fehler - kein Return, kein
+    #   Fehlerabfang - und von 40 Dokumenten kam EINES im Bestand an.
+    #   Eine Pruefung, die nur EINE Fundstelle einer Fehlerklasse ansieht,
+    #   findet die anderen nie ("13 Stellen, 3 gefunden", 04.08.).
+    unterketten = [d for d in sorted(os.listdir(PLAENE))
+                   if d.endswith(".json")
+                   and any(k["type"].endswith("executeWorkflowTrigger")
+                           for k in (_plan_lesen(d) or {"nodes": []})["nodes"])]
+    pruefe(len(unterketten) >= 2,
+           "Vorbedingung: es gibt mehrere Unterketten (%d: %s)"
+           % (len(unterketten), ", ".join(x[:1] for x in unterketten)))
+    for _datei in unterketten:
+        _pruefe_unterkette(_datei)
+
+
+def _pruefe_unterkette(datei):
+    print("  --- %s" % datei)
+    plan = _plan_lesen(datei)
     if plan is None:
         return
 
@@ -528,12 +547,13 @@ def test_rueckgabe_garantiert():
                             (plan["connections"].get(n["name"], {}).get("main") or []))
                  and not n["type"].endswith("stickyNote")]
     pruefe(ausgaenge == ["Return"],
-           "genau ein Ausgang, und der heisst Return (ist: %s)" % ausgaenge)
+           "%s: genau ein Ausgang namens Return (ist: %s)"
+           % (datei[:1], ausgaenge))
 
     # 2 - Der zugesicherte Weg. DAS ist die eigentliche Pruefung.
     pruefe(_zugesicherter_weg(plan, "Return"),
-           "es gibt einen Weg zum Return, auf dem kein Baustein das "
-           "Element verlieren kann")
+           "%s: ein Weg zum Return, auf dem kein Baustein das Element "
+           "verlieren kann" % datei[:1])
 
     # 3 - Gegenprobe zu 2: ohne den Rueckfall-Zweig muss derselbe Test
     #     FEHLSCHLAGEN. Sonst prueft er nichts.
@@ -541,16 +561,16 @@ def test_rueckgabe_garantiert():
     ohne["connections"] = dict(
         (q, v) for q, v in ohne["connections"].items() if q != "Rueckfall")
     pruefe(not _zugesicherter_weg(ohne, "Return"),
-           "Gegenprobe: ohne den Rueckfall-Zweig ist der Weg NICHT mehr "
-           "zugesichert - die Pruefung kann also rot werden")
+           "%s: Gegenprobe - ohne den Rueckfall-Zweig ist der Weg NICHT "
+           "mehr zugesichert" % datei[:1])
 
     # 4 - Kein Baustein darf die Unterausfuehrung abbrechen.
     for n in plan["nodes"]:
         if n["type"].split(".")[-1] in ABBRUCHFAEHIG:
             pruefe(n.get("onError") in ("continueRegularOutput",
                                         "continueErrorOutput"),
-                   "%-38s kann die Ausfuehrung nicht abbrechen"
-                   % n["name"][:38])
+                   "%s: %-30s kann die Ausfuehrung nicht abbrechen"
+                   % (datei[:1], n["name"][:30]))
 
     # 5 - Das Verhalten des Return-Bausteins, ausgefuehrt statt gelesen.
     kn = [n for n in plan["nodes"] if n.get("name") == "Return"]
@@ -762,7 +782,8 @@ def test_plaene_unversehrt():
     """Die Plaene muessen ladbar und vollstaendig bleiben."""
     print("\nAblaufplaene unversehrt")
     for datei, knotenzahl in (("1_KI4KI-Masse-Ingest.json", 30),
-                              ("2_Dateien-in-JSON-umwandeln.json", 22)):
+                              ("2_Dateien-in-JSON-umwandeln.json", 22),
+                              ("3_Markdown-Datei-erzeugen.json", 6)):
         d = json.load(io.open(os.path.join(PLAENE, datei), encoding="utf-8"))
         pruefe(len(d["nodes"]) == knotenzahl,
                "%s hat %d Knoten (erwartet %d)"

@@ -40,7 +40,9 @@
       "id": "717d3dfb-6b43-45f2-8ea8-11ef9fe7176e",
       "name": "Markdown vom Dienst",
       "notes": "basisname = SCHLUESSEL, nicht Dateiname. Der Name dieser Markdown-Datei wird der Uploadname in AnythingLLM; nur so traegt das Dokument seine Kennung bei sich. Fehlt der Schluessel, antwortet der mkmd-Dienst mit 400 'basisname fehlt' - ein Abbruch ist besser als ein Bestandseintrag, den niemand wiederfindet.",
-      "notesInFlow": true
+      "notesInFlow": true,
+      "onError": "continueRegularOutput",
+      "alwaysOutputData": true
     },
     {
       "parameters": {
@@ -53,7 +55,74 @@
         0
       ],
       "id": "326a5119-15cd-484d-be00-548659796aa5",
-      "name": "Antwort auspacken"
+      "name": "Antwort auspacken",
+      "onError": "continueRegularOutput",
+      "alwaysOutputData": true
+    },
+    {
+      "parameters": {
+        "mode": "manual",
+        "duplicateItem": false,
+        "assignments": {
+          "assignments": [
+            {
+              "id": "rf1",
+              "name": "__rueckfall",
+              "value": true,
+              "type": "boolean"
+            },
+            {
+              "id": "rf2",
+              "name": "grund",
+              "value": "die Markdown-Erzeugung hat kein Element geliefert",
+              "type": "string"
+            }
+          ]
+        },
+        "includeOtherFields": false,
+        "options": {}
+      },
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        200,
+        260
+      ],
+      "id": "rueckfall3000000000000000000000000",
+      "name": "Rueckfall",
+      "alwaysOutputData": true,
+      "onError": "continueRegularOutput",
+      "notes": "Haengt am Ausloeser und liefert IMMER ein Element - ohne ihn kann der Merge leer bleiben (gemessen 23.09.: 39 von 40 Dokumenten verloren)."
+    },
+    {
+      "parameters": {
+        "numberInputs": 2
+      },
+      "type": "n8n-nodes-base.merge",
+      "typeVersion": 3,
+      "position": [
+        640,
+        0
+      ],
+      "id": "merge30000000000000000000000000000",
+      "name": "Merge",
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Ablaufplan 3 ist eine Funktion: EIN Element hinein, EIN Element hinaus.\n//\n// ⛔ Gemessen 23.09. abends: Von 40 Dokumenten kam EINES im Bestand an.\n//   39 wurden mit \"im Arbeitsbereich nicht wiedergefunden\" aussortiert -\n//   zu Recht, denn sie wurden nie hochgeladen. Verloren gingen sie hier:\n//   Dieser Ablaufplan hatte keinen zugesicherten Rueckgabe-Weg und keinen\n//   Fehlerabfang. Scheitert der Markdown-Dienst bei EINEM Dokument, bricht\n//   die Unterausfuehrung ab, im Elternteil bricht assignPairedItems, und\n//   der ganze Block kommt leer heraus.\n//\n// ⛔ Derselbe Fehler war am Vormittag in Ablaufplan 2 behoben worden -\n//   hier aber nicht. Eine Fundstelle zu reparieren und die anderen nicht\n//   zu suchen, ist die teuerste Sorte halber Arbeit (\"13 Stellen,\n//   3 gefunden\", 04.08.).\n\n// --- WAEHLEN ---\nconst _waehlen = (elemente, name) => {\n  const liste = elemente || [];\n  const echt = liste.filter(e => e && e.json && e.json.__rueckfall !== true);\n  if (echt.length) return [echt[0]];\n  const grund = (liste[0] && liste[0].json && liste[0].json.grund)\n    || 'die Markdown-Erzeugung hat kein Element geliefert';\n  // Leeres Ergebnis MIT Grund: Der Elternteil sortiert die Datei dann\n  // ehrlich aus, statt dass der ganze Durchgang leer ausgeht.\n  return [{ json: {\n    ok: false,\n    grund: grund,\n    markdown_path: null,\n    data: '',\n    docling_filename: name || null,\n    fehler: 'Markdown-Erzeugung ohne Ergebnis: ' + grund\n  } }];\n};\n// --- ENDE WAEHLEN ---\n\nlet _name = '';\ntry { _name = $('Start').first().json.filename || ''; } catch (e) { _name = ''; }\nreturn _waehlen($input.all(), _name);\n"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        860,
+        0
+      ],
+      "id": "return30000000000000000000000000000",
+      "name": "Return",
+      "alwaysOutputData": true,
+      "onError": "continueRegularOutput",
+      "notes": "Die Rueckgabe der Unterkette: immer genau ein Element."
     }
   ],
   "connections": {
@@ -62,6 +131,11 @@
         [
           {
             "node": "Markdown vom Dienst",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Rueckfall",
             "type": "main",
             "index": 0
           }
@@ -73,6 +147,39 @@
         [
           {
             "node": "Antwort auspacken",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Rueckfall": {
+      "main": [
+        [
+          {
+            "node": "Merge",
+            "type": "main",
+            "index": 1
+          }
+        ]
+      ]
+    },
+    "Antwort auspacken": {
+      "main": [
+        [
+          {
+            "node": "Merge",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Merge": {
+      "main": [
+        [
+          {
+            "node": "Return",
             "type": "main",
             "index": 0
           }
