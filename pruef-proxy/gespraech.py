@@ -24,6 +24,7 @@ Alles hier ist ohne Netz testbar: `fuehren()` bekommt `rufen` (Modell) und
 import json
 import os
 import re
+import sys
 import ollamaruf
 import threading
 import time
@@ -275,13 +276,25 @@ def bereinigen(text):
 
 
 def _modell_aufruf(messages, tools=True, denken=None, modell=None):
+    # \u2b50 Das Fenster an die Anfrage anpassen statt fest 64k: Der
+    #   Zwischenspeicher fuer die Aufmerksamkeit waechst mit dem
+    #   EINGESTELLTEN Fenster und kostet bei jedem Token Rechenzeit
+    #   (gemessen 23.09.: 15,5 Token/s bei fest 64k).
+    _zeichen = sum(len(str(m.get("content") or "")) for m in (messages or []))
+    _fenster, _passt = kontextfenster(_zeichen, ANTWORT_TOKEN)
+    if not _passt:
+        # \u26d4 Ollama wirft den Anfang sonst STILL weg - die Antwort
+        #   stuetzte sich dann auf Dokumente, die gar nicht mehr dastehen.
+        print("[Kontext] %d Zeichen passen nicht in %d Token - der Anfang "
+              "geht verloren" % (_zeichen, _fenster),
+              file=sys.stderr, flush=True)
     leib = json.dumps({
         "model": modell or MODELL,
         "messages": messages,
         "tools": WERKZEUGE if tools else [],
         "stream": False,
         "think": bool(DENKEN if denken is None else denken),
-        "options": {"temperature": 0, "num_ctx": 65536,
+        "options": {"temperature": 0, "num_ctx": _fenster,
                     "num_predict": ANTWORT_TOKEN},
         "keep_alive": "24h",
     }).encode("utf-8")
@@ -697,3 +710,33 @@ def mit_lebenszeichen(lauf, lebenszeichen, abstand=20.0):
     if "fehler" in ergebnis:
         raise ergebnis["fehler"]
     return ergebnis.get("wert")
+
+
+# Stufen fuer das Kontextfenster. Kleiner ist schneller: Der
+# Zwischenspeicher fuer die Aufmerksamkeit waechst mit dem EINGESTELLTEN
+# Fenster, nicht mit dem, was wirklich drinsteht.
+STUFEN = (8192, 16384, 32768, 65536)
+ZEICHEN_JE_TOKEN = 2.1        # gemessen, siehe mehrstufig.py
+
+
+def kontextfenster(zeichen, antwort_token=None):
+    """Wie gross muss das Fenster fuer diese Anfrage sein?
+
+    Rueckgabe (fenster, passt). `passt=False` heisst: Es passt NICHT
+    hinein.
+
+    \u26d4 Gemessen 23.09. spaet, qwen3.8 zu 100 % auf der Karte: 15,5
+      Token/s - bei fest eingestellten 64k, fuer eine Frage, deren
+      Fundstellen davon einen Bruchteil brauchen.
+
+    \u26d4 Nie kleiner als noetig. Passt der Prompt nicht hinein, wirft
+      Ollama den Anfang weg - still, ohne Meldung, und die Antwort
+      stuetzt sich auf Dokumente, die gar nicht mehr dastehen. Genau
+      deshalb sagt diese Funktion auch, OB es passt; der Aufrufer meldet
+      es.
+    """
+    gebraucht = int((zeichen or 0) / ZEICHEN_JE_TOKEN) + int(antwort_token or 0)
+    for stufe in STUFEN:
+        if gebraucht <= stufe:
+            return stufe, True
+    return STUFEN[-1], False

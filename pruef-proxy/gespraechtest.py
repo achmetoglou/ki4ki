@@ -235,6 +235,55 @@ def test_das_lebenszeichen_macht_keine_leeren_nachrichten():
            "⛔ und nicht als Antwort-Stueck")
 
 
+def test_kontextfenster_passt_sich_an():
+    """Ein 64k-Fenster kostet bei JEDEM Token Rechenzeit.
+
+    ⛔ Gemessen 23.09. spaet, qwen3.8 zu 100 % auf der Karte:
+      **15,5 Token/s** - fuer eine Frage, deren Fundstellen keine 64k
+      brauchen. Der Zwischenspeicher fuer die Aufmerksamkeit waechst mit
+      dem eingestellten Fenster, nicht mit dem, was wirklich drinsteht.
+
+    ⭐ Also das Fenster an die Anfrage anpassen: klein fuer einen
+      gewoehnlichen Chat-Zug, gross fuer eine Zusammenfassung.
+
+    ⛔ Aber NIE kleiner als noetig. Passt der Prompt nicht hinein,
+      wirft Ollama den Anfang weg - still, ohne Meldung, und die Antwort
+      stuetzt sich auf Dokumente, die gar nicht mehr dastehen. Genau die
+      Sorte stiller Fehler, die dieses Projekt sonst jagt. Deshalb gibt
+      die Funktion auch zurueck, OB es passt.
+    """
+    print("\nDas Kontextfenster passt sich an")
+    # 2,1 Zeichen je Token (gemessen, steht in mehrstufig.py)
+    klein, passt = gespraech.kontextfenster(10000, 2048)
+    pruefe(klein == 8192, "kurze Frage -> kleinstes Fenster (ist: %s)" % klein)
+    pruefe(passt is True, "und es passt")
+
+    mittel, _ = gespraech.kontextfenster(30000, 2048)
+    pruefe(mittel == 16384, "mittlere Frage -> 16k (ist: %s)" % mittel)
+
+    gross, _ = gespraech.kontextfenster(100000, 2048)
+    pruefe(gross == 65536, "grosses Dokument -> volles Fenster (ist: %s)"
+           % gross)
+
+    # ⛔ Der Fall, der still schiefgehen wuerde
+    zuviel, passt2 = gespraech.kontextfenster(200000, 2048)
+    pruefe(zuviel == 65536, "mehr als 64k gibt es nicht")
+    pruefe(passt2 is False,
+           "⛔ und es wird GESAGT, dass es nicht passt - sonst wirft "
+           "Ollama den Anfang still weg")
+
+
+def test_das_fenster_ist_nie_zu_klein():
+    """Gegenprobe: lieber ein Fenster zu gross als ein Beleg zu wenig."""
+    print("\nGegenprobe: das Fenster ist nie zu klein")
+    for zeichen in (5000, 12000, 25000, 40000, 80000):
+        fenster, passt = gespraech.kontextfenster(zeichen, 2048)
+        gebraucht = int(zeichen / 2.1) + 2048
+        pruefe(not passt or fenster >= gebraucht,
+               "%6d Zeichen brauchen ~%5d Token, Fenster %5d"
+               % (zeichen, gebraucht, fenster))
+
+
 if __name__ == "__main__":
     test_abschnitt_wird_erkannt()
     test_hinweis_wird_angehaengt()
@@ -244,5 +293,7 @@ if __name__ == "__main__":
     test_lange_antwort_haelt_die_leitung_wach()
     test_fehler_gehen_nicht_verloren()
     test_das_lebenszeichen_macht_keine_leeren_nachrichten()
+    test_kontextfenster_passt_sich_an()
+    test_das_fenster_ist_nie_zu_klein()
     print("\n%d Fehler" % len(FEHLER))
     sys.exit(1 if FEHLER else 0)

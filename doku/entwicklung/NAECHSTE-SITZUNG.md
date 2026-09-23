@@ -239,6 +239,60 @@ und gleicht ab, was n8n **wirklich geladen** hat. Aufruf auf dem Host:
 2. **`LESBAR_BYTE`** (siehe oben), gehört zu Teil 3.
 3. **Die Protokoll-Wiederholung** bei jedem Minutentakt (§3, Punkt 2).
 
+## 4k - GEBAUT 23.09. spaet: das Kontextfenster passt sich der Frage an
+
+Gemessen, nachdem qwen3.8 zu 100 % auf der Karte lief:
+
+```
+1m 2s (15.50 tok/s)
+```
+
+Immer noch langsam - aber aus einem neuen Grund: `num_ctx` stand fest auf
+**65.536**. Der Zwischenspeicher fuer die Aufmerksamkeit waechst mit dem
+EINGESTELLTEN Fenster, nicht mit dem, was wirklich drinsteht. Jedes Token
+kostet damit Rechenzeit fuer Platz, der leer bleibt.
+
+`gespraech.kontextfenster()` waehlt jetzt die kleinste passende Stufe:
+
+```
+ 8.192  kurzer Chat-Zug
+16.384  mittlere Frage mit Fundstellen
+32.768
+65.536  Zusammenfassung eines grossen Dokuments
+```
+
+### ⛔ Die Falle, die dabei zu vermeiden war
+
+Ein zu kleines Fenster ist **schlimmer** als ein zu grosses: Ollama wirft
+den Anfang des Prompts weg - **still, ohne Meldung**. Die Antwort stuetzte
+sich dann auf Dokumente, die gar nicht mehr dastehen, und niemand merkt
+es. Genau die Sorte stiller Fehler, die dieses Projekt sonst jagt.
+
+⭐ Deshalb gibt `kontextfenster()` auch zurueck, **ob** es passt, und der
+Aufrufer meldet es:
+
+```
+[Kontext] 214000 Zeichen passen nicht in 65536 Token - der Anfang geht verloren
+```
+
+### Womit die Pruefung rot wird
+
+`test_kontextfenster_passt_sich_an` und
+`test_das_fenster_ist_nie_zu_klein`. Gegen den Stub (immer 65536):
+**3 Fehler**. Mutationsprobe (wieder fest 65536): **2 Fehler**. Danach 0.
+
+⭐ Die zweite Pruefung ist die wichtigere: Sie rechnet fuer fuenf
+Groessen nach, dass das gewaehlte Fenster **nie kleiner** ist als das,
+was der Prompt braucht. Eine Tempo-Optimierung, die Belege verschluckt,
+waere schlimmer als der langsame Zustand.
+
+### ⚠ Abnahme
+
+Dieselbe fachliche Frage in AuW stellen und die Token-Rate vergleichen.
+Vorher **15,50 tok/s**. Bleibt sie gleich, ist das Fenster nicht der
+Hebel - dann steht der naechste Verdacht an (Modellgroesse: qwen3.8 ist
+mit 17 GB deutlich groesser als gemma4:12b mit 8,9 GB).
+
 ## 4j - GEBAUT 23.09. spaet: aufgegebene Anfragen werden bei Ollama abgesagt
 
 Die Reparatur zum Befund aus §4i.
