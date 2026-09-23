@@ -233,6 +233,55 @@ und gleicht ab, was n8n **wirklich geladen** hat. Aufruf auf dem Host:
 2. **`LESBAR_BYTE`** (siehe oben), gehört zu Teil 3.
 3. **Die Protokoll-Wiederholung** bei jedem Minutentakt (§3, Punkt 2).
 
+## 3l - OFFENE MELDUNGEN aus /rueckmeldungen (Stand 23.09.)
+
+⭐ **Zuerst der gute Teil: K2 funktioniert.** Am 22.09. stand hier noch
+"Code vorhanden, aber nie gegen die Gate-Bedingung gemessen". Die Liste
+liefert echte Befunde aus echter Nutzung - mit Frage, Antwortauszug,
+Fundstellen und Faden-Link. Genau das verlangt der Leitfaden (S. 123, 128).
+Was fehlt, ist nicht der Kanal, sondern dass jemand die Liste abarbeitet.
+
+### Zwei neue Meldungen, beide unbearbeitet
+
+| Datum | Bereich · Weg | Befund (Wortlaut der meldenden Person) |
+|---|---|---|
+| **18.09.** | auw · gespraech | *"In der Anweisung sind 11 Fragen gestellt und laut erster Antwortzeile auch erkannt, die bearbeitung bricht aber in der 4ten Frage ab. => Unvollstaendig"* |
+| **17.09.** | auw · anhang | *"Es wurden 3 Dateien ueber das + Zeichen zusaetzlich in diesem Chat bereitgestellt allerdings nur eins bei der Anfrage ausgewertet."* |
+
+### Aeltere, noch offene Meldungen
+
+| Datum | Befund |
+|---|---|
+| 15.09. | *"steht fast bei jedem Output zwei mal die Modellangabe und die Dokumente die gesucht wurden"* - die Modellzeile ist am 22.09. entfernt worden, die doppelte Dokumentnennung nicht geprueft |
+| 27.08. | *"mehrere Befehle in einer Anfrage kann er wohl nicht verarbeiten"* |
+| 27.08. | *"mehrere Teile melden wohl unlesbare Stellen. Liegt das beim vektorisieren?"* |
+
+### ⚠ Eine Vermutung - ausdruecklich NICHT gemessen
+
+Die Meldungen vom 18.09., 17.09. und 27.08. sehen nach derselben Familie aus:
+**Die Anlage bearbeitet den ersten von mehreren und hoert dann auf.** Elf
+Fragen → vier beantwortet. Drei Anhaenge → einer gelesen. Mehrere Befehle →
+einer ausgefuehrt.
+
+⛔ Das ist eine Aehnlichkeit, kein Befund. Am 22./23.09. haben drei
+Schluesse aus genau solchen Aehnlichkeiten in die Irre gefuehrt. Es koennen
+drei verschiedene Ursachen sein - ein Abbruch bei der Antwortlaenge, ein
+Anhang-Weg der nur das erste Element liest, ein Router der nur die erste
+Absicht erkennt. **Erst je einen Versuch bauen, dann zusammenfassen.**
+
+### Vorschlag fuer die Reihenfolge
+
+1. **Anhang-Weg** (17.09.) - der engste Fall, am billigsten nachzustellen:
+   drei Dateien anhaengen, zaehlen wie viele gelesen werden.
+2. **Mehrere Fragen** (18.09.) - eine Anweisung mit elf durchnummerierten
+   Fragen, zaehlen wie viele beantwortet werden. Dann pruefen, ob es an der
+   Antwortlaenge liegt (Zeichenzahl der Antwort gegen die Grenze) oder an
+   der Zerlegung.
+3. **Doppelte Dokumentnennung** (15.09.) - Anzeige, kein Verhalten; billig.
+
+⭐ Diese drei treffen den Nutzer direkt und liegen seit Wochen. Der
+KAP-Lauf tut das nicht.
+
 ## 3k - GEMESSEN 23.09. mittags: die Kette traegt, EINE Datei legt sie still
 
 ### Der Versuch
