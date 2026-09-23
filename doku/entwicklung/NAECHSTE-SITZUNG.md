@@ -4,9 +4,9 @@
 Sitzungsanfang. Sie sagt, wo die Ziele stehen, was entschieden ist, was offen
 ist und was als Beweis zählt. **Erst lesen, dann arbeiten.**
 
-⭐ **Wer nur eines liest: §3l** - drei offene Nutzermeldungen, die
-aelteste vom 27.08. Sie treffen den Nutzer direkt und wiegen schwerer als
-der KAP-Lauf. Was am 23.09. gebaut wurde, steht in §3m.
+⭐ **Wer nur eines liest: §3l** - drei offene Nutzermeldungen. Die vom
+17.09. ist in §3n repariert (Abnahme offen), zwei sind unberuehrt. Was
+sonst am 23.09. gebaut wurde, steht in §3m.
 
 ---
 
@@ -233,6 +233,75 @@ und gleicht ab, was n8n **wirklich geladen** hat. Aufruf auf dem Host:
    Inhalt verloren — Emrach hat die Rohdaten lokal und kann sie neu bereitstellen.
 2. **`LESBAR_BYTE`** (siehe oben), gehört zu Teil 3.
 3. **Die Protokoll-Wiederholung** bei jedem Minutentakt (§3, Punkt 2).
+
+## 3n - GEBAUT 23.09. spaet: der Anhang-Weg liest jetzt ALLE Dateien
+
+Meldung vom 17.09. aus 3l, woertlich: *"Es wurden 3 Dateien ueber das
++ Zeichen zusaetzlich in diesem Chat bereitgestellt allerdings nur eins
+bei der Anfrage ausgewertet."*
+
+### Die Ursache steht im Quelltext, sie musste nicht erraten werden
+
+Der Anhang-Weg konnte **nie** mehr als eine Datei halten, und zwar
+doppelt:
+
+| Stelle | Was sie tat |
+|---|---|
+| `_parse_mitschnitt` | nahm aus der Formularsendung nur `dateien[0]` |
+| `_ANHANG[(bereich, konto)]` | war EIN Eintrag - eine zweite Sendung ueberschrieb die erste |
+
+Beide Wege enden gleich: genau ein Dokument erreicht die Antwort. Welchen
+der beiden die Oberflaeche geht (drei Dateien in einer Sendung oder drei
+Sendungen), spielt fuer den Befund keine Rolle - beide waren kaputt.
+
+⭐ **Die Formularzerlegung war immer richtig.** `_dateien_aus_formular`
+liefert alle Dateien; der Hochladen-Knopf nebenan laeuft mit
+`for name, inhalt in dateien:` korrekt ueber alle. Verloren gingen sie
+erst im Chat-Anhang. Deshalb fiel es beim Hochladen nie auf.
+
+### Gebaut
+
+`pruef-proxy/anhang.py` fuehrt alle Dateien zu EINEM Eintrag zusammen und
+haengt sie an einen noch frischen Vorgaenger an. Der zusammengefuehrte
+Text geht denselben Weg wie ein grosses Einzeldokument: `mehrstufig.stuecke()`
+zerlegt ihn, jedes Stueck wird gelesen. Die Maschinerie dafuer gibt es seit
+dem 28.08. - sie musste nur etwas zu lesen bekommen.
+
+⭐ Die Zusammenfuehrung liegt in einem eigenen Modul, nicht im Handler:
+so ist sie ohne Server pruefbar, und im Handler gibt es keine Stelle mehr,
+an der jemand versehentlich wieder nur die erste Datei nimmt.
+
+⚠ Bei **einer** Datei bleibt alles woertlich wie bisher (kein Vorspann,
+Fusszeile nennt den Dateinamen). Sonst haette sich der haeufigste Fall
+mitgeaendert, ohne dass daran etwas falsch war.
+
+### Womit die Pruefung rot wird
+
+`pruef-proxy/anhangtest.py`, 6 Faelle. Gegen den Stand von heute frueh
+(nur `dateien[0]`, kein Anhaengen) gemessen: **8 Fehler**, darunter
+woertlich "alle drei Dateien sind im Eintrag" und "die zuerst
+hochgeladene Datei geht nicht verloren". Nach dem Umbau: 0.
+`dialogtest.py` bleibt bei 520 Pruefungen / 0 Fehlern.
+
+### ⛔ Abnahme steht aus
+
+Drei Dateien anhaengen und etwas fragen, das alle drei braucht. Erwartet:
+die Zeile *"Gelesen: das komplette Dokument (N Zeichen)"* nennt die Summe,
+und die Fusszeile nennt **alle drei Dateinamen**.
+⚠ Die Fusszeile lautet dann "Antwort aus dem angehaengten Dokument
+**3 Dokumente: a.pdf, b.docx, c.xlsx**" - sprachlich schief, inhaltlich
+richtig. Wenn es stoert: eine Zeile in `_anhang_antwort`.
+
+### Noch offen aus 3l
+
+- **18.09.** elf Fragen, vier beantwortet - noch nicht angefasst
+- **15.09.** doppelte Dokumentnennung - noch nicht angefasst
+
+⛔ Die Vermutung aus 3l ("bearbeitet den ersten von mehreren") ist durch
+diesen Fund **nicht** bestaetigt. Der Anhang-Weg hatte eine eigene,
+oertliche Ursache - er las nicht "nur den ersten von mehreren", er konnte
+gar nicht mehr als einen speichern. Fuer die anderen beiden Meldungen
+sagt das nichts. Getrennt nachstellen, wie in 3l vorgesehen.
 
 ## 3m - GEBAUT 23.09. nachmittags: Return-Knoten, Abnahme offen
 

@@ -1236,6 +1236,26 @@ zum 120-Minuten-Notnagel. Genau dieser Fehler ist am 04.08. schon einmal
 passiert. Richtig wäre ein Fehlerzweig, der die Sperre in jedem Fall freigibt —
 eigenes Stück Arbeit, noch nicht gebaut.
 
+## 30 — Der Chat-Anhang konnte nur EINE Datei halten (17.09.2026, GEBAUT)
+
+**Meldung, woertlich:** *"Es wurden 3 Dateien ueber das + Zeichen zusaetzlich in
+diesem Chat bereitgestellt allerdings nur eins bei der Anfrage ausgewertet."*
+
+**Ursache, doppelt:** `_parse_mitschnitt` nahm `dateien[0]`; der Merkspeicher
+`_ANHANG[(bereich, konto)]` hielt genau einen Eintrag, den die naechste Sendung
+ueberschrieb. Beide Wege enden bei einem Dokument.
+
+**⭐ Warum es beim Hochladen nie auffiel:** `_dateien_aus_formular` liefert
+immer ALLE Dateien, und der Hochladen-Knopf laeuft korrekt ueber alle. Nur der
+Chat-Anhang warf sie weg.
+
+**Gebaut:** `pruef-proxy/anhang.py` (Zusammenfuehrung, ohne Server pruefbar) +
+`anhangtest.py`. Rot gegen den Stand von heute frueh: **8 Fehler**. Danach 0,
+`dialogtest.py` unveraendert 520/0.
+
+**Offen:** Abnahme am laufenden System — drei Dateien anhaengen, Fusszeile und
+"Gelesen"-Zeile pruefen.
+
 ## Offen / vor einer Vermarktung zu klären
 
 - **Erste vollständige Installation von null** auf der Zielumgebung — erst damit

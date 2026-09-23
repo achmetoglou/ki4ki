@@ -57,6 +57,7 @@ import schluessel
 import pruefprotokoll
 import veredeln
 import wortsuche
+import anhang
 
 ZIEL = os.environ.get("KI4KI_ZIEL") or "http://127.0.0.1:3001"
 
@@ -10408,19 +10409,26 @@ class Griff(BaseHTTPRequestHandler):
         # ZUERST merken (vor der Antwort), damit die sofort folgende Chat-Frage
         # den Text garantiert schon vorfindet - kein Wettlauf.
         try:
-            dateien = _dateien_aus_formular(
-                roh, self.headers.get("Content-Type") or "")
+            # ⛔ Hier stand frueher `name, inhalt = dateien[0]` - nur die
+            #   ERSTE Datei. Wer drei Dateien anhaengte, bekam eine Antwort
+            #   ueber eine (Meldung vom 17.09.2026). Die Zerlegung lieferte
+            #   immer alle; verloren gingen sie erst hier und im Merkspeicher,
+            #   der nur EINEN Eintrag je Bereich und Konto hielt.
+            dateien = [(os.path.basename(n), b) for n, b in
+                       _dateien_aus_formular(
+                           roh, self.headers.get("Content-Type") or "")]
             if dateien:
-                name, inhalt = dateien[0]
-                text = _tika_text(inhalt)
-                if text and text.strip():
-                    _voll = text.strip()
-                    _ANHANG[(slug, pruefprotokoll.pseudonym(konto_aus_anfrage(self.headers)))] = {"text": _voll[:_ANHANG_MAX],
-                                     "roh_len": len(_voll),
-                                     "name": os.path.basename(name),
-                                     "wann": time.time()}
-                    print("[Anhang] '%s' gemerkt fuer %s (%d Zeichen)"
-                          % (name, slug, len(text)),
+                _schluessel = (slug, pruefprotokoll.pseudonym(
+                    konto_aus_anfrage(self.headers)))
+                _eintrag = anhang.aufnehmen(
+                    dateien, _tika_text, vorher=_ANHANG.get(_schluessel),
+                    haltbar=_ANHANG_HALTBAR, grenze=_ANHANG_MAX)
+                if _eintrag:
+                    _ANHANG[_schluessel] = _eintrag
+                    print("[Anhang] %d Datei(en) angenommen fuer %s - jetzt "
+                          "%d Dokument(e), %d Zeichen"
+                          % (len(dateien), slug,
+                             len(_eintrag["dokumente"]), _eintrag["roh_len"]),
                           file=sys.stderr, flush=True)
         except Exception:
             traceback.print_exc(file=sys.stderr)
