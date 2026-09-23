@@ -239,6 +239,38 @@ und gleicht ab, was n8n **wirklich geladen** hat. Aufruf auf dem Host:
 2. **`LESBAR_BYTE`** (siehe oben), gehört zu Teil 3.
 3. **Die Protokoll-Wiederholung** bei jedem Minutentakt (§3, Punkt 2).
 
+## 4e - ABGENOMMEN 23.09. 14:49: der Threadwechsel, belegt auf der Leitung
+
+```
+GET /api/workspace/auw/thread/<id>/chats      16 ms      (vorher 2.248 ms)
+
+hinein:  ki4ki_zugang=1790210951.48763b77d2bbd955.d29b…
+heraus:  ki4ki_zugang=1790210954.48763b77d2bbd955.1636…
+                       └ Uhrzeit wandert   └ Kennung IDENTISCH
+```
+
+⭐ **Der beste Beweis des Tages**, weil er nicht aus einer Pruefreihe
+stammt, sondern aus den Kopfzeilen der echten Anfrage: Ablaufzeit und
+Unterschrift wandern weiter (so soll es sein), die Kennung in der Mitte
+ist ein fester Punkt. Genau die Eigenschaft, die
+`test_die_kennung_wandert_nicht` als Kette prueft - hier am laufenden
+System bestaetigt.
+
+⚠ `[Dokzugang] 51 Zugaenge aus Platte geladen` sind **Altlasten** aus der
+kaputten Phase (1 → 36 → 51). Die Zahl wird beim Start gelesen; sie darf
+ab jetzt **nicht weiter wachsen**. Das ist die eigentliche Gegenprobe fuer
+morgen - eine einzelne Zahl sagt noch nichts, ihre Entwicklung schon.
+
+### Offen
+
+- **Lauf B mit 4096** - die letzte offene Abnahme des Tages
+- Das **Token-Budget ueber den ganzen Zug** statt je Aufruf (§4d)
+- Die Umleitung nummerierter Fragen in den Pruefungskatalog (§3x)
+- **BUGS 28**: aussortierte Dokumente bleiben im Arbeitsbereich (§3s)
+- Ein **Stand-Stempel fuer den Proxy** - bei n8n gibt es ihn (§3r), beim
+  Proxy half heute nur der Zufall, dass ich eine Protokollzeile
+  mitgeaendert hatte
+
 ## 4d - ZWEI NACHTRAEGE 23.09. abends: halbe Reparatur, und eine Rechnung zu wenig
 
 ### ⛔ 1. Die Kennung wanderte - der Zwischenspeicher blieb kalt
