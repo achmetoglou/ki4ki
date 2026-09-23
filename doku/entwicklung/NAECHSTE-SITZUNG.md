@@ -236,6 +236,62 @@ und gleicht ab, was n8n **wirklich geladen** hat. Aufruf auf dem Host:
 2. **`LESBAR_BYTE`** (siehe oben), gehört zu Teil 3.
 3. **Die Protokoll-Wiederholung** bei jedem Minutentakt (§3, Punkt 2).
 
+## 3p - KORREKTUR 23.09. abends: die `.db` war NICHT der Stoerenfried
+
+Bei der Abnahme am laufenden System gemessen, mit Zeitstempeln:
+
+```
+09:32:24  'Bereich kap: 1 zu verarbeiten, ..., 1 keine Dokumente (uebersprungen).'
+                         └ die .pdf              └ die .db
+Bestand 81 -> 82   archiv/_probe 1   input/_probe 1   aussortiert/_probe 0
+```
+
+Die `.pdf` lief vollstaendig durch. Die `.db` wurde **ganz vorne** als
+"kein Dokument" uebersprungen und hat die Unterkette **nie erreicht**.
+
+### ⛔ Was daraus folgt: 3k beschreibt zwei Dinge als eines
+
+| | belegt |
+|---|---|
+| Alle `.db` im KAP-Parkplatz sind `Thumbs.db` | gemessen: `find ... ! -iname "Thumbs.db"` findet **keine** |
+| `Thumbs.db` steht seit **21.09.** auf der Nichtdokument-Liste (`53edd7c`, im Betrieb bestaetigt) | git |
+| Der `~$`-Filter fuer Office-Sperrdateien kam erst am **23.09.** (`6385bec`) | git |
+
+⭐ **Also kann die `.db` am 23.09. nicht ausgeloest haben, was 3k ihr
+zuschreibt.** Sie wurde schon damals uebersprungen. Beobachtet wurde
+"liegt im Eingang, wird weder verarbeitet noch aussortiert" - das stimmt,
+aber es ist das Verhalten eines uebersprungenen Nichtdokuments, nicht das
+eines Block-Killers. Der Zusatz "und legt dabei jeden Durchgang still"
+war eine **Ableitung aus der Nachbarschaft**, keine Messung.
+
+⚠ **Wer der Stoerenfried am 22.09. war, ist damit wieder offen.**
+Naheliegend sind die **54 Office-Sperrdateien** - am 22.09. noch
+ungefiltert, mit der Endung des Originals, also mitten im Office-Zweig.
+Das ist ein begruendeter Verdacht, **kein Befund**.
+
+### ⛔ Neuer, gemessener Befund: Nichtdokumente bleiben EWIG im Eingang
+
+Ein uebersprungenes Nichtdokument wird nie nach `aussortiert` geraeumt.
+Gemessen ueber drei Durchgaenge: `input/_probe 1`, `aussortiert/_probe 0`,
+jeder Durchgang meldet erneut "1 keine Dokumente (uebersprungen)".
+
+Es **blockiert nichts** (das war der alte Fehler, der ist weg), aber:
+bei 41 `.db` + 54 Sperrdateien im KAP-Bestand wird der Eingang **nie
+leer** - und "Eingang leer" taugt damit nicht mehr als Fertig-Zeichen.
+⭐ Sie gehoeren nach `aussortiert` mit Grund. Naechstes Stueck Arbeit.
+
+### ⚠ Was das fuer die Abnahme von 3m bedeutet
+
+**Der Return-Knoten ist nicht scharf geschaltet worden.** Beide bekannten
+Stoerenfriede werden heute VOR der Unterkette abgefangen. Es gibt im
+Bestand derzeit keine Datei, von der belegt waere, dass sie die Unterkette
+leer zurueckkommen laesst.
+
+⛔ Ehrlich: Die Zusicherung ist durch die Wegpruefung belegt
+(`test_rueckgabe_garantiert`, 14 Fehler vorher / 0 nachher), **nicht**
+durch einen Lauf. Ein Lauf kann derzeit nur zeigen, dass kein Dokument
+mehr den Block mitreisst - nicht, dass der Rueckfall feuert.
+
 ## 3o - GEBAUT 23.09. spaet: der stille Durchgang meldet sich
 
 Aus der Rueckmeldung: *"Das Problem am `return []` ist nicht der fehlende Wurf -
