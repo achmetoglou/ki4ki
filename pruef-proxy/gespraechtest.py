@@ -62,8 +62,8 @@ def test_hinweis_wird_angehaengt():
 def test_grenze_ist_einstellbar():
     """Die Grenze muss ohne Neubau aenderbar sein."""
     print("\nDie Token-Grenze ist einstellbar")
-    pruefe(gespraech.ANTWORT_TOKEN >= 4096,
-           "die Vorgabe ist hoch genug fuer mehrere ausfuehrliche Antworten "
+    pruefe(gespraech.ANTWORT_TOKEN >= 2048,
+           "die Vorgabe im Code ist hoch genug fuer eine ganze Antwort "
            "(ist: %s)" % gespraech.ANTWORT_TOKEN)
     pruefe("KI4KI_ANTWORT_TOKEN" in open(
         os.path.join(os.path.dirname(os.path.abspath(__file__)),
@@ -131,7 +131,7 @@ def test_die_werte_kommen_auch_bei_partnern_an():
         pruefe(False, "docker-compose.yml nicht gefunden - NICHT geprueft")
         return
     t = open(compose, encoding="utf-8").read()
-    pruefe("KI4KI_ANTWORT_TOKEN=${KI4KI_ANTWORT_TOKEN:-4096}" in t,
+    pruefe("KI4KI_ANTWORT_TOKEN=${KI4KI_ANTWORT_TOKEN:-2048}" in t,
            "die Antwortlaenge steht in der Compose und ist ueberschreibbar")
     pruefe("num_predict gilt JE MODELLAUFRUF" in t,
            "und daneben steht, WARUM nicht mehr - die Grenze gilt je\n           Aufruf, ein Zug hat bis zu fuenf davon")

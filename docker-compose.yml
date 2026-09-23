@@ -338,8 +338,15 @@ services:
     #   waeren 8192 im schlimmsten Fall 40.960 Token = 760 s - mehr als
     #   die Zeitgrenze unten. Gemessen 23.09.: ein Zug lief 440 s und
     #   endete mit "Modell: timed out". Mit 4096 sind es hoechstens
-    #   380 s, im ueblichen Fall (ein bis zwei Runden) 76-152 s.
-    - KI4KI_ANTWORT_TOKEN=${KI4KI_ANTWORT_TOKEN:-4096}
+    #   380 s - aber gemessen 23.09. abends: 160 s und laenger, und der
+    #   Nutzer bricht vorher ab. "Keiner wartet so lange auf eine
+    #   Antwort." Deshalb 2048: 38 s je Aufruf, 190 s im schlimmsten
+    #   Fall - das passt selbst unter die alte Zeitgrenze von 240 s.
+    #   2048 Token sind rund 4.300 Zeichen, anderthalb Seiten.
+    # ⭐ Die saubere Loesung bleibt ein Budget ueber den GANZEN Zug
+    #   statt je Aufruf - dann ist die Wartezeit nach oben begrenzt,
+    #   egal wie viele Werkzeugrunden dazwischenliegen.
+    - KI4KI_ANTWORT_TOKEN=${KI4KI_ANTWORT_TOKEN:-2048}
     - KI4KI_GESPRAECH_TIMEOUT=${KI4KI_GESPRAECH_TIMEOUT:-600}
     - KI4KI_BESTAND=/daten/bestand/documents
     - KI4KI_PDFS=/daten/pdfs

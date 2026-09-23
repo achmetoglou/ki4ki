@@ -239,6 +239,59 @@ und gleicht ab, was n8n **wirklich geladen** hat. Aufruf auf dem Host:
 2. **`LESBAR_BYTE`** (siehe oben), gehört zu Teil 3.
 3. **Die Protokoll-Wiederholung** bei jedem Minutentakt (§3, Punkt 2).
 
+## 4f - ENTSCHIEDEN 23.09. abends: 2048 Token, und die Zeitgrenze kam nie an
+
+Emrach, woertlich: *"keiner wartet so lange auf eine antwort sind jetzt
+bei 140 s"* - dann 160 s, dann:
+
+```
+Formuliere die Antwort ... (240 s)
+Die Antwort ist nicht zustande gekommen (Modell: timed out).
+```
+
+### ⛔ Befund: KI4KI_GESPRAECH_TIMEOUT=600 ist nicht angekommen
+
+Der Abbruch kam bei **exakt 240 s** - der Vorgabe im Code. Die Compose
+setzt 600. Der Wert erreicht den laufenden Proxy also nicht.
+**Ungeklaert.** Zu pruefen, indem man sich im Proxy-Container per
+`printenv` die beiden Werte KI4KI_GESPRAECH_TIMEOUT und
+KI4KI_ANTWORT_TOKEN ausgeben laesst.
+
+⭐ Die Entscheidung haengt aber nicht daran: **2048 x 5 Runden = 190 s**
+passt auch unter die alten 240 s. Der Wert ist sicher, egal welche
+Zeitgrenze wirklich gilt - das ist mehr wert als ein hoeherer Wert, der
+von einer ungeklaerten Einstellung abhaengt.
+
+### Die Zahlen, bei 53,9 Token/s gemessen
+
+| Vorgabe | je Aufruf | 5 Runden | |
+|---|---|---|---|
+| 8192 | 152 s | 760 s | ⛔ ueber jeder Zeitgrenze |
+| 4096 | 76 s | 380 s | ⛔ ueber 240 s |
+| **2048** | **38 s** | **190 s** | ✅ unter beiden |
+
+2048 Token sind rund 4.300 Zeichen - anderthalb Seiten. Fuer eine
+Chat-Antwort reichlich.
+
+### ⚠ Die Einordnung, die ich schuldig bin
+
+Der Prompt, der 160 s brauchte, verlangt elf Fragen mal mindestens acht
+Saetze - rund **sechs Seiten**. Den habe **ich** als Belastungstest
+gebaut, um den Deckel sichtbar zu machen. Als Messung war er richtig, als
+Alltagsbeispiel irrefuehrend: Am selben Tag kamen normale Antworten in
+**1,9 s** und **10,4 s**.
+
+⛔ Das entschuldigt nichts. Eine Obergrenze, die man nicht
+ueberschreiten kann, muss es geben. Heute gibt es sie nicht, weil der
+Deckel JE AUFRUF gilt und ein Zug bis zu fuenf Aufrufe hat.
+
+### ⭐ Erster Punkt fuer morgen
+
+Ein **Budget ueber den ganzen Zug**: Der Zug bekommt insgesamt z. B. 3000
+Token, jede Runde nimmt sich, was uebrig ist. Dann ist die Wartezeit nach
+oben begrenzt - unabhaengig von der Rundenzahl und unabhaengig davon, ob
+eine Umgebungsvariable ankommt.
+
 ## 4e - ABGENOMMEN 23.09. 14:49: der Threadwechsel, belegt auf der Leitung
 
 ```
@@ -263,7 +316,8 @@ morgen - eine einzelne Zahl sagt noch nichts, ihre Entwicklung schon.
 
 ### Offen
 
-- **Lauf B mit 4096** - die letzte offene Abnahme des Tages
+- **Eine NORMALE Frage mit 2048** - nicht mein Belastungstest
+- ⛔ Warum KI4KI_GESPRAECH_TIMEOUT=600 den Proxy nicht erreicht (§4f)
 - Das **Token-Budget ueber den ganzen Zug** statt je Aufruf (§4d)
 - Die Umleitung nummerierter Fragen in den Pruefungskatalog (§3x)
 - **BUGS 28**: aussortierte Dokumente bleiben im Arbeitsbereich (§3s)
