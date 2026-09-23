@@ -236,6 +236,43 @@ und gleicht ab, was n8n **wirklich geladen** hat. Aufruf auf dem Host:
 2. **`LESBAR_BYTE`** (siehe oben), gehört zu Teil 3.
 3. **Die Protokoll-Wiederholung** bei jedem Minutentakt (§3, Punkt 2).
 
+## 3q - GEBAUT 23.09. abends: Nichtdokumente raeumen sich weg
+
+`bau/nichtdokumente_wegraeumen.py` holt die uebersprungenen Dateien aus den
+Eingaengen und legt sie nach `aussortiert/` - mit Grund und Zeitstempel,
+Unterordner gespiegelt.
+
+```
+python3 bau/nichtdokumente_wegraeumen.py dokumente             # nur zaehlen
+python3 bau/nichtdokumente_wegraeumen.py dokumente --wirklich  # raeumen
+```
+
+⭐ **EINE Regel, zwei Leser.** Die Entscheidung "ist das ein Dokument?"
+wird nicht nachgebaut, sondern aus dem Ablaufplan geholt und mit `node`
+ausgefuehrt - derselbe Code, den n8n im Betrieb nutzt. Eine zweite Fassung
+in Python waere genau der Fehler, den der mkmd-Dienst vermeidet.
+
+⭐ **Warum ausserhalb des Ablaufplans** (meine erste Einschaetzung
+"billig im Ablaufplan" war falsch): Der Weg nach `aussortiert/` braucht
+`aussortiert_path`, `bereich` und `source_path` - Felder, die erst NACH der
+Unterkette entstehen. Ein uebersprungenes Nichtdokument kommt da nie hin.
+Und ein `executeCommand` mitten im Datenstrom verschluckt die Binaerdaten
+(gemessen 04.08.). Das Werkzeug fasst den laufenden Betrieb nicht an -
+Null Risiko fuer die offenen Abnahmen.
+
+### Womit die Pruefung rot wird
+
+`bau/wegraeumtest.py`, 4 Faelle auf einem echten Dateibaum (kein Nachbau).
+Gegen den Stub mit dem heutigen Verhalten: **11 Fehler**. Danach 0.
+Mutationsprobe: Ziel auf `input` statt `aussortiert` gedreht → **11 Fehler**.
+
+⭐ Zwei Gegenproben stecken drin: ein echtes Dokument und eine `.db`
+**ohne** Muster muessen liegen bleiben. Ohne sie waere ein leerer Eingang
+auch dann gruen, wenn das Werkzeug ALLES wegraeumt.
+
+⚠ Der Trockenlauf ist die Vorgabe; `--wirklich` muss man tippen. Namen
+zeigt es nur mit `--namen`.
+
 ## 3p - KORREKTUR 23.09. abends: die `.db` war NICHT der Stoerenfried
 
 Bei der Abnahme am laufenden System gemessen, mit Zeitstempeln:
