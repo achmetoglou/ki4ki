@@ -131,8 +131,10 @@ def test_die_werte_kommen_auch_bei_partnern_an():
         pruefe(False, "docker-compose.yml nicht gefunden - NICHT geprueft")
         return
     t = open(compose, encoding="utf-8").read()
-    pruefe("KI4KI_ANTWORT_TOKEN=${KI4KI_ANTWORT_TOKEN:-8192}" in t,
+    pruefe("KI4KI_ANTWORT_TOKEN=${KI4KI_ANTWORT_TOKEN:-4096}" in t,
            "die Antwortlaenge steht in der Compose und ist ueberschreibbar")
+    pruefe("num_predict gilt JE MODELLAUFRUF" in t,
+           "und daneben steht, WARUM nicht mehr - die Grenze gilt je\n           Aufruf, ein Zug hat bis zu fuenf davon")
     pruefe("KI4KI_GESPRAECH_TIMEOUT=${KI4KI_GESPRAECH_TIMEOUT:-600}" in t,
            "die Zeitgrenze ebenso - sonst laeuft eine lange Antwort in "
            "die alten 240 s und stirbt ganz, statt nur gekuerzt zu werden")

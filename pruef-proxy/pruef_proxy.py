@@ -9866,11 +9866,18 @@ class Griff(BaseHTTPRequestHandler):
             # schickt der Browser nur noch dieses Cookie.
             _kennung = ""
             try:
-                _ausweis = ((self.headers.get("Authorization") or "") + "|"
-                            + (self.headers.get("Cookie") or ""))
-                if _ausweis.strip("|"):
-                    _kennung = hashlib.sha256(
-                        _ausweis.encode()).hexdigest()[:16]
+                # ⛔ NICHT aus dem rohen Cookie: Der traegt vorne eine
+                #   Ablaufzeit, die dieser Proxy bei jeder Antwort neu
+                #   setzt - die Kennung wanderte damit bei JEDER Antwort
+                #   weiter, und der Zwischenspeicher darunter bekam trotz
+                #   stabilem Schluessel jedes Mal einen neuen Wert
+                #   (gemessen 23.09.: "36 Zugaenge aus Platte geladen"
+                #   statt 1). Den Leser stabil machen und den Schreiber
+                #   vergessen heisst: nichts repariert.
+                _kennung = rolle.marken_kennung(
+                    self.headers.get("Authorization"),
+                    self.headers.get("Cookie"))
+                if _kennung:
                     # fuellt _DOKZUGANG[_kennung]
                     if erlaubte_dokumente(self.headers) is None:
                         _kennung = ""      # Zugang unbekannt -> Marke ohne Dokumentrechte (fail closed)

@@ -239,6 +239,65 @@ und gleicht ab, was n8n **wirklich geladen** hat. Aufruf auf dem Host:
 2. **`LESBAR_BYTE`** (siehe oben), gehört zu Teil 3.
 3. **Die Protokoll-Wiederholung** bei jedem Minutentakt (§3, Punkt 2).
 
+## 4d - ZWEI NACHTRAEGE 23.09. abends: halbe Reparatur, und eine Rechnung zu wenig
+
+### ⛔ 1. Die Kennung wanderte - der Zwischenspeicher blieb kalt
+
+Nach §4a war der Threadwechsel kurz schnell und dann **wieder langsam**
+(1.848 ms). Im Protokoll: `[Dokzugang] 36 Zugaenge aus Platte geladen` -
+vorher stand dort 1.
+
+```
+kennung_neu = sha256(Authorization + "|" + Cookie_alt)
+Cookie_alt  = <ablauf>.<kennung_alt>.<unterschrift>
+                └─ eine Uhrzeit, die der Proxy bei jeder Antwort neu setzt
+```
+
+⭐ Ich hatte den **Leser** stabil gemacht (`zugangs_schluessel`) und den
+**Schreiber** vergessen. Die Kennung, die in die neue Marke geht, entstand
+weiter aus dem alten Cookie - und wanderte damit bei jeder Antwort.
+**Halb repariert ist hier nicht besser als gar nicht**: Der Schluessel war
+stabil und bekam trotzdem jedes Mal einen neuen Wert.
+
+`rolle.marken_kennung()` sieht die Marke jetzt gar nicht an. Damit ist die
+Kennung ab dem ersten Aufruf ein fester Punkt - in der Pruefung als Kette
+belegt: dreimal hintereinander derselbe Wert.
+
+### ⛔ 2. `num_predict` gilt JE AUFRUF - ein Zug hat bis zu fuenf
+
+Gemessen: ein Zug lief **440 s** und endete mit `Modell: timed out`.
+
+```
+        je Aufruf   x5 Runden      Dauer bei 53,9 Token/s
+ 1800      1800        9.000              167 s
+ 4096      4096       20.480              380 s
+ 8192      8192       40.960              760 s   ⛔ > Zeitgrenze 600 s
+```
+
+⛔ **Das hatte ich beim Rechnen uebersehen.** `KI4KI_GESPRAECH_RUNDEN=5`
+steht seit Langem in `gespraech.py`; ich habe nur den einzelnen Aufruf
+gerechnet und daraus 8192 empfohlen. Im schlimmsten Fall reisst das die
+Zeitgrenze - und dann kommt statt einer gekuerzten Antwort **gar keine**.
+
+Vorgabe jetzt **4096**: hoechstens 380 s, im ueblichen Fall (ein bis zwei
+Runden) 76-152 s.
+
+⭐ **Die saubere Loesung steht noch aus:** ein Budget ueber den GANZEN Zug
+statt je Aufruf. Dann duerfte die letzte Runde viel schreiben, wenn die
+Werkzeugrunden davor wenig gebraucht haben. Heute waere das die vierte
+Aenderung an derselben Stelle an einem Tag - das ist genau das Stapeln,
+vor dem 3k warnt.
+
+### ⚠ Was daran auffaellt
+
+Drei Reparaturen an einem Nachmittag, und jede hat die naechste
+Beobachtung erst sichtbar gemacht: erst der stille Durchgang, dann die
+tote Leitung, dann die leeren Nachrichten, dann die wandernde Kennung.
+Keine davon war falsch - aber jede war **zu frueh fertig gemeldet**.
+⭐ Merke fuer morgen: Nach einer Reparatur an einem stark verketteten Weg
+gehoert die Abnahme VOR die naechste Reparatur, auch wenn die naechste
+klein aussieht.
+
 ## 4c - MEIN FEHLER: 8192 Token ohne Lebenszeichen killten die Verbindung
 
 ```

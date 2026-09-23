@@ -77,10 +77,47 @@ def test_ohne_marke_unveraendert():
            "leer bleibt leer - der Aufrufer erkennt das weiterhin")
 
 
+def test_die_kennung_wandert_nicht():
+    """Die Kennung IN der Marke muss ueber die Sitzung gleich bleiben.
+
+    ⛔ Gemessen 23.09., nachdem der Zwischenspeicher-Schluessel stabil
+      war: Der Threadwechsel wurde wieder langsam, und im Protokoll stand
+      "36 Zugaenge aus Platte geladen" (vorher 1). Ursache: Die Kennung,
+      die der Proxy in die NEUE Marke schreibt, entsteht aus dem ALTEN
+      Cookie - und das enthaelt vorne eine Ablaufzeit:
+
+          kennung_neu = sha256(Authorization + "|" + Cookie_alt)
+          Cookie_alt  = <ablauf>.<kennung_alt>.<unterschrift>
+
+      Damit wandert die Kennung bei jeder Antwort weiter. Ich hatte den
+      LESER stabil gemacht, aber nicht den SCHREIBER - halb repariert ist
+      hier nicht besser als gar nicht.
+
+    ⭐ Die Kennung darf die Marke daher gar nicht ansehen: Sie entsteht
+      aus der Anmeldung und den uebrigen Cookies. Dann ist sie ab dem
+      ersten Aufruf ein fester Punkt.
+    """
+    print("\nDie Kennung in der Marke wandert nicht")
+    ohne = rolle.marken_kennung(AUSWEIS, "")
+    mit_a = rolle.marken_kennung(AUSWEIS, "ki4ki_zugang=1790206354.%s.sig" % ohne)
+    mit_b = rolle.marken_kennung(AUSWEIS, "ki4ki_zugang=1790206687.%s.and" % mit_a)
+    pruefe(ohne == mit_a == mit_b,
+           "dieselbe Anmeldung ergibt IMMER dieselbe Kennung - egal, was "
+           "in der Marke steht (ist: %s / %s / %s)" % (ohne, mit_a, mit_b))
+    pruefe(rolle.marken_kennung("Bearer anderer.jwt", "") != ohne,
+           "⛔ Gegenprobe: eine andere Anmeldung ergibt eine andere "
+           "Kennung - sonst teilten sich zwei Konten die Dokumentrechte")
+    pruefe(rolle.marken_kennung(AUSWEIS, "sitzung=abc") != ohne,
+           "ein anderes Sitzungs-Cookie zaehlt weiterhin mit")
+    pruefe(rolle.marken_kennung("", "") == "",
+           "ohne alles gibt es keine Kennung")
+
+
 if __name__ == "__main__":
     test_derselbe_zugang_ergibt_denselben_schluessel()
     test_fremder_zugang_ergibt_anderen_schluessel()
     test_andere_cookies_bleiben_erhalten()
     test_ohne_marke_unveraendert()
+    test_die_kennung_wandert_nicht()
     print("\n%d Fehler" % len(FEHLER))
     sys.exit(1 if FEHLER else 0)

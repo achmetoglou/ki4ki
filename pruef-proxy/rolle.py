@@ -10,6 +10,7 @@ Datenbank (4 500-6 200 Zeichen je Bereich, von Hand) - hier sind sie Datei.
 
 Reine Textfunktionen, ohne Modell - pruefbar in dialogtest.py.
 """
+import hashlib
 import re
 
 DATEI = "prompt.md"
@@ -326,6 +327,23 @@ def kern_aus_prompt(prompt):
     return (t if i < 0 else t[:i]).rstrip()
 
 
+def _schluessel(authorization, cookie, marke="kennung"):
+    """Gemeinsamer Bau: Anmeldung plus Cookies, die Marke wahlweise
+    gekuerzt ("kennung") oder ganz weggelassen ("weg")."""
+    teile = []
+    for stueck in (cookie or "").split(";"):
+        name, _, wert = stueck.strip().partition("=")
+        if name == "ki4ki_zugang":
+            if marke == "weg":
+                continue
+            # <ablauf>.<kennung>.<unterschrift> -> nur die Kennung
+            felder = wert.split(".")
+            wert = felder[1] if len(felder) >= 3 else ""
+        if name:
+            teile.append(name + "=" + wert)
+    return (authorization or "") + "|" + ";".join(teile)
+
+
 def zugangs_schluessel(authorization, cookie):
     """Stabiler Schluessel fuer den Dokumentzugang-Zwischenspeicher.
 
@@ -335,24 +353,33 @@ def zugangs_schluessel(authorization, cookie):
       300 Sekunden Haltbarkeit gibt.
 
     ⛔ Der griff nie. Sein Schluessel enthielt den ganzen
-      `ki4ki_zugang`-Cookie, und der hat die Form
-      `<ablauf>.<kennung>.<unterschrift>`: Die Ablaufzeit setzt der Proxy
-      bei JEDER Antwort neu, die Unterschrift wandert mit. Neuer Cookie,
-      neuer Schluessel, alles nochmal - der Proxy machte seinen eigenen
-      Zwischenspeicher bei jeder Antwort kaputt.
+      `ki4ki_zugang`-Cookie der Form `<ablauf>.<kennung>.<unterschrift>`:
+      Die Ablaufzeit setzt der Proxy bei JEDER Antwort neu. Neuer Cookie,
+      neuer Schluessel, alles nochmal.
 
-    ⭐ Massgeblich ist allein die KENNUNG in der Mitte: Sie sagt, zu wem
-      die Marke gehoert, und bleibt ueber die Sitzung gleich. Alles
-      andere am Cookie bleibt unangetastet - eine andere
-      AnythingLLM-Sitzung ist weiterhin ein anderer Zugang.
+    ⭐ Massgeblich ist allein die KENNUNG in der Mitte. Alles andere am
+      Cookie bleibt unangetastet - eine andere AnythingLLM-Sitzung ist
+      weiterhin ein anderer Zugang.
     """
-    teile = []
-    for stueck in (cookie or "").split(";"):
-        name, _, wert = stueck.strip().partition("=")
-        if name == "ki4ki_zugang":
-            # <ablauf>.<kennung>.<unterschrift> -> nur die Kennung
-            felder = wert.split(".")
-            wert = felder[1] if len(felder) >= 3 else ""
-        if name:
-            teile.append(name + "=" + wert)
-    return (authorization or "") + "|" + ";".join(teile)
+    return _schluessel(authorization, cookie, marke="kennung")
+
+
+def marken_kennung(authorization, cookie):
+    """Die Kennung, die IN eine neue Marke geschrieben wird.
+
+    ⛔ Gemessen 23.09., einen Schritt nach der Reparatur oben: Der
+      Threadwechsel wurde wieder langsam, im Protokoll standen
+      "36 Zugaenge aus Platte geladen" statt 1. Die Kennung entstand aus
+      dem ALTEN Cookie - und das traegt vorne eine Ablaufzeit. Also
+      wanderte sie bei jeder Antwort weiter, und der stabile Schluessel
+      oben bekam trotzdem jedes Mal einen neuen Wert.
+
+    ⭐ Deshalb sieht die Kennung die Marke gar nicht an: Sie entsteht
+      aus der Anmeldung und den uebrigen Cookies und ist damit ab dem
+      ersten Aufruf ein fester Punkt. Wer nur den Leser stabil macht und
+      den Schreiber vergisst, hat nichts repariert.
+    """
+    roh = _schluessel(authorization, cookie, marke="weg")
+    if not roh.strip("|"):
+        return ""
+    return hashlib.sha256(roh.encode()).hexdigest()[:16]
