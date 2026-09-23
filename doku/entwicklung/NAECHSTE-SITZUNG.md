@@ -239,6 +239,50 @@ und gleicht ab, was n8n **wirklich geladen** hat. Aufruf auf dem Host:
 2. **`LESBAR_BYTE`** (siehe oben), gehört zu Teil 3.
 3. **Die Protokoll-Wiederholung** bei jedem Minutentakt (§3, Punkt 2).
 
+## 3z - GEBAUT 23.09.: die Fusszeile nennt kein Dokument mehr doppelt
+
+Meldung vom 15.09. aus 3l: *"steht fast bei jedem Output zwei mal die
+Modellangabe und die Dokumente die gesucht wurden"*. Die Modellzeile fiel
+am 22.09.; die doppelte Dokumentnennung blieb. Am 23.09. an einer echten
+Antwort gesehen:
+
+```
+durchsucht: Pruefungsfragen zu DVS 2291 ... · zusammengefasst ·
+vollstaendig gelesen: Pruefungsfragen zu DVS 2291 ... (ganzer Text)
+            └── derselbe Titel, zweimal in derselben Zeile ──┘
+```
+
+`fusszeile.dokumente_fuer_zeile()` laesst die Titel weg, die weiter hinten
+ohnehin als "vollstaendig gelesen" stehen. Bleibt nichts uebrig, entfaellt
+die Suchzeile ganz. "Vollstaendig gelesen" sagt ohnehin mehr: Wer den
+ganzen Text gelesen hat, hat ihn erst recht durchsucht.
+
+### ⛔ Warum die Fusszeile NICHT ganz verschwindet
+
+Gefragt wurde, ob man sie nicht streichen kann - die Denkphase und der
+Quellen-Knopf von AnythingLLM zeigen doch schon, was gesucht wurde.
+Zeigen sie nicht. Die Fusszeile traegt drei Dinge, die es sonst nirgends
+gibt:
+
+| | |
+|---|---|
+| `Quelle:` gegen `durchsucht:` | belegt gegen nur gesucht - genau dieser Unterschied hat am 22.09. einen fehlenden Beleg gemeldet |
+| `N Zitate geprueft, M nicht gefunden` | das Ergebnis der Zitatpruefung |
+| `⚠ erfundene Bildnummern gestrichen` · `⚠ N Aussage(n) nicht belegt` | Warnungen, die die Anlage gegen sich selbst ausspricht |
+
+⭐ Die Quellenliste von AnythingLLM zeigt **gefundene Textstellen**. Sie
+kann nicht sagen, dass eine Aussage **unbelegt** geblieben ist. Genau das
+ist der Produktanspruch (03.08., woertlich): Schluesse ziehen **und**
+belegen. Wer die Zeile streicht, streicht den Beleg-Teil.
+
+### Womit die Pruefung rot wird
+
+`fusszeilentest.py`, 3 Faelle. Gegen den Stub mit dem heutigen Verhalten:
+**2 Fehler**. Mutationsprobe (Filter entfernt): 2 Fehler. Danach 0.
+Gegenprobe: Ohne gelesene Dokumente bleibt die Zeile unveraendert.
+
+Damit ist die **dritte** der drei Nutzermeldungen aus 3l bearbeitet.
+
 ## 3y - URSACHE GEFUNDEN 23.09.: die Meldung vom 18.09. ist ein Laengendeckel
 
 ### Der Versuch, in einem FRISCHEN Faden

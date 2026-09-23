@@ -58,6 +58,7 @@ import pruefprotokoll
 import veredeln
 import wortsuche
 import anhang
+import fusszeile
 
 ZIEL = os.environ.get("KI4KI_ZIEL") or "http://127.0.0.1:3001"
 
@@ -8052,8 +8053,14 @@ class Griff(BaseHTTPRequestHandler):
             _lesbar = _bst._anzeige
         except Exception:
             _lesbar = lambda t: t          # noqa: E731
-        _doks = ", ".join(_lesbar(assistent._titel_saubern(d))
-                          for d in zustand["dokumente"][:3])
+        # ⛔ Nicht zweimal denselben Titel: Was weiter unten als
+        #   "vollstaendig gelesen" steht, muss nicht davor nochmal als
+        #   "durchsucht" auftauchen (Meldung 15.09., gemessen 23.09.).
+        _gelesen_titel = {assistent._titel_saubern(_d)
+                          for _d in (zustand.get("gelesen") or {})}
+        _doks = ", ".join(_lesbar(t) for t in fusszeile.dokumente_fuer_zeile(
+            zustand["dokumente"][:3], _gelesen_titel,
+            assistent._titel_saubern))
         _was = sorted({_kurz.get(n, n) for n, _, _ in e["aufrufe"] if n != "waechter"})
         fuss = []
         if _modell_b:
