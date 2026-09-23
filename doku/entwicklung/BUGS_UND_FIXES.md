@@ -1236,7 +1236,7 @@ zum 120-Minuten-Notnagel. Genau dieser Fehler ist am 04.08. schon einmal
 passiert. Richtig wäre ein Fehlerzweig, der die Sperre in jedem Fall freigibt —
 eigenes Stück Arbeit, noch nicht gebaut.
 
-## 30 — Der Chat-Anhang konnte nur EINE Datei halten (17.09.2026, GEBAUT)
+## 30 — Der Chat-Anhang konnte nur EINE Datei halten (17.09.2026, BEHOBEN + ABGENOMMEN 23.09.)
 
 **Meldung, woertlich:** *"Es wurden 3 Dateien ueber das + Zeichen zusaetzlich in
 diesem Chat bereitgestellt allerdings nur eins bei der Anfrage ausgewertet."*
@@ -1253,8 +1253,14 @@ Chat-Anhang warf sie weg.
 `anhangtest.py`. Rot gegen den Stand von heute frueh: **8 Fehler**. Danach 0,
 `dialogtest.py` unveraendert 520/0.
 
-**Offen:** Abnahme am laufenden System — drei Dateien anhaengen, Fusszeile und
-"Gelesen"-Zeile pruefen.
+**✅ Abnahme 23.09.:** Drei Dateien angehaengt, alle drei Kennwoerter genannt,
+Fusszeile "3 Dokumente: ...", 174 Zeichen - nachgerechnet exakt die Summe.
+
+**⛔ Zweiter Anlauf noetig:** Die erste Abnahme fiel durch. Meine Reparatur las
+den Speicher, fuehrte zusammen und schrieb zurueck - ohne Sperre, obwohl der
+Proxy je Anfrage einen eigenen Faden fuehrt und der Browser gleichzeitig
+hochlaedt. Dreimal "jetzt 1 Dokument(e)" im Protokoll. Behoben mit
+`anhang.merken()` unter `threading.Lock`; die Textgewinnung bleibt ausserhalb.
 
 ## Offen / vor einer Vermarktung zu klären
 

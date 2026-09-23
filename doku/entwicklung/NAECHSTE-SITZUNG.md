@@ -4,7 +4,10 @@
 Sitzungsanfang. Sie sagt, wo die Ziele stehen, was entschieden ist, was offen
 ist und was als Beweis zählt. **Erst lesen, dann arbeiten.**
 
-⭐ **Wer nur eines liest: §3l** — drei offene Nutzermeldungen. Die vom
+⭐ **Wer nur eines liest: §3v** - Stand der Abnahmen und was offen ist.
+Die drei Nutzermeldungen stehen in §3l; die vom 17.09. ist erledigt.
+
+⭐ Frueherer Zeiger: §3l — drei offene Nutzermeldungen. Die vom
 17.09. ist in §3n repariert. ⛔ **Drei Reparaturen warten auf Abnahme am
 laufenden System** (§3m Return-Knoten, §3n Chat-Anhang, §3o Leerlauf-
 Meldung). Erst abnehmen, dann weiterbauen — Stapeln hat am 22.09. den
@@ -235,6 +238,54 @@ und gleicht ab, was n8n **wirklich geladen** hat. Aufruf auf dem Host:
    Inhalt verloren — Emrach hat die Rohdaten lokal und kann sie neu bereitstellen.
 2. **`LESBAR_BYTE`** (siehe oben), gehört zu Teil 3.
 3. **Die Protokoll-Wiederholung** bei jedem Minutentakt (§3, Punkt 2).
+
+## 3v - ABGENOMMEN 23.09.: der Chat-Anhang liest alle drei
+
+```
+(Gelesen: das komplette Dokument (174 Zeichen).)
+probe-a.txt  ALPHA-7431 | probe-c.txt  GAMMA-2618 | probe-b.txt  BETA-9052
+📎 3 Dokumente: probe-a.txt, probe-c.txt, probe-b.txt
+
+[Anhang] 1 Datei(en) angenommen fuer auw - jetzt 1 Dokument(e),  19 Zeichen
+[Anhang] 1 Datei(en) angenommen fuer auw - jetzt 2 Dokument(e), 116 Zeichen
+[Anhang] 1 Datei(en) angenommen fuer auw - jetzt 3 Dokument(e), 174 Zeichen
+```
+
+⭐ **Die 174 sind nachgerechnet, nicht geglaubt:**
+
+```
+Block je Datei = Trennzeile(37) + Umbruch(1) + Text     57 + 57 + 56 = 170
+zwei Trenner "\n\n" dazwischen                                       +   4
+                                                                      = 174
+```
+
+Damit ist die Meldung vom 17.09. aus `/rueckmeldungen` erledigt - die
+erste der drei offenen Nutzermeldungen.
+
+⭐ Die aufsteigende Folge 1 → 2 → 3 im Protokoll ist der eigentliche
+Beweis: Vorher stand dort dreimal "jetzt 1". Eine Zahl, die mitzaehlt,
+haette das Wettrennen schon am 23.09. mittags sichtbar gemacht.
+
+### Stand der Abnahmen
+
+| | |
+|---|---|
+| §3n/3u Chat-Anhang | ✅ abgenommen |
+| §3o Leerlauf-Meldung + Lautsprecher | ✅ abgenommen (Protokollzeilen sichtbar) |
+| §3r Stand-Stempel | ✅ abgenommen (`[Stand a6086e7]`) |
+| §3q Aufraeum-Werkzeug | ✅ 1 Datei verschoben |
+| §3m Return-Knoten | ⚠ durch die Wegpruefung belegt, im Lauf nie gefeuert |
+| §3t `--alles` | ⚠ Reparatur gepusht, auf dem Server noch nicht wiederholt |
+
+### Offen
+
+- **18.09.** elf Fragen, vier beantwortet (naechstes Stueck)
+- **15.09.** doppelte Dokumentnennung
+- **BUGS 28** aussortierte Dokumente bleiben im Arbeitsbereich - am
+  23.09. mit Zahlen belegt (Bestand 83, `linkprobe` VERSCHOLLEN 1)
+- ⚠ Der Proxy hat **keinen Stand-Stempel**. Dass wir den alten vom neuen
+  Code unterscheiden konnten, lag nur daran, dass ich die Protokollzeile
+  mitgeaendert hatte - Glueck, kein Entwurf.
 
 ## 3u - MEIN FEHLER: der Chat-Anhang hatte ein Wettrennen (23.09., behoben)
 
