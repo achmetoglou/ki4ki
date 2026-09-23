@@ -239,6 +239,67 @@ und gleicht ab, was n8n **wirklich geladen** hat. Aufruf auf dem Host:
 2. **`LESBAR_BYTE`** (siehe oben), gehört zu Teil 3.
 3. **Die Protokoll-Wiederholung** bei jedem Minutentakt (§3, Punkt 2).
 
+## 4c - MEIN FEHLER: 8192 Token ohne Lebenszeichen killten die Verbindung
+
+```
+POST stream-chat   NS_ERROR_NET_PARTIAL_TRANSFER   92.432 ms
+Proxy-Protokoll:   BrokenPipeError: [Errno 32] Broken pipe
+```
+
+Keine Antwort, kein Hinweis. **Direkte Folge der Erhoehung auf 8192.**
+
+### Die Ursache
+
+Der Modellaufruf laeuft mit `"stream": False` - der Proxy wartet die
+KOMPLETTE Antwort ab und schickt in dieser Zeit **nichts** an den
+Browser. Bei 1800 Token waren das rund 33 s und blieben unter der
+Zeitgrenze der Gegenstelle. Bei 8192 sind es ueber zwei Minuten: Die
+Gegenstelle kappte die stille Leitung, und als der Proxy schreiben
+wollte, war sie weg. Der BrokenPipeError ist die **Folge**, nicht die
+Ursache.
+
+⭐ **Warum nicht einfach streamen:** Die Antwort wird NACH dem Erzeugen
+gegen die Dokumente geprueft - Zitate, unbelegte Aussagen, erfundene
+Bildnummern. Wer den Rohtext durchreicht, sendet Ungeprueftes. Genau das
+tut diese Anlage nicht. Also ein **leeres Stueck** als Lebenszeichen,
+alle 20 s (`KI4KI_LEBENSZEICHEN`).
+
+⭐ **Vom aufrufenden Faden, nicht aus dem Arbeitsfaden.** Zwei Faeden auf
+derselben Leitung koennten sich mitten in einem Stueck ins Wort fallen -
+dieselbe Fehlerklasse wie das Wettrennen beim Chat-Anhang von heute
+Mittag. Hier arbeitet der zweite Faden, und der erste schickt.
+
+### Womit die Pruefung rot wird
+
+`test_lange_antwort_haelt_die_leitung_wach`: Gegen den Stub **1 Fehler**
+("waehrend des Wartens kamen Lebenszeichen: 0"). Mutationsprobe
+(Lebenszeichen weglassen): 1 Fehler. Danach 0.
+Gegenproben: Eine schnelle Antwort bekommt **kein** Lebenszeichen, und
+ein Fehler im Arbeitsfaden kommt unveraendert beim Aufrufer an.
+
+### ⭐ Was am selben Lauf ABGENOMMEN ist
+
+```
+erster  Threadwechsel:  chats  2268 ms   (Zwischenspeicher leer)
+weitere Threadwechsel:  chats  ohne messbaren Balken
+```
+
+§4a ist damit abgenommen. Emrach: *"Der Threadwechsel geht jetzt
+deutlich schneller."*
+
+### ⚠ Sicherheit: der Admin-Schluessel steht in jeder HAR-Datei
+
+Beim Messen fiel auf, dass eine HAR-Aufzeichnung den
+`Authorization: Bearer <JWT>` des Admin-Kontos im Klartext enthaelt
+(Laufzeit rund 30 Tage) sowie das Sitzungs-Cookie.
+
+⛔ **Das ist KEINE Luecke der Anlage** - so meldet sich jede
+Einseiten-Anwendung an, der Schluessel liegt ohnehin im Browser. Ein
+Risiko wird es erst, wenn jemand eine HAR-Datei weitergibt.
+⭐ Regel fuer Partner und uns: HAR-Dateien nie vollstaendig weitergeben.
+Wer nur Zeiten braucht, zieht sie heraus - URL und Millisekunden
+genuegen, Kopfzeilen nie.
+
 ## 4b - FUER PARTNER-ANLAGEN: was der 23.09. bringt, und was dafuer zu tun ist
 
 ⭐ **Zu tun ist genau eins:** `cd ~/ki4ki && ./aktualisiere.sh`.

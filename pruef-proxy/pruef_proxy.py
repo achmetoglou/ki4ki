@@ -7846,14 +7846,28 @@ class Griff(BaseHTTPRequestHandler):
         _m = re.match(r"^/api/(?:v1/)?workspace/([^/]+)", self.path or "")
         _slug = _m.group(1) if _m else None
         _modell_b = modell_fuer_bereich(_slug)
-        e = gespraechsmodus.fuehren(
+        # ⛔ Die Leitung wachhalten, solange das Modell schreibt. Der
+        #   Aufruf laeuft mit "stream": False - waehrend der ganzen
+        #   Erzeugung ginge sonst NICHTS an den Browser. Gemessen 23.09.
+        #   nach dem Hochsetzen auf 8192 Token: Abbruch nach 92 s
+        #   (NS_ERROR_NET_PARTIAL_TRANSFER, hier BrokenPipeError).
+        #   Der Rohtext darf nicht durchgereicht werden - er ist noch
+        #   nicht gegen die Dokumente geprueft. Also ein leeres Stueck.
+        def _wachhalten():
+            self._strom_stueck({"uuid": _neue_marke("wach"),
+                                "type": "textResponseChunk",
+                                "textResponse": "", "sources": [],
+                                "close": False, "error": False})
+
+        e = gespraechsmodus.mit_lebenszeichen(lambda: gespraechsmodus.fuehren(
             _frage_modell, GESPRAECHE.verlauf_kurz(gespraech_k, hoechstens=20), assistent._titel_saubern(faden_dok) if faden_dok else None,
             zeilen, lambda n, a: self._werkzeug(n, a, zustand), kontakt=assistent.kontakt_zeile(),
             rolle=rolle.fuer_gespraech(_rolle_lesen(_slug)),
             allgemeinwissen=(_bereich_modus(_slug) == "chat"),
             melden=melden, vorwissen=vorwissen,
             denken=True if (len(assistent.optionen_finden(frage)) >= 2 or assistent.ist_negativfrage(frage)) else None,
-            kennungen=[assistent._titel_saubern(n) for n in namen], modell=_modell_b)
+            kennungen=[assistent._titel_saubern(n) for n in namen], modell=_modell_b),
+            _wachhalten, abstand=float(os.environ.get("KI4KI_LEBENSZEICHEN") or "20"))
         self._stand_weg(stand)
         text = e.get("text") or ""
         if not text.strip() and not e.get("fehler"):

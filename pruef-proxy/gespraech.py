@@ -24,6 +24,7 @@ Alles hier ist ohne Netz testbar: `fuehren()` bekommt `rufen` (Modell) und
 import json
 import os
 import re
+import threading
 import time
 import urllib.request
 
@@ -648,3 +649,49 @@ def fuehren(frage, verlauf, faden_dok, dokumente, werkzeug, rufen=None, kontakt=
     return {"text": text, "aufrufe": aufrufe, "dokumente": beruehrt,
             "runden": len(aufrufe), "ms": int((time.time() - begonnen) * 1000),
             "fehler": fehler, "nutzung": nutzung}
+
+
+def mit_lebenszeichen(lauf, lebenszeichen, abstand=20.0):
+    """`lauf()` ausfuehren und die Leitung dabei wachhalten.
+
+    ⛔ Gemessen 23.09.: Nach dem Hochsetzen der Antwortlaenge auf 8192
+      Token starb die Chat-Verbindung nach 92 Sekunden
+      (NS_ERROR_NET_PARTIAL_TRANSFER im Browser, BrokenPipeError im
+      Proxy). Ursache: `"stream": False` - der Proxy wartet die KOMPLETTE
+      Antwort ab und schickt waehrenddessen nichts. Bei 1800 Token waren
+      das 33 s, bei 8192 ueber zwei Minuten. Die Gegenstelle kappte die
+      stille Leitung.
+
+    ⭐ Warum kein echtes Streamen: Die Antwort wird NACH dem Erzeugen
+      gegen die Dokumente geprueft. Wer den Rohtext durchreicht, sendet
+      Ungeprueftes - genau das, was diese Anlage nicht tut.
+
+    ⭐ Das Lebenszeichen geht vom AUFRUFENDEN Faden raus, nicht aus dem
+      Arbeitsfaden: Zwei Faeden auf derselben Leitung koennten sich
+      mitten in einem Stueck ins Wort fallen. Hier arbeitet der zweite
+      Faden, und der erste schickt - die Reihenfolge bleibt heil.
+    """
+    ergebnis = {}
+
+    def arbeiten():
+        try:
+            ergebnis["wert"] = lauf()
+        except BaseException as e:      # noqa: BLE001 - kommt unten wieder hoch
+            ergebnis["fehler"] = e
+
+    faden = threading.Thread(target=arbeiten, daemon=True)
+    faden.start()
+    while True:
+        faden.join(abstand)
+        if not faden.is_alive():
+            break
+        try:
+            lebenszeichen()
+        except Exception:
+            # Ist die Leitung schon zu, hilft Weitersenden nicht - die
+            # Antwort selbst soll trotzdem fertig werden (sie landet im
+            # Protokoll und im Gedaechtnis).
+            pass
+    if "fehler" in ergebnis:
+        raise ergebnis["fehler"]
+    return ergebnis.get("wert")

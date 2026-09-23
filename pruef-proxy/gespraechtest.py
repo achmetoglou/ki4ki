@@ -16,6 +16,7 @@ Aufruf:   python3 gespraechtest.py     (Exit 0 = alle gruen)
 """
 import os
 import sys
+import time
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import gespraech      # noqa: E402
@@ -137,11 +138,74 @@ def test_die_werte_kommen_auch_bei_partnern_an():
            "die alten 240 s und stirbt ganz, statt nur gekuerzt zu werden")
 
 
+def test_lange_antwort_haelt_die_leitung_wach():
+    """Waehrend das Modell schreibt, darf die Leitung nicht verstummen.
+
+    ⛔ Gemessen 23.09. am laufenden System: Nach dem Hochsetzen der
+      Antwortlaenge auf 8192 Token starb die Chat-Verbindung nach
+      92.432 ms mit NS_ERROR_NET_PARTIAL_TRANSFER, im Proxy-Protokoll
+      ein BrokenPipeError. Keine Antwort, kein Hinweis.
+
+    ⛔ Ursache: `"stream": False` - der Proxy wartet die KOMPLETTE Antwort
+      von Ollama ab und schickt in dieser Zeit nichts an den Browser. Bei
+      1800 Token waren das rund 33 s und blieben unter der Zeitgrenze der
+      Gegenstelle; bei 8192 sind es ueber zwei Minuten. Die Gegenstelle
+      kappte die stille Leitung, und der Proxy schrieb danach ins Leere.
+
+    ⭐ Warum nicht einfach streamen: Die Antwort wird NACH dem Erzeugen
+      gegen die Dokumente geprueft (Zitate, unbelegte Aussagen). Wer den
+      Rohtext durchreicht, sendet Ungeprueftes - genau das, was diese
+      Anlage nicht tut. Also ein Lebenszeichen statt Rohtext.
+
+    ⭐ Die Lebenszeichen gehen vom SELBEN Faden wie die Antwort raus:
+      Zwei Faeden auf derselben Leitung koennten sich mitten in einem
+      Stueck ins Wort fallen.
+    """
+    print("\nEine lange Antwort haelt die Leitung wach")
+    gesendet = []
+
+    def langsam():
+        time.sleep(0.35)
+        return "fertig"
+
+    erg = gespraech.mit_lebenszeichen(langsam, lambda: gesendet.append(1),
+                                      abstand=0.1)
+    pruefe(erg == "fertig", "das Ergebnis kommt unveraendert zurueck")
+    pruefe(len(gesendet) >= 2,
+           "waehrend des Wartens kamen Lebenszeichen (ist: %d)"
+           % len(gesendet))
+
+    gesendet2 = []
+    erg2 = gespraech.mit_lebenszeichen(lambda: "sofort",
+                                       lambda: gesendet2.append(1),
+                                       abstand=0.1)
+    pruefe(erg2 == "sofort", "auch eine schnelle Antwort kommt durch")
+    pruefe(not gesendet2,
+           "Gegenprobe: eine schnelle Antwort braucht kein Lebenszeichen")
+
+
+def test_fehler_gehen_nicht_verloren():
+    """Wirft die Arbeit, muss der Fehler beim Aufrufer ankommen."""
+    print("\nEin Fehler im Warten geht nicht verloren")
+
+    def kaputt():
+        raise ValueError("absichtlich")
+
+    try:
+        gespraech.mit_lebenszeichen(kaputt, lambda: None, abstand=0.1)
+        pruefe(False, "der Fehler haette geworfen werden muessen")
+    except ValueError as e:
+        pruefe("absichtlich" in str(e),
+               "der urspruengliche Fehler kommt durch, nicht ein Ersatz")
+
+
 if __name__ == "__main__":
     test_abschnitt_wird_erkannt()
     test_hinweis_wird_angehaengt()
     test_grenze_ist_einstellbar()
     test_der_hinweis_kommt_wirklich_im_gespraechszug_an()
     test_die_werte_kommen_auch_bei_partnern_an()
+    test_lange_antwort_haelt_die_leitung_wach()
+    test_fehler_gehen_nicht_verloren()
     print("\n%d Fehler" % len(FEHLER))
     sys.exit(1 if FEHLER else 0)
