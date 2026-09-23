@@ -236,6 +236,64 @@ und gleicht ab, was n8n **wirklich geladen** hat. Aufruf auf dem Host:
 2. **`LESBAR_BYTE`** (siehe oben), gehört zu Teil 3.
 3. **Die Protokoll-Wiederholung** bei jedem Minutentakt (§3, Punkt 2).
 
+## 3u - MEIN FEHLER: der Chat-Anhang hatte ein Wettrennen (23.09., behoben)
+
+Die Abnahme von 3n ist durchgefallen - und die Ursache war meine eigene
+Reparatur.
+
+```
+Gelesen: das komplette Dokument (19 Zeichen)     <- eine Datei, nicht drei
+📎 Antwort aus dem angehaengten Dokument probe-a.txt
+```
+
+Das Protokoll des Proxys sagte, was los war:
+
+```
+[Anhang] 1 Datei(en) angenommen fuer kap - jetzt 1 Dokument(e), 19 Zeichen
+[Anhang] 1 Datei(en) angenommen fuer kap - jetzt 1 Dokument(e), 18 Zeichen
+[Anhang] 1 Datei(en) angenommen fuer kap - jetzt 1 Dokument(e), 19 Zeichen
+```
+
+Dreimal "jetzt 1". Nacheinander muesste der dritte "jetzt 3" melden.
+
+### Die Ursache
+
+Der Browser laedt die Anhaenge **gleichzeitig** hoch, und der Proxy fuehrt
+je Anfrage einen eigenen Faden (`ThreadingHTTPServer`). Mein Code las den
+Speicher, fuehrte zusammen und schrieb zurueck - **ohne Sperre**. Alle drei
+lasen, bevor einer schrieb; der letzte gewann.
+
+⚠ Fuenf andere Stellen im Proxy benutzen laengst `threading.Lock`. Meine
+neue nicht.
+
+### ⛔ Warum `anhangtest.py` das nicht gefunden hat
+
+Er rief `aufnehmen` **nacheinander** auf. Die Funktion war und ist
+richtig - falsch war das Lesen-Aendern-Schreiben **drumherum**.
+
+⭐ **Dritte Spielart derselben Regel** (§7, "Teile statt Weg"): Nach der
+falschen Flughoehe und der falschen Umgebung jetzt die falsche
+**Gleichzeitigkeit**. Eine Pruefung, die nur einen Faden kennt, kann ein
+Wettrennen nicht sehen - egal wie gruen sie ist.
+
+### Gebaut
+
+`anhang.merken()` kapselt lesen-zusammenfuehren-schreiben unter einer
+Sperre; der Handler ruft nur noch das. Im Proxy gibt es keine Stelle mehr,
+die `_ANHANG` von Hand beschreibt.
+
+⭐ Die Textgewinnung (Tika, Sekunden) laeuft **ausserhalb** der Sperre.
+Unteilbar ist nur das Kurze, worauf es ankommt.
+
+### Womit die Pruefung rot wird
+
+`test_drei_gleichzeitige_uploads`: drei Faeden, absichtlich verlangsamte
+Textgewinnung, damit das Fenster sicher aufgeht. Gegen den Stand von eben:
+**3 Fehler**, und zwar mit demselben Muster wie die Anlage - genau ein
+Dokument ueberlebt, der letzte. Nach der Sperre: 0.
+Gegenprobe `test_merken_haengt_an_den_vorgaenger_an`: nacheinander sind es
+weiterhin drei.
+
 ## 3t - FEHLER VON MIR, behoben: `--alles` sprengte die Befehlszeile
 
 ```

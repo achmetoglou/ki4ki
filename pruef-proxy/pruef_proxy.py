@@ -10420,11 +10420,14 @@ class Griff(BaseHTTPRequestHandler):
             if dateien:
                 _schluessel = (slug, pruefprotokoll.pseudonym(
                     konto_aus_anfrage(self.headers)))
-                _eintrag = anhang.aufnehmen(
-                    dateien, _tika_text, vorher=_ANHANG.get(_schluessel),
+                # ⛔ NICHT lesen-aendern-schreiben von Hand: Der Browser
+                #   laedt mehrere Anhaenge GLEICHZEITIG hoch, und jede
+                #   Anfrage hat hier ihren eigenen Faden. Genau so gingen
+                #   am 23.09. zwei von drei Dateien verloren.
+                _eintrag = anhang.merken(
+                    _ANHANG, _schluessel, dateien, _tika_text,
                     haltbar=_ANHANG_HALTBAR, grenze=_ANHANG_MAX)
                 if _eintrag:
-                    _ANHANG[_schluessel] = _eintrag
                     print("[Anhang] %d Datei(en) angenommen fuer %s - jetzt "
                           "%d Dokument(e), %d Zeichen"
                           % (len(dateien), slug,

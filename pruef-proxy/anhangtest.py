@@ -9,6 +9,8 @@ Aufruf:   python3 anhangtest.py     (Exit 0 = alle gruen)
 """
 import os
 import sys
+import threading
+import time
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import anhang          # noqa: E402
@@ -100,6 +102,64 @@ def test_eine_datei_bleibt_wie_bisher():
            "die Fusszeile nennt weiterhin nur den Dateinamen")
 
 
+def test_drei_gleichzeitige_uploads():
+    """Der Browser laedt die drei Dateien GLEICHZEITIG hoch.
+
+    ⛔ Gemessen 23.09. am laufenden System, im Protokoll des Proxys:
+
+        [Anhang] 1 Datei(en) angenommen fuer kap - jetzt 1 Dokument(e), 19 Zeichen
+        [Anhang] 1 Datei(en) angenommen fuer kap - jetzt 1 Dokument(e), 18 Zeichen
+        [Anhang] 1 Datei(en) angenommen fuer kap - jetzt 1 Dokument(e), 19 Zeichen
+
+      Dreimal "jetzt 1". Waere es nacheinander gelaufen, muesste der
+      dritte "jetzt 3" melden. Der Proxy fuehrt je Anfrage einen eigenen
+      Faden (ThreadingHTTPServer); alle drei lasen den Speicher, bevor
+      einer schrieb - und der letzte gewann.
+
+    ⭐ Warum anhangtest.py das vorher NICHT fand: Er rief `aufnehmen`
+      nacheinander auf. Die Funktion war und ist richtig - falsch war das
+      Lesen-Aendern-Schreiben DRUMHERUM. Eine Pruefung, die nur einen
+      Faden kennt, kann ein Wettrennen nicht sehen.
+
+    Die langsame Textgewinnung hier ist Absicht: Sie macht das Fenster
+    gross genug, dass der Fehler sicher auftritt statt manchmal.
+    """
+    print("\nDrei gleichzeitige Uploads")
+
+    def langsam(inhalt):
+        time.sleep(0.05)          # Tika braucht in echt deutlich laenger
+        return inhalt.decode("utf-8")
+
+    speicher = {}
+    schluessel = ("kap", "konto1")
+    faeden = [threading.Thread(target=anhang.merken,
+                               args=(speicher, schluessel, [DREI[i]], langsam))
+              for i in range(3)]
+    for f in faeden:
+        f.start()
+    for f in faeden:
+        f.join()
+    eintrag = speicher.get(schluessel) or {}
+    dok = eintrag.get("dokumente") or []
+    pruefe(len(dok) == 3,
+           "alle drei ueberleben das Wettrennen (ist: %d)" % len(dok))
+    for stueck in ("Alpha-Inhalt", "Beta-Inhalt", "Gamma-Inhalt"):
+        pruefe(stueck in (eintrag.get("text") or ""),
+               "der Text enthaelt %s" % stueck)
+
+
+def test_merken_haengt_an_den_vorgaenger_an():
+    """Nacheinander muss es weiterhin stimmen - Gegenprobe zur Sperre."""
+    print("\nNacheinander gemerkt")
+    speicher = {}
+    s = ("kap", "konto1")
+    anhang.merken(speicher, s, DREI[:1], text_aus)
+    anhang.merken(speicher, s, DREI[1:], text_aus)
+    pruefe(len(speicher[s]["dokumente"]) == 3,
+           "auch nacheinander sind es drei (ist: %d)"
+           % len(speicher[s]["dokumente"]))
+
+
 if __name__ == "__main__":
     test_drei_dateien_auf_einmal()
     test_nachgereicht()
@@ -107,5 +167,7 @@ if __name__ == "__main__":
     test_dieselbe_datei_erneut()
     test_unlesbare_datei_reisst_nichts_mit()
     test_eine_datei_bleibt_wie_bisher()
+    test_drei_gleichzeitige_uploads()
+    test_merken_haengt_an_den_vorgaenger_an()
     print("\n%d Fehler" % len(FEHLER))
     sys.exit(1 if FEHLER else 0)

@@ -23,6 +23,7 @@ dokument: `mehrstufig.stuecke()` zerlegt ihn, jedes Stueck wird gelesen,
 am Ende steht eine Antwort ueber alles. Die Maschinerie dafuer gibt es
 seit dem 28.08.; sie musste nur etwas zu lesen bekommen.
 """
+import threading
 import time
 
 
@@ -65,8 +66,12 @@ def aufnehmen(dateien, text_aus, vorher=None, jetzt=None,
     Rueckgabe: Eintrag oder None, wenn nichts Lesbares dabei war und es
                auch keinen frischen Vorgaenger gibt.
     """
-    jetzt = time.time() if jetzt is None else jetzt
+    return zusammenfuehren(_texte(dateien, text_aus), vorher=vorher,
+                           jetzt=jetzt, haltbar=haltbar, grenze=grenze)
 
+
+def _texte(dateien, text_aus):
+    """Text aus den Rohbytes holen. Langsam (Tika) - deshalb getrennt."""
     neu = []
     for name, inhalt in (dateien or []):
         try:
@@ -77,7 +82,13 @@ def aufnehmen(dateien, text_aus, vorher=None, jetzt=None,
         #   diese Fehlerklasse hat am 23.09. die Aufnahmekette stillgelegt.
         if text:
             neu.append((name, text))
+    return neu
 
+
+def zusammenfuehren(neu, vorher=None, jetzt=None, haltbar=1200,
+                    grenze=4000000):
+    """Frisch gewonnene Texte an einen noch frischen Vorgaenger haengen."""
+    jetzt = time.time() if jetzt is None else jetzt
     frisch = (vorher or {}).get("dokumente") or []
     if not vorher or (jetzt - (vorher.get("wann") or 0)) > haltbar:
         frisch = []
@@ -88,3 +99,32 @@ def aufnehmen(dateien, text_aus, vorher=None, jetzt=None,
     if not dokumente:
         return None
     return _bauen(dokumente, jetzt, grenze)
+
+
+# ⛔ Der Proxy fuehrt je Anfrage einen eigenen Faden
+#   (ThreadingHTTPServer). Der Browser laedt mehrere Anhaenge
+#   GLEICHZEITIG hoch - ohne Sperre lesen alle den Speicher, bevor einer
+#   schreibt, und der letzte gewinnt. Gemessen am 23.09.: drei Dateien
+#   hochgeladen, dreimal "jetzt 1 Dokument(e)" im Protokoll, eine Datei
+#   in der Antwort. Fuenf andere Stellen im Proxy benutzen laengst eine
+#   Sperre; diese hier fehlte.
+_SPERRE = threading.Lock()
+
+
+def merken(speicher, schluessel, dateien, text_aus, haltbar=1200,
+           grenze=4000000, jetzt=None):
+    """Anhaenge aufnehmen und im Speicher ablegen - wettrennsicher.
+
+    ⭐ Die Textgewinnung laeuft ABSICHTLICH ausserhalb der Sperre: Tika
+      braucht Sekunden, und solange duerfen sich die Faeden ruhig
+      ueberlappen. Kurz und unteilbar ist nur das, worauf es ankommt -
+      lesen, zusammenfuehren, schreiben.
+    """
+    neu = _texte(dateien, text_aus)
+    with _SPERRE:
+        eintrag = zusammenfuehren(neu, vorher=speicher.get(schluessel),
+                                  jetzt=jetzt, haltbar=haltbar,
+                                  grenze=grenze)
+        if eintrag:
+            speicher[schluessel] = eintrag
+        return eintrag
