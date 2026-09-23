@@ -26,6 +26,10 @@ Aufruf:
     python3 bau/nichtdokumente_wegraeumen.py dokumente            # nur zaehlen
     python3 bau/nichtdokumente_wegraeumen.py dokumente --wirklich # raeumen
     ... --namen    zeigt zusaetzlich die Dateinamen (VERTRAULICH)
+    ... --alles    zaehlt auch ausserhalb der Eingaenge (Parkplatz) - als
+                   Vorschau, WIE VIEL sich stauen wird, wenn der Parkplatz
+                   in den Eingang wandert. Verschoben wird trotzdem nur
+                   aus input/.
 """
 import io
 import json
@@ -80,19 +84,25 @@ def ziel_fuer(pfad):
     return os.sep.join(teile[:i] + ["aussortiert"] + teile[i + 1:])
 
 
-def _eingaenge(wurzel):
-    """Alle Dateien, die unterhalb eines input/-Ordners liegen."""
+def _eingaenge(wurzel, alles=False):
+    """Alle Dateien unterhalb eines input/-Ordners - oder, mit alles=True,
+    ueberall.
+
+    ⛔ alles=True ist NUR zum Zaehlen. Verschoben wird trotzdem nur aus
+      input/, weil ziel_fuer() ausserhalb davon None liefert. Der
+      Parkplatz ist Kundenbestand und wird nie angefasst.
+    """
     for ordner, _, dateien in os.walk(wurzel):
-        teile = ordner.split(os.sep)
-        if "input" not in teile:
+        if not alles and "input" not in ordner.split(os.sep):
             continue
         for d in dateien:
             yield os.path.join(ordner, d)
 
 
-def wegraeumen(wurzel, wirklich=False, jetzt=None, namen_zeigen=False):
+def wegraeumen(wurzel, wirklich=False, jetzt=None, namen_zeigen=False,
+               alles=False):
     jetzt = jetzt or time.strftime("%Y-%m-%d %H:%M:%S")
-    alle = list(_eingaenge(wurzel))
+    alle = list(_eingaenge(wurzel, alles=alles))
     treffer = _gruende(sorted(set(os.path.basename(p) for p in alle)))
 
     erg = {"gesehen": len(alle), "erkannt": 0, "verschoben": 0,
@@ -127,11 +137,14 @@ if __name__ == "__main__":
     args = [a for a in sys.argv[1:] if not a.startswith("--")]
     wirklich = "--wirklich" in sys.argv
     zeigen = "--namen" in sys.argv
+    alles = "--alles" in sys.argv
     wurzel = args[0] if args else "dokumente"
     if not os.path.isdir(wurzel):
         raise SystemExit("Kein Ordner: %s" % wurzel)
-    e = wegraeumen(wurzel, wirklich=wirklich, namen_zeigen=zeigen)
-    print("Dateien in den Eingaengen : %d" % e["gesehen"])
+    e = wegraeumen(wurzel, wirklich=wirklich, namen_zeigen=zeigen,
+                   alles=alles)
+    print("Dateien %-18s: %d"
+          % ("ueberall" if alles else "in den Eingaengen", e["gesehen"]))
     print("davon keine Dokumente     : %d" % e["erkannt"])
     for g, n in sorted(e["gruende"].items(), key=lambda x: -x[1]):
         print("    %-22s %d" % (g, n))

@@ -32,7 +32,7 @@ def baum():
     """Ein Eingang wie auf dem Server - echte Dateien, kein Nachbau."""
     d = tempfile.mkdtemp(prefix="ki4ki-wegraeum-")
     for p in ("kap/input/_probe", "kap/input/Kunde/Auftrag", "kap/aussortiert",
-              "auw/input"):
+              "auw/input", "kap/parkplatz"):
         os.makedirs(os.path.join(d, p))
     dateien = [
         "kap/input/_probe/Thumbs.db",            # muss weg
@@ -40,6 +40,7 @@ def baum():
         "kap/input/Kunde/Auftrag/~$Angebot.docx",  # muss weg, tief
         "kap/input/Bericht.pdf",                 # muss bleiben
         "auw/input/._Notiz.pdf",                 # muss weg, anderer Bereich
+        "kap/parkplatz/Thumbs.db",               # ZAEHLEN ja, anfassen NIE
     ]
     for f in dateien:
         io.open(os.path.join(d, f), "w").write("x")
@@ -119,10 +120,41 @@ def test_zweimal_raeumen_schadet_nicht():
         shutil.rmtree(d, ignore_errors=True)
 
 
+def test_vorschau_ueber_den_parkplatz():
+    """Vor dem grossen Lauf wissen, wie viel sich im Eingang stauen wird.
+
+    ⛔ Die Nichtdokumente liegen heute im PARKPLATZ, nicht im Eingang -
+      dort stoeren sie niemanden. Sobald jemand den Parkplatz in den
+      Eingang schiebt, bleiben sie dort liegen. Die Zahl vorher zu kennen
+      ist der Unterschied zwischen "geplant" und "ueberrascht".
+
+    ⛔ Gezaehlt wird ueberall, VERSCHOBEN nur aus input/. Der Parkplatz
+      ist Kundenbestand.
+    """
+    print("\nVorschau zaehlt auch den Parkplatz - fasst ihn aber nicht an")
+    d = baum()
+    try:
+        nur_eingang = w.wegraeumen(d, wirklich=False)
+        ueberall = w.wegraeumen(d, wirklich=False, alles=True)
+        pruefe(nur_eingang["erkannt"] == 3,
+               "ohne --alles nur der Eingang (ist: %s)" % nur_eingang["erkannt"])
+        pruefe(ueberall["erkannt"] == 4,
+               "mit --alles auch der Parkplatz (ist: %s)" % ueberall["erkannt"])
+        e = w.wegraeumen(d, wirklich=True, alles=True)
+        pruefe(os.path.exists(os.path.join(d, "kap/parkplatz/Thumbs.db")),
+               "⛔ die Datei im Parkplatz wurde NICHT angefasst")
+        pruefe(e["verschoben"] == 3,
+               "verschoben wurden nur die drei aus dem Eingang (ist: %s)"
+               % e["verschoben"])
+    finally:
+        shutil.rmtree(d, ignore_errors=True)
+
+
 if __name__ == "__main__":
     test_zielpfad()
     test_trockenlauf_bewegt_nichts()
     test_wirklich_raeumt_auf()
     test_zweimal_raeumen_schadet_nicht()
+    test_vorschau_ueber_den_parkplatz()
     print("\n%d Fehler" % len(FEHLER))
     sys.exit(1 if FEHLER else 0)

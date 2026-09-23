@@ -236,6 +236,73 @@ und gleicht ab, was n8n **wirklich geladen** hat. Aufruf auf dem Host:
 2. **`LESBAR_BYTE`** (siehe oben), gehört zu Teil 3.
 3. **Die Protokoll-Wiederholung** bei jedem Minutentakt (§3, Punkt 2).
 
+## 3s - ABGENOMMEN 23.09. mittags: was laeuft, laeuft richtig
+
+### ✅ Es laeuft, was wir gepusht haben
+
+```
+Kontrolle a6086e7 : 1      (Ablaufplan 1 - im Protokoll nachgewiesen)
+Plan 2  _waehlen  : 1      (Ablaufplan 2 - eindeutiger Marker)
+```
+
+⭐ Der Export zeigt die LAUFENDE Fassung - das war seit 3j offen und ist
+jetzt beantwortet: Die Kontrollzahl stammt aus dem Plan, von dem das
+Protokoll selbst sagt, dass er laeuft. Stimmt sie, taugt der Export auch
+fuer Plan 2.
+⚠ Erster Anlauf mit dem Marker "Rueckfall" ergab **2** - das Wort steht
+auch in den Kommentaren von Ablaufplan 1. Ein Marker muss eindeutig sein,
+sonst misst man Kommentare.
+
+⛔ **Publish bleibt ungedrueckt.** Der Knopf wuerde den Entwurf
+`d0810e64` ueber die laufende, aktuelle Fassung legen.
+
+### ✅ Die Kette traegt, am echten Lauf belegt
+
+```
+archiv/_probe      1     die .pdf, vollstaendig durch
+aussortiert/_probe 1     die .db, mit Begruendung:
+    "Format nicht vorgesehen (.db) - nur pdf, doc, docx, ... werden aufgenommen.
+     Bleibt hier liegen; soll das Format dazu, wird es in VORGESEHEN eingetragen"
+```
+
+⚠ **Das war NICHT der Return-Knoten**, sondern die Positivliste in
+"Ablage entscheiden". Der Rueckfall-Zweig ist weiterhin nie gefeuert; er
+bleibt durch die Wegpruefung belegt, nicht durch einen Lauf.
+
+### ⛔ BUGS 28 zum ersten Mal live und mit Zahlen
+
+```
+Bestand 81 -> 82 (.pdf) -> 83 (???)
+linkprobe: VERSCHOLLEN 1    "1 nicht im Index"
+```
+
+Die aussortierte `.db` liegt **auch im Arbeitsbereich**. Grund steht in der
+Reihenfolge der Bausteine:
+
+```
+Markdown speichern -> Upload -> Einbetten -> Ablage entscheiden -> Ablegen
+                      \___ hochgeladen ___/   \__ erst HIER aussortiert __/
+```
+
+⭐ Jede aussortierte Datei hinterlaesst eine Karteileiche in der Suche.
+Bei 4.300 Dateien ist das kein Schoenheitsfehler mehr. `linkprobe.py`
+zaehlt sie als VERSCHOLLEN - das Werkzeug dafuer gibt es also schon.
+
+### ⚠ Korrektur: die Nichtdokumente liegen im PARKPLATZ, nicht im Eingang
+
+Der Trockenlauf des Aufraeum-Werkzeugs fand **1** Datei, nicht die ~95, die
+ich erwartet hatte. Ich hatte Parkplatz und Eingang verwechselt. Die 41
+`.db` und 54 Sperrdateien liegen im Parkplatz und stoeren dort niemanden -
+sie werden erst zum Problem, wenn der Parkplatz in den Eingang wandert.
+
+⭐ Deshalb neu: `--alles` zaehlt ueberall (Vorschau, wie viel sich stauen
+wird), verschiebt aber weiterhin NUR aus `input/`. Der Parkplatz ist
+Kundenbestand.
+
+```
+python3 bau/nichtdokumente_wegraeumen.py dokumente --alles
+```
+
 ## 3r - GEBAUT 23.09. abends: der Ablaufplan nennt seinen Stand
 
 Emrachs Frage: *"wann soll ich oben das orange Publish machen? vllt liegt
