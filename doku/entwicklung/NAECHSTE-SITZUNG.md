@@ -261,12 +261,24 @@ Ein frischer Ordner haette dieselbe Aussage nicht gehabt.
 Ist der Fehler an der Wurzel behoben, bleibt die Versicherung still. So
 soll es sein.
 
-### ⚠ Eine Zahl, die noch niemand erklaert hat
+### ✅ Auch die letzte Zahl ist erklaert
 
-`kap loeschen 5`. Vorher stand dort 0. Vermutlich die Dublettenbehandlung
-("neue Fassung erkannt - alte geloescht"), weil dieselben Dateien zum
-zweiten Mal durchliefen. **Nicht gemessen** - vor dem grossen Lauf
-nachsehen, was dort liegt und warum.
+`kap loeschen 5` = **"neue Fassung erkannt - alte geloescht, neue wird
+aufgenommen"**. Die alten Fassungen werden beiseitegelegt, nicht
+weggeworfen. Genau so gedacht, nachgesehen im Protokoll.
+
+Die Gruende des Tages vollstaendig:
+
+```
+ 36  im Arbeitsbereich nicht wiedergefunden   <- der ERSTE, kaputte Lauf
+  9  Format nicht vorgesehen (.jpg .png .db)  <- richtig abgewiesen
+ 15  macOS-Metadatei / Ordner-Merkdatei       <- Aufraeum-Werkzeug, richtig
+  5  neue Fassung erkannt                     <- Dublettenbehandlung, richtig
+```
+
+⚠ Das Protokoll ist **kumulativ**. Die 36 sind die Leiche des kaputten
+Laufs, nicht des reparierten - im zweiten Lauf kam kein einziges
+"nicht wiedergefunden" dazu.
 
 ### ⛔ Der grosse Lauf dauert TAGE, nicht Stunden
 
