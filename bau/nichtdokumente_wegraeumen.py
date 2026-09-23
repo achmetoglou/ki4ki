@@ -58,15 +58,46 @@ def _regel_js():
     raise SystemExit("Baustein 'Nur ein Bereich je Durchgang' nicht gefunden.")
 
 
+def _pakete(namen, grenze=60000):
+    """Die Namen in Haeppchen teilen, die in eine Befehlszeile passen.
+
+    ⛔ Gemessen 23.09.: 6.435 Namen sind als JSON 135.135 Zeichen - mehr
+      als ARG_MAX (typisch 131.072). Der Aufruf starb mit
+      "Argument list too long". Auf dem Server laeuft node ueber
+      `docker exec`, was zusaetzlich kostet; die Grenze liegt also
+      bewusst deutlich darunter.
+    """
+    raus, jetzt, laenge = [], [], 2
+    for n in namen:
+        # +2, nicht +1: json.dumps trennt mit Komma UND Leerzeichen.
+        # Der Unterschied sind bei 3.000 Namen genau 3.000 Zeichen - und
+        # damit die Pruefung rot (gemessen: 62.979 statt <= 60.000).
+        kosten = len(json.dumps(n, ensure_ascii=False)) + 2
+        if jetzt and laenge + kosten > grenze:
+            raus.append(jetzt)
+            jetzt, laenge = [], 2
+        jetzt.append(n)
+        laenge += kosten
+    if jetzt:
+        raus.append(jetzt)
+    return raus
+
+
 def _gruende(namen):
     """Jeden Namen von der EINEN Regel beurteilen lassen. Ein node-Aufruf."""
     if not namen:
         return {}
     import ablauf_pruefen
-    js = _regel_js() + ("\nconsole.log(JSON.stringify(%s.map("
-                        "n => [n, NICHTDOKUMENT(n)])));"
-                        % json.dumps(namen, ensure_ascii=False))
-    return dict((n, g) for n, g in json.loads(ablauf_pruefen.node_lauf(js)) if g)
+    regel = _regel_js()
+    treffer = {}
+    for paket in _pakete(namen):
+        js = regel + ("\nconsole.log(JSON.stringify(%s.map("
+                      "n => [n, NICHTDOKUMENT(n)])));"
+                      % json.dumps(paket, ensure_ascii=False))
+        for n, g in json.loads(ablauf_pruefen.node_lauf(js)):
+            if g:
+                treffer[n] = g
+    return treffer
 
 
 def ziel_fuer(pfad):

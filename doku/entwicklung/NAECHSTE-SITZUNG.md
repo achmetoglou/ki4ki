@@ -236,6 +236,34 @@ und gleicht ab, was n8n **wirklich geladen** hat. Aufruf auf dem Host:
 2. **`LESBAR_BYTE`** (siehe oben), gehört zu Teil 3.
 3. **Die Protokoll-Wiederholung** bei jedem Minutentakt (§3, Punkt 2).
 
+## 3t - FEHLER VON MIR, behoben: `--alles` sprengte die Befehlszeile
+
+```
+OSError: [Errno 7] Argument list too long: 'docker'
+```
+
+Alle Namen gingen in EINEN node-Aufruf. Gemessen: 6.435 Namen sind als
+JSON **135.135 Zeichen** - ARG_MAX liegt typisch bei **131.072**.
+Jetzt in Haeppchen von hoechstens 60.000 Zeichen.
+
+### ⛔ Der lehrreiche Teil: mein erster Test war gruen
+
+Der naheliegende Test - 6.000 Namen durch `_gruende` schicken - ist auf
+meiner Maschine **gruen**, weil `node` dort direkt vorliegt. Auf dem
+Server laeuft er ueber `docker exec`, und erst dort reisst die Grenze.
+
+⭐ **Ein Test, der nur auf einer von zwei Maschinen rot wird, prueft die
+Maschine, nicht den Code.** Deshalb prueft er jetzt die EIGENSCHAFT:
+kein Paket ueber 60.000 Zeichen, und zusammengesetzt wieder dieselben
+Namen in derselben Reihenfolge. Das ist ueberall reproduzierbar.
+Gehoert zur Regel in §7 (Teile statt Weg) als zweite Spielart:
+**die falsche UMGEBUNG messen.**
+
+⚠ Und die Rechnung war beim ersten Anlauf auch noch falsch: `json.dumps`
+trennt mit Komma UND Leerzeichen, also 2 Zeichen je Name statt 1. Bei
+3.000 Namen sind das genau 3.000 Zeichen Unterschied - die Pruefung wurde
+rot (62.979 statt <= 60.000) und hat es gefangen.
+
 ## 3s - ABGENOMMEN 23.09. mittags: was laeuft, laeuft richtig
 
 ### ✅ Es laeuft, was wir gepusht haben

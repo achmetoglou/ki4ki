@@ -12,6 +12,7 @@ Aufruf:   python3 wegraeumtest.py      (Exit 0 = alle gruen)
 """
 import io
 import os
+import json
 import shutil
 import sys
 import tempfile
@@ -150,11 +151,68 @@ def test_vorschau_ueber_den_parkplatz():
         shutil.rmtree(d, ignore_errors=True)
 
 
+def test_viele_namen_sprengen_den_aufruf_nicht():
+    """Der Parkplatz hat 6.435 Dateien - der Aufruf muss das aushalten.
+
+    ⛔ Gemessen 23.09. auf dem Server: `--alles` stuerzte ab mit
+      "OSError: [Errno 7] Argument list too long: 'docker'". Alle Namen
+      wurden in EINEN Aufruf geschrieben; ab ein paar tausend sprengt das
+      die Laenge der Befehlszeile.
+
+    ⭐ Warum es im Test vorher nicht auffiel: Der Probebaum hat fuenf
+      Dateien. Eine Grenze, die erst bei Tausenden greift, sieht man nur,
+      wenn man Tausende nimmt.
+    """
+    print("\nViele Namen auf einmal")
+    namen = ["Bericht_%05d.pdf" % i for i in range(6000)]
+    namen += ["Thumbs.db", "~$Angebot.docx"]
+    treffer = w._gruende(namen)
+    pruefe(treffer.get("Thumbs.db") == "Ordner-Merkdatei",
+           "die Merkdatei wird auch in der grossen Menge erkannt")
+    pruefe(treffer.get("~$Angebot.docx") == "Office-Sperrdatei",
+           "die Sperrdatei ebenso")
+    pruefe(len(treffer) == 2,
+           "und die 6.000 echten Dokumente bleiben unbehelligt (ist: %d)"
+           % len(treffer))
+
+
+def test_pakete_bleiben_unter_der_befehlsgrenze():
+    """Kein Aufruf darf die Laenge der Befehlszeile sprengen.
+
+    ⛔ Gemessen 23.09. auf dem Server: `--alles` stuerzte ab mit
+      "OSError: [Errno 7] Argument list too long: 'docker'". 6.435 Namen
+      gingen in EINEN node-Aufruf.
+
+    ⛔ Warum der naheliegende Test NICHT taugt: Einfach 6.000 Namen durch
+      _gruende schicken ist auf meiner Maschine gruen, weil node dort
+      direkt vorliegt - auf dem Server laeuft er ueber `docker exec`, und
+      erst dort reisst die Grenze. Ein Test, der nur auf einer von zwei
+      Maschinen rot wird, prueft die Maschine, nicht den Code. Deshalb
+      wird hier die EIGENSCHAFT geprueft: jedes Paket bleibt klein genug,
+      egal wo es laeuft.
+    """
+    print("\nPakete bleiben unter der Befehlsgrenze")
+    namen = ["Bericht_%05d.pdf" % i for i in range(6435)]
+    pakete = w._pakete(namen, grenze=60000)
+    zu_gross = [len(json.dumps(p)) for p in pakete
+                if len(json.dumps(p)) > 60000]
+    pruefe(not zu_gross,
+           "kein Paket ueber 60.000 Zeichen (zu gross: %s)" % zu_gross)
+    wieder = [n for p in pakete for n in p]
+    pruefe(wieder == namen,
+           "und zusammen sind es wieder genau dieselben Namen, "
+           "in derselben Reihenfolge")
+    pruefe(w._pakete([], grenze=60000) in ([], [[]]),
+           "leere Liste macht keinen Aerger")
+
+
 if __name__ == "__main__":
     test_zielpfad()
     test_trockenlauf_bewegt_nichts()
     test_wirklich_raeumt_auf()
     test_zweimal_raeumen_schadet_nicht()
     test_vorschau_ueber_den_parkplatz()
+    test_viele_namen_sprengen_den_aufruf_nicht()
+    test_pakete_bleiben_unter_der_befehlsgrenze()
     print("\n%d Fehler" % len(FEHLER))
     sys.exit(1 if FEHLER else 0)
