@@ -239,6 +239,85 @@ und gleicht ab, was n8n **wirklich geladen** hat. Aufruf auf dem Host:
 2. **`LESBAR_BYTE`** (siehe oben), gehört zu Teil 3.
 3. **Die Protokoll-Wiederholung** bei jedem Minutentakt (§3, Punkt 2).
 
+## 5 - ⭐⭐⭐ HIER WEITERMACHEN (24.09.): der Probelauf mit EINEM Kundenordner
+
+⛔ **Den grossen KAP-Lauf NICHT starten.** Der Probelauf hat einen echten
+Fehler gefunden - bei 6.435 Dateien waeren das rund 5.800 aussortierte
+Dokumente.
+
+### Der Lauf (23.09. abends, ein Kundenordner mit gemischten Formaten)
+
+```
+54 Dateien eingelegt
+  14 vom Aufraeum-Werkzeug entfernt (8 macOS-Metadateien, 7 Merkdateien)
+  40 gingen in die Kette
+
+Ergebnis:  archiv 19 | aussortiert 39 | Bestand 83 -> 84
+Arbeitsbereich kap: 1 -> 4 Dokumente
+```
+
+Aussortier-Gruende, nur der 23.09.:
+
+```
+ 36  im Arbeitsbereich nicht wiedergefunden - Aufnahme unvollstaendig   <-
+  8  macOS-Metadatei          (vom Aufraeum-Werkzeug, richtig)
+  7  Ordner-Merkdatei         (vom Aufraeum-Werkzeug, richtig)
+  5  Format nicht vorgesehen  (richtig)
+```
+
+⭐ **Kein `[LEERLAUF]`** - die Kette ist nicht leer gelaufen. Jede Datei
+hat eine Entscheidung bekommen. Der Return-Knoten aus §3m musste nicht
+einspringen.
+
+### ⛔ Der Fehler: 36 von 40 gelten als "nicht angekommen"
+
+Die Stelle ist `Ablage entscheiden` in Ablaufplan 1:
+
+```js
+const drin = !leer && !korrespondenz && !nicht_vorgesehen
+  && !!abdruck && gefunden.some(g => g.includes(abdruck));
+```
+
+Verglichen wird der **Abdruck** (zehn Zeichen) gegen die Dokumentnamen,
+die der Arbeitsbereich nach dem Einbetten meldet.
+
+⭐ **Der Abdruck ist NICHT das Problem** - er steht nachweislich in den
+Namen der angekommenen Dokumente:
+
+```
+kap-Lanxess-...-Bericht-274821-Lanxess-IKV--avqjw2rqp5
+kap-probe-Angebot-275921-RobertB-IKV--qptblifciq
+kap-probe-probe-stoerrisch--tzczyppynp
+```
+
+⚠ Am 22.09. war genau dieser Teil abgenommen (§3e, "ABNAHME
+BESTANDEN"). Seitdem hat sich etwas geaendert - **das ist der Faden.**
+
+### Verdaechte, noch KEINER gemessen
+
+| Verdacht | wie zu pruefen |
+|---|---|
+| **Zeitpunkt**: Der Arbeitsbereich meldet nach dem Einbetten noch nicht alle Dokumente; bei 25 je Durchgang fehlen die spaeteren | Antwort von "In Workspace einbetten" fuer einen Durchgang ansehen: wie viele Dokumente stehen drin? |
+| **Nur der letzte zaehlt**: `$input.all()` liefert weniger Elemente als erwartet | im Durchgang die Elementzahl an dieser Stelle zaehlen |
+| **Namensumbau**: AnythingLLM schreibt den Namen so um, dass der Abdruck zerfaellt | die gemeldeten Namen gegen die erwarteten Abdruecke halten |
+
+⛔ **Zweiter, vermutlich verwandter Fehler:** Ein Klick auf ein
+angekommenes Dokument gibt *"Dieses Dokument liegt nicht vor."*
+Das Dokument ist im Arbeitsbereich, die PDF dazu wird nicht gefunden -
+obwohl `archiv` 19 Dateien zeigt.
+
+### Reihenfolge fuer morgen
+
+1. **Diesen Fehler** - ohne ihn ist der grosse Lauf sinnlos
+2. Der **Beleg-Fehler** aus §4 (gemessen: "8 Zitate geprueft, 4 nicht
+   gefunden"; ein Klick fuehrte auf eine Seite, auf der das Zitat
+   sichtbar STEHT - vermutlich Bildfolien ohne Textschicht)
+3. Erst dann der grosse KAP-Lauf
+
+⭐ **Was dieser Probelauf wert war:** Emrach hat darauf bestanden, mit
+EINEM Ordner zu testen statt mit allen. Genau das hat den Fehler gefunden,
+bevor er 6.435 Dateien betraf.
+
 ## 4k - GEBAUT 23.09. spaet: das Kontextfenster passt sich der Frage an
 
 Gemessen, nachdem qwen3.8 zu 100 % auf der Karte lief:
