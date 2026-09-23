@@ -233,7 +233,103 @@ und gleicht ab, was n8n **wirklich geladen** hat. Aufruf auf dem Host:
 2. **`LESBAR_BYTE`** (siehe oben), gehört zu Teil 3.
 3. **Die Protokoll-Wiederholung** bei jedem Minutentakt (§3, Punkt 2).
 
-## 3j - HIER WEITERMACHEN (Stand 23.09. vormittags)
+## 3k - GEMESSEN 23.09. mittags: die Kette traegt, EINE Datei legt sie still
+
+### Der Versuch
+
+Drei Dateien nach `kap/input/_probe` kopiert - eine `.pdf`, eine `.doc`,
+eine `.db`. Dann gemessen:
+
+```
+nach 400 s     input 1 von 3 uebrig
+               archiv 0 -> 4   (Original + gewandelte PDF + Steuerdatei)
+               Bestand kap 1 -> 3
+nach 23 min    input 1 (.db), unveraendert - ueber 20 Durchgaenge hinweg
+               weder verarbeitet noch aussortiert
+```
+
+**Ergebnis: `.pdf` und `.doc` laufen vollstaendig durch.** Gewandelt,
+hochgeladen, abgelegt. Die Kette ist nicht kaputt.
+
+### ⛔ Die `.db` ist der Stoerenfried - und sie blockiert DAUERHAFT
+
+Jede Minute laeuft ein Durchgang, nimmt die `.db` auf, die Unterausfuehrung
+gibt **kein Element** zurueck, `assignPairedItems` bricht. Der Baustein
+`Code` liest `$('Dateien in JSON umwandeln').all()` - leer - und liefert
+`return []`. Der Durchgang endet **gruen**. Die Datei bleibt liegen. Naechste
+Minute von vorn.
+
+⛔ **Solange sie im Eingang liegt, ist JEDER Durchgang vergiftet.** Neue
+Dateien landen im selben Block und werden mit stillgelegt - nicht kaputt,
+nur nie verarbeitet.
+
+Notbremse: Die Claim-Garantie schiebt nach **180 Minuten** aus dem Eingang.
+Drei Stunden je Stoerenfried, in denen nichts durchkommt.
+
+⭐ **Damit ist der 22.09. restlos erklaert.** In den 813 Dateien lagen 41
+`.db` und 54 Office-Sperrdateien. Bei Bloecken von 25 war praktisch jeder
+Block vergiftet, und zwar dauerhaft - die Stoerenfriede blieben liegen und
+waren beim naechsten Durchgang wieder dabei. Daher: 91 Wandlungen (die
+passieren vorher, in der Unterausfuehrung), null Uploads, ein Eingang, der
+sich nicht leerte.
+
+⚠ **Korrektur meines Befunds vom 22.09. abends.** Dort stand "die Kette
+verliert ihre Elemente" und daraus abgeleitet "die Kette ist kaputt". Falsch:
+Sie traegt. Ich hatte einen laufenden Durchgang mit `docker stop` abgewuergt
+(der "Error in 13ms" um 16:22 ist genau der) und seinen Stillstand als Defekt
+gelesen.
+
+### Gebaut: Office-Sperrdateien fliegen raus (`6385bec`)
+
+Im KAP-Bestand gemessen: **54 Office-Sperrdateien** (`.doc` 26, `.pptx` 14,
+`.docx` 10, `.xlsx` 3, `.xlsm` 1). Sie entstehen beim Oeffnen eines Dokuments
+und bleiben nach einem Absturz liegen - ein paar hundert Byte, aber mit der
+Endung des Originals. Also laufen sie in den Office-Zweig und legen den Block
+still wie die `.db`.
+
+```js
+if (b.startsWith('~$')) return 'Office-Sperrdatei';
+```
+
+Mit Gegenprobe: `Angebot ~$ Nachtrag.docx` bleibt drin - nur der Dateianfang
+zaehlt.
+
+⚠ **Das ist Linderung, keine Heilung.** Heute sind es Sperrdateien und
+`.db`, morgen ein Format, an das niemand gedacht hat.
+
+### ⭐ Die Reparatur, jetzt begruendet statt geraten
+
+Ein **Return-Knoten am Ende von Ablaufplan 2**, der IMMER genau ein Element
+liefert - im Fehlerfall `{ok: false, grund: "..."}`. Dann:
+
+- ueberlebt der Block, auch wenn eine Datei scheitert,
+- wandert die `.db` ehrlich nach `aussortiert` statt drei Stunden alles
+  aufzuhalten,
+- und der `Code`-Verstaerker bekommt wieder etwas zu lesen.
+
+Der Skill `n8n-subworkflows` nennt genau das als Vertragsfehler: *"Shape the
+output with a final Set node, named Return"* und *"Return errors, don't
+always throw"*. Er widerspricht zugleich dem naheliegenden Umbau: `mode: each`
+ist **richtig** gewaehlt; ein `Loop Over Items` im Unterablauf waere ein
+Anti-Muster.
+
+### Stand des Bereichs kap nach dem Aufraeumen
+
+```
+input         0
+parkplatz  6600    (15 oberste Ordner - zwei Kundenordner)
+archiv        1    nur die Steuerdatei bilder-nachholen.txt
+aussortiert   1    nur das Protokoll
+Bestand kap   1    von Hand hochgeladene Geheimhaltung, NICHT aus dem Lauf
+```
+
+### ⛔ Zwei Sitzungen an einer Maschine
+
+Am 23.09. haben zwei Sitzungen parallel Befehle gegeben - eine setzte die
+Laufsperre, die andere liess sie loesen. Die Lagebeschreibungen liefen
+sofort auseinander. **Eine Sitzung faehrt, die andere schweigt.**
+
+## 3j - Stand 23.09. vormittags (durch 3k ueberholt)
 
 ### Lage
 
