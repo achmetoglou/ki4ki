@@ -4,9 +4,11 @@
 Sitzungsanfang. Sie sagt, wo die Ziele stehen, was entschieden ist, was offen
 ist und was als Beweis zählt. **Erst lesen, dann arbeiten.**
 
-⭐ **Wer nur eines liest: §3l** - drei offene Nutzermeldungen. Die vom
-17.09. ist in §3n repariert (Abnahme offen), zwei sind unberuehrt. Was
-sonst am 23.09. gebaut wurde, steht in §3m.
+⭐ **Wer nur eines liest: §3l** — drei offene Nutzermeldungen. Die vom
+17.09. ist in §3n repariert. ⛔ **Drei Reparaturen warten auf Abnahme am
+laufenden System** (§3m Return-Knoten, §3n Chat-Anhang, §3o Leerlauf-
+Meldung). Erst abnehmen, dann weiterbauen — Stapeln hat am 22.09. den
+Schaden angerichtet.
 
 ---
 
@@ -233,6 +235,65 @@ und gleicht ab, was n8n **wirklich geladen** hat. Aufruf auf dem Host:
    Inhalt verloren — Emrach hat die Rohdaten lokal und kann sie neu bereitstellen.
 2. **`LESBAR_BYTE`** (siehe oben), gehört zu Teil 3.
 3. **Die Protokoll-Wiederholung** bei jedem Minutentakt (§3, Punkt 2).
+
+## 3o - GEBAUT 23.09. spaet: der stille Durchgang meldet sich
+
+Aus der Rueckmeldung: *"Das Problem am `return []` ist nicht der fehlende Wurf -
+es ist die Stille."* Stimmt. Gebaut, ohne zu werfen.
+
+```
+[LEERLAUF] Unterkette lieferte 0 Ergebnis(se) fuer 25 Datei(en) - dieser
+Durchgang legt nichts ab, der Eingang bleibt voll, und er meldet trotzdem
+Erfolg. Siehe BUGS_UND_FIXES 29.
+```
+
+⭐ **Kein Wurf, wie vorgeschlagen.** Ein Wurf beendete den Durchgang vor
+`Sperre freigeben`; die Laufsperre bliebe liegen und blockierte alles bis zum
+120-Minuten-Notnagel (am 04.08. schon passiert). Die Zeile geht raus, danach
+laeuft alles wie bisher weiter.
+
+### ⛔ Der Haken, der die Zeile fast taub gemacht haette
+
+`console.log` aus einem n8n-Code-Baustein geht laut n8n-Doku **in die
+Browser-Konsole**, nicht ins Container-Protokoll. `CODE_ENABLE_STDOUT` steht per
+Vorgabe auf `false`:
+
+> *"Set to `true` to send Code node logs from `console.log` or `print` to the
+> process's stdout, only for production executions."*
+
+⭐ **Daraus folgt ein zweiter Befund:** Die **beiden Meldungen, die
+Ablaufplan 1 schon immer schrieb** (`[Sperre] ...` und `... zu verarbeiten`),
+waren im Betrieb **nie** zu sehen. Am laufenden System nachgezaehlt: 2.519
+Zeilen im n8n-Protokoll, **0 Treffer** fuer beide Marker.
+⚠ Diese Null allein beweist nichts — bei leerem Eingang laufen die Bausteine
+gar nicht. Belastbar ist die Doku-Vorgabe, und `docker exec` auf die
+KI4KI-Container ist hier gesperrt, also blieb der Schalter am laufenden System
+ungeprueft. **Die Gegenprobe macht die Abnahme** (siehe unten).
+
+Deshalb zusaetzlich `CODE_ENABLE_STDOUT=true` in `docker-compose.yml`.
+⚠ Damit koennen kuenftige `console.log` auch Dokumentinhalte ins Protokoll
+schreiben. Die drei vorhandenen tun es nicht.
+
+### Pruefung
+
+`test_stiller_durchgang_meldet_sich` in `bau/ablauf_pruefen.py` - 7 Stellen.
+Rot vor dem Bau: **2 Fehler** (Marker fehlt, Schalter fehlt). Danach 0.
+Geprueft wird die Meldung ausgefuehrt (nicht gelesen): meldet bei 0 von 3,
+schweigt bei 3 von 3, nennt beide Zahlen, und meldet **nicht** bei null
+Dateien.
+
+### ⭐ Gegenprobe fuer den Schalter, kostenlos
+
+Nach `aktualisiere.sh` muessen im n8n-Protokoll die **alten** Zeilen
+auftauchen, sobald ein Durchgang mit Dateien laeuft:
+
+```bash
+docker logs ki4ki-n8n 2>&1 | grep -E "zu verarbeiten|\[Sperre\]" | tail -5
+```
+
+Kommt da nichts, hat der Schalter nicht gewirkt — und die Leerlauf-Meldung
+waere ebenfalls taub. **Das ist die eigentliche Abnahme dieses Punktes**, nicht
+die gruene Pruefreihe.
 
 ## 3n - GEBAUT 23.09. spaet: der Anhang-Weg liest jetzt ALLE Dateien
 
@@ -1299,6 +1360,23 @@ verstümmelt werden. Keine Codestelle darf den ganzen Schlüssel vergleichen.
   s.startswith(bereich)`, wenn der lesbare Teil stets mit dem Bereich beginnt.
   ⭐ **Regel: Zu jeder Prüfung gehört der Nachweis, mit welcher Eingabe sie
   fehlschlägt. Steht der nicht dabei, ist die Prüfung nicht fertig.**
+- ⛔ **Eine Prüfung, die die TEILE misst statt den WEG.** Neu am 23.09.,
+  zweiter Fall in zwei Tagen. Eine Prüfung kann rot werden *können* und
+  trotzdem nie rot werden, wenn sie auf der falschen Flughöhe schaut:
+
+  | Datum | Prüfung | Maß die Teile | Hätte messen müssen |
+  |---|---|---|---|
+  | 23.09. | `test_unterkette_reisst_nicht_mit` | Fehlerabfang je Baustein (nur HTTP + Extract) | gibt es einen **Weg**, auf dem nichts verlorengeht? |
+  | 22.09. | `linkprobe.py` | Links einzeln | tote Links wurden als „Altbestand“ verbucht statt gemeldet |
+
+  Die erste war **grün, während der Fehler lief** — elf weitere Bausteine
+  konnten den Ablauf abbrechen, die sie gar nicht ansah.
+  ⭐ **Regel: Lautet die Anforderung „X kommt IMMER heraus“, muss die
+  Prüfung einen Pfad prüfen, keine Liste von Bausteinen.** Eine Zusicherung
+  ist eine Eigenschaft des ganzen Weges. War eine Prüfung grün, während ein
+  Fehler lief: nicht nachbessern — fragen, auf welcher Flughöhe sie hätte
+  schauen müssen.
+
 - ⛔ **Ein Versuch ohne Gegenprobe, deren erwartetes Ergebnis das umgekehrte
   ist.** Am 21.09. sollte geklärt werden, ob Docling ein gekacheltes Bild als
   eine große Abbildung erkennt. Es tat es — aber die Gegenprobe (fünf getrennte

@@ -589,6 +589,73 @@ def test_rueckgabe_garantiert():
     pruefe(e[7] == "", "im Fehlerfall ist der Text leer -> aussortiert")
 
 
+def test_stiller_durchgang_meldet_sich():
+    """Ein Durchgang, der nichts ablegt, darf das nicht verschweigen.
+
+    ⛔ Gemessen 22./23.09.: Gab die Unterkette nichts zurueck, lieferte
+      "Code" still `return []`. Der Durchgang endete gruen und leer, jede
+      Minute neu. Das hat zwei Tage gekostet - nicht weil es kaputt war,
+      sondern weil es still war.
+
+    ⭐ Kein Wurf. Ein Wurf beendet den Durchgang vor "Sperre freigeben",
+      die Laufsperre bliebe liegen und blockierte alles bis zum
+      120-Minuten-Notnagel (schon passiert am 04.08.). Also: melden und
+      weitermachen wie bisher.
+
+    ⛔ Und die Meldung muss HOERBAR sein. Laut n8n-Doku ist
+      CODE_ENABLE_STDOUT per Vorgabe `false`; console.log aus einem
+      Code-Baustein geht dann nur in die Browser-Konsole, nicht ins
+      Container-Protokoll. Ohne den Schalter waeren die beiden bereits
+      vorhandenen console.log in Ablaufplan 1 ebenfalls nie zu sehen
+      gewesen - und genau das war der Fall.
+    """
+    print("\nEin stiller Durchgang meldet sich")
+    plan = _plan_lesen("1_KI4KI-Masse-Ingest.json")
+    if plan is None:
+        return
+    kn = [n for n in plan["nodes"] if n.get("name") == "Code"]
+    if not kn:
+        pruefe(False, "Baustein 'Code' fehlt - NICHT geprueft")
+        return
+    js = ausschnitt(kn[0].get("parameters", {}).get("jsCode", "") or "",
+                    "// --- STILLE MELDEN ---", "// --- ENDE STILLE MELDEN ---",
+                    "die Leerlauf-Meldung im Baustein Code")
+    if js is not None:
+        faelle = """
+          const zeilen = [];
+          const melden = m => zeilen.push(String(m));
+          const raus = [];
+          raus.push(_stille_melden([], [1,2,3], melden));
+          raus.push(zeilen.length);
+          raus.push(/\\b3\\b/.test(zeilen[0] || '') && /\\b0\\b/.test(zeilen[0] || ''));
+          raus.push(_stille_melden([1,2,3], [1,2,3], melden));
+          raus.push(zeilen.length);
+          raus.push(_stille_melden([], [], melden));
+          console.log(JSON.stringify(raus));
+        """
+        e = json.loads(node_lauf(js + faelle))
+        pruefe(e[0] is True, "leeres Ergebnis bei 3 Dateien wird gemeldet")
+        pruefe(e[1] == 1, "genau eine Zeile, nicht je Datei eine")
+        pruefe(e[2] is True,
+               "die Zeile nennt BEIDE Zahlen (0 von 3) - sonst sagt sie "
+               "nicht, wie gross der Verlust war")
+        pruefe(e[3] is False, "vollstaendiges Ergebnis meldet nichts")
+        pruefe(e[4] == 1, "Gegenprobe: dabei kommt keine Zeile dazu")
+        pruefe(e[5] is False, "gar keine Dateien ist kein Leerlauf")
+
+    # ⛔ Die Meldung nuetzt nichts, wenn n8n sie nicht durchlaesst.
+    wurzel = os.path.dirname(PLAENE)
+    compose = os.path.join(wurzel, "docker-compose.yml")
+    if not os.path.exists(compose):
+        pruefe(False, "docker-compose.yml nicht gefunden - Hoerbarkeit "
+                      "NICHT geprueft")
+        return
+    text = io.open(compose, encoding="utf-8").read()
+    pruefe("CODE_ENABLE_STDOUT=true" in text,
+           "CODE_ENABLE_STDOUT=true steht in der Compose - sonst geht die "
+           "Meldung nur in die Browser-Konsole und nie ins Protokoll")
+
+
 def test_plaene_unversehrt():
     """Die Plaene muessen ladbar und vollstaendig bleiben."""
     print("\nAblaufplaene unversehrt")
@@ -685,6 +752,7 @@ if __name__ == "__main__":
     test_bereichserkennung()
     test_office_pdf_liegt_neben_dem_original()
     test_rueckgabe_garantiert()
+    test_stiller_durchgang_meldet_sich()
     test_plaene_unversehrt()
     test_was_n8n_wirklich_geladen_hat()
     print("\nGeprueft wurden die Plaene in: %s" % PLAENE)

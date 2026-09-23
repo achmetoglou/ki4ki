@@ -191,6 +191,12 @@ services:
     - "5678:5678"
     environment:
     - N8N_ENABLE_EXECUTE_COMMAND=true
+    # ⛔ Ohne das geht console.log aus einem Code-Baustein NUR in die
+    #   Browser-Konsole (n8n-Doku: Vorgabe false). Die beiden Meldungen,
+    #   die Ablaufplan 1 schon immer schrieb ('[Sperre] ...', '... zu
+    #   verarbeiten'), waren deshalb im Betrieb nie zu sehen - und die
+    #   Leerlauf-Meldung waere es auch nicht.
+    - CODE_ENABLE_STDOUT=true
     # ohne das kann der Workflow $env.KI4KI_API_KEY nicht lesen -> Upload 401
     - N8N_BLOCK_ENV_ACCESS_IN_NODE=false
     # n8n 2.31 sperrt den executeCommand-Node sonst per Default (dann steht
