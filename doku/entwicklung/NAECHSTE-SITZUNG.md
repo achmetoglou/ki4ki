@@ -239,6 +239,59 @@ und gleicht ab, was n8n **wirklich geladen** hat. Aufruf auf dem Host:
 2. **`LESBAR_BYTE`** (siehe oben), gehört zu Teil 3.
 3. **Die Protokoll-Wiederholung** bei jedem Minutentakt (§3, Punkt 2).
 
+## 3x - BEOBACHTET 23.09.: mehrere Fragen werden in den Pruefungskatalog umgeleitet
+
+Beim Versuch zur Meldung vom 18.09. (elf Fragen, vier beantwortet) trat
+etwas anderes auf - reproduzierbar, zweimal hintereinander, im Bereich `auw`:
+
+```
+Frage:  "Beantworte jede Frage mit genau einer Zahl ... 1. 2+2? 2. 3+3? ..."
+Anlage: Denke nach ... Hole die Frage aus dem Katalog ...
+        "Frage 1 von 29 (Thema: Waermebehandlung ...)"
+naechste Nachricht -> "Frage 2 von 29"
+```
+
+Die gestellten Fragen wurden **nicht beantwortet**. Stattdessen stellte die
+Anlage Pruefungsfragen aus einem Katalog des Bereichs.
+
+### Was der Quelltext dazu sagt
+
+⛔ Der **deterministische** Weg erklaert es NICHT:
+`pruefungskatalog.ist_wunsch()` verlangt Woerter wie "Pruefungsfrage",
+"frag mich ab", "quiz", "naechste Frage" - keines davon stand in der Frage.
+Und liegt eine Frage offen, faellt eine fachfremde Eingabe ausdruecklich
+durch (`return False  # "warum?", andere Frage -> Gespraech mit Vorwissen`).
+
+⭐ **Uebrig bleibt der Weg ueber das Modell.** Der Gespraechsmodus bietet
+ein Werkzeug *"Eine EXAKTE Frage aus einem Pruefungskatalog des Bereichs"*
+(`gespraech.py`, WERKZEUGE). Die Statuszeile "Hole die Frage aus dem
+Katalog ..." ist genau dieses Werkzeug. In einem Bereich voller
+Pruefungskataloge waehlt das Modell es offenbar, sobald eine Eingabe nach
+nummerierten Fragen aussieht.
+
+⚠ **Beobachtung, kein Befund.** Belegt ist, WAS passiert; der Weg dorthin
+ist aus dem Quelltext erschlossen, nicht gemessen.
+
+### ⛔ Zwei Fehler in meinem Versuchsaufbau
+
+1. **Alles im selben Faden.** Nach der ersten Antwort trug der Faden eine
+   offene Pruefungsfrage; jede weitere Nachricht lief in denselben Zweig.
+   Ein Versuch ueber mehrere Zuege braucht **je Lauf einen frischen Faden**.
+2. **Rechenaufgaben in einem Bereich voller Pruefungskataloge.** Denkbar
+   ungeeignet: Genau dort hat das Modell ein Werkzeug, das nach
+   "nummerierte Fragen" aussieht. Der Versuch zur Antwortlaenge gehoert in
+   einen Bereich OHNE Kataloge.
+
+⭐ Beides ist dieselbe Familie wie die Regel in §7: Ich habe die richtige
+Sache gemessen, aber in einer Umgebung, die die Messung selbst veraendert.
+
+### Offen
+
+- Der Deckel `num_predict: 1800` in `gespraech.py` ist weiterhin der
+  Hauptverdacht fuer die Meldung vom 18.09. - **ungeprueft**.
+- Die Umleitung in den Katalog ist ein **eigener** Punkt. Sie kann
+  Nutzerfragen unbeantwortet lassen, ohne dass jemand es merkt.
+
 ## 3w - GEMESSEN 23.09.: 410 Nichtdokumente, nicht 95
 
 ```
