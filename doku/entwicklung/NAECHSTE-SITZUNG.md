@@ -239,6 +239,33 @@ und gleicht ab, was n8n **wirklich geladen** hat. Aufruf auf dem Host:
 2. **`LESBAR_BYTE`** (siehe oben), gehört zu Teil 3.
 3. **Die Protokoll-Wiederholung** bei jedem Minutentakt (§3, Punkt 2).
 
+## 4b - FUER PARTNER-ANLAGEN: was der 23.09. bringt, und was dafuer zu tun ist
+
+⭐ **Zu tun ist genau eins:** `cd ~/ki4ki && ./aktualisiere.sh`.
+Alle Werte stehen in `docker-compose.yml` und kommen damit automatisch
+mit - kein Eingriff an der Anlage, nichts von Hand zu setzen. Wer einen
+Wert anders will, setzt ihn in der `.env`; die Compose nutzt ueberall
+`${VAR:-Vorgabe}`.
+
+| Symptom beim Partner | Ursache | ab jetzt |
+|---|---|---|
+| Aufnahme laeuft, aber nichts kommt im Bestand an - Durchgang meldet trotzdem Erfolg | eine stoerrische Datei gab kein Element zurueck und riss den ganzen Block mit | Ablaufplan 2 sichert eine Rueckgabe zu (§3m); ein Leerlauf meldet sich jetzt laut (§3o) |
+| Mehrere Dateien an den Chat gehaengt, nur eine wird ausgewertet | der Merkspeicher hielt nur eine, und gleichzeitige Uploads ueberholten sich | alle Dateien werden zusammengefuehrt, wettrennsicher (§3n, §3u) |
+| Lange Antwort bricht mitten im Wort ab | fest verdrahtete Grenze von 1800 Token | 8192, und ein Abschnitt wird benannt statt verschwiegen (§3y) |
+| Derselbe Dokumenttitel steht zweimal unter der Antwort | "durchsucht" und "vollstaendig gelesen" nannten ihn beide | nur noch einmal (§3z) |
+| Threadwechsel dauert Sekunden | ein Zwischenspeicher, dessen Schluessel sich bei jeder Antwort selbst aenderte | Schluessel stabil (§4a) |
+| Eingang wird nie leer | Thumbs.db, ._* und Office-Sperrdateien werden uebersprungen, aber nie geraeumt | `bau/nichtdokumente_wegraeumen.py` (§3q) |
+
+⚠ **Ein Wert lohnt einen Blick je Anlage:** `KI4KI_ANTWORT_TOKEN=8192`
+passt zu rund 54 Token/s. Ist die Grafikkarte langsamer, dauert eine volle
+Antwort laenger als die Zeitgrenze von 600 s - dann entweder die Grenze
+hoch oder die Tokenzahl runter. Die Token-Rate steht bei jeder Antwort in
+der Oberflaeche (`outputTps`).
+
+⭐ **Welche Fassung laeuft?** Seit §3r schreibt jeder Durchgang den Commit
+ins Protokoll: `docker logs ki4ki-n8n | grep Stand`. Damit ist ohne
+Ratespiel zu klaeren, ob eine Partner-Anlage den Stand wirklich hat.
+
 ## 4a - GEFUNDEN 23.09.: der Threadwechsel dauerte 2,2 s, weil ein Zwischenspeicher nie traf
 
 Rueckmeldung: *"das umschalten der threads braucht voll lange aufeinmal"*.

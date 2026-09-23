@@ -324,6 +324,17 @@ services:
     # fuer Zusammenfassungen ganzer Dokumente: am Suchweg vorbei
     - KI4KI_MODELL=http://nothink-proxy:11435/api/chat
     - KI4KI_MODELL_NAME=gemma4:12b
+    # ⛔ Die Antwortlaenge. Bis zum 23.09. steckte hier fest 1800 im
+    #   Code - bei Fachtext rund vier ausfuehrliche Antworten. Eine
+    #   Anweisung mit elf Fragen brach deshalb mitten im Wort ab
+    #   (Nutzermeldung 18.09.). Das Kontextfenster fasst 65.536; der
+    #   Deckel war die Engstelle, nicht das Modell.
+    # ⚠ Wer ihn hochsetzt, muss die Zeitgrenze mitziehen: Bei
+    #   gemessenen 53,9 Token/s braucht 8192 rund 152 s, mit grossem
+    #   Kontext entsprechend mehr. Reisst die Zeitgrenze, stirbt die
+    #   Anfrage GANZ - schlechter als eine gekuerzte Antwort.
+    - KI4KI_ANTWORT_TOKEN=${KI4KI_ANTWORT_TOKEN:-8192}
+    - KI4KI_GESPRAECH_TIMEOUT=${KI4KI_GESPRAECH_TIMEOUT:-600}
     - KI4KI_BESTAND=/daten/bestand/documents
     - KI4KI_PDFS=/daten/pdfs
     # Wohin der Hochladen-Knopf schreibt. Derselbe Ordner, den n8n

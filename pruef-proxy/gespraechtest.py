@@ -111,10 +111,37 @@ def test_der_hinweis_kommt_wirklich_im_gespraechszug_an():
            "Gegenprobe: eine fertige Antwort bekommt keinen Hinweis")
 
 
+def test_die_werte_kommen_auch_bei_partnern_an():
+    """Eine Vorgabe im Code nuetzt nichts, wenn die Anlage sie nicht setzt.
+
+    ⛔ Die Grenzen stehen in gespraech.py als Vorgabe - aber eine
+      Partner-Installation startet ueber docker-compose.yml. Steht der
+      Wert dort nicht, laeuft der Partner weiter mit der Vorgabe, und
+      der Befund vom 18.09. waere fuer ihn nicht behoben.
+
+    ⭐ Deshalb gehoeren beide Werte in die Compose - mit ${VAR:-...},
+      damit ein Partner sie ohne Aenderung an der Datei ueberschreiben
+      kann. Genau dieser Stil steht dort schon fuer neun andere Werte.
+    """
+    print("\nDie Werte stehen in der Compose, nicht nur im Code")
+    hier = os.path.dirname(os.path.abspath(__file__))
+    compose = os.path.join(os.path.dirname(hier), "docker-compose.yml")
+    if not os.path.exists(compose):
+        pruefe(False, "docker-compose.yml nicht gefunden - NICHT geprueft")
+        return
+    t = open(compose, encoding="utf-8").read()
+    pruefe("KI4KI_ANTWORT_TOKEN=${KI4KI_ANTWORT_TOKEN:-8192}" in t,
+           "die Antwortlaenge steht in der Compose und ist ueberschreibbar")
+    pruefe("KI4KI_GESPRAECH_TIMEOUT=${KI4KI_GESPRAECH_TIMEOUT:-600}" in t,
+           "die Zeitgrenze ebenso - sonst laeuft eine lange Antwort in "
+           "die alten 240 s und stirbt ganz, statt nur gekuerzt zu werden")
+
+
 if __name__ == "__main__":
     test_abschnitt_wird_erkannt()
     test_hinweis_wird_angehaengt()
     test_grenze_ist_einstellbar()
     test_der_hinweis_kommt_wirklich_im_gespraechszug_an()
+    test_die_werte_kommen_auch_bei_partnern_an()
     print("\n%d Fehler" % len(FEHLER))
     sys.exit(1 if FEHLER else 0)
