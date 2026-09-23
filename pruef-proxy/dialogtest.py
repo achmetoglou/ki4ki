@@ -1566,11 +1566,48 @@ def szenario_27_wegabgleich_und_bildarten():
     # Gegenprobe: eine Pruefung entfernen -> rot
     import tempfile
     quelle = open(os.path.join(HIER, "pruef_proxy.py"), encoding="utf-8").read()
-    kaputt = quelle.replace('if not dokument_erlaubt(name, self.headers):\n            self._fehler(404, "Dieses Dokument liegt nicht vor.")   # wortgleich mit "unbekannt"', 'if False:\n            self._fehler(404, "x")', 1)
+    # \u26d4 Nur die BEDINGUNG mutieren, nicht Bedingung+Rumpf. Bis zum
+    #   23.09. stand hier beides woertlich - dann kam eine Protokollzeile
+    #   zwischen die zwei Zeilen und die Ersetzung griff nicht mehr. Die
+    #   Gegenprobe wurde dadurch ROT, obwohl am Loch nichts war: ein
+    #   Fehlalarm, der die naechste echte Meldung entwertet haette. Diese
+    #   Zeile kommt in pruef_proxy.py genau EINMAL vor (nachgezaehlt) -
+    #   _stelle & Co. vergleichen `stamm`, nicht `name`.
+    anker = "if not dokument_erlaubt(name, self.headers):"
+    pruefe(quelle.count(anker) == 1,
+           "Mutationsanker ist eindeutig (%dx gefunden)" % quelle.count(anker))
+    kaputt = quelle.replace(anker, "if False:", 1)
     pruefe(kaputt != quelle, "Gegenprobe vorbereitet (Pruefung in _pdf entfernt)")
     tmp = os.path.join(tempfile.mkdtemp(), "pruef_proxy.py"); open(tmp, "w", encoding="utf-8").write(kaputt)
     e2 = wegabgleich.pruefen(tmp)
     pruefe(any(o[0] == "_pdf" for o in e2["offen"]), "Gegenprobe: entfernte Pruefung wird als LOCH gemeldet")
+    # \u26d4 Der Beleg-Tor-Melder landet im Protokoll, und Protokolle werden
+    #   weitergereicht. Er darf deshalb NIE einen Dokumentnamen ausgeben -
+    #   nur Laenge und Ja/Nein. Geprueft am echten Melder, nicht am Kommentar
+    #   darueber: Kommentare ueber Vollstaendigkeit sind Behauptungen.
+    # linkprobe/zugangsprobe importieren das Modul genauso - main() ist
+    # durch __main__ geschuetzt, der Import startet keinen Dienst.
+    import pruef_proxy
+    import io as _io, contextlib as _cl
+    _geheim = "kap-Lanxess-Geheimprojekt-Rechnung-274821--3hifpjz74w"
+    _f = _io.StringIO()
+    with _cl.redirect_stderr(_f):
+        pruef_proxy._beleg_tor("/stelle", "nicht im PDF-Index", _geheim)
+    _aus = _f.getvalue()
+    pruefe(_aus.strip() != "", "der Melder meldet sich ueberhaupt")
+    pruefe("Lanxess" not in _aus and "Geheimprojekt" not in _aus
+           and "274821" not in _aus and _geheim not in _aus,
+           "der Melder gibt KEINEN Dokumentnamen aus")
+    pruefe(str(len(_geheim)) in _aus,
+           "der Melder nennt die Namenslaenge (%d)" % len(_geheim))
+    # Gegenprobe: WELCHE Eingabe macht diese Pruefung rot? Ein Melder, der
+    # den Namen mitschreibt.
+    _f2 = _io.StringIO()
+    with _cl.redirect_stderr(_f2):
+        print("[Beleg-Tor] /stelle abgewiesen: %s" % _geheim, file=sys.stderr)
+    pruefe("Lanxess" in _f2.getvalue(),
+           "Gegenprobe: ein Melder MIT Namen wuerde auffallen")
+
     t = "[Seite 3]\n<!-- image -->\n\nLine chart\n\nBild 6.17: Erreichter Druck\n\n<!-- image -->\n\nLogo\n\nText\n\nBild 6.18: Spannungen\n\n<!-- image -->\n\nPhotograph\n\nBild 5.6: Probekörper"
     pruefe(fadenfrage.bildarten_aus_text(t) == {"6.17": "Diagramm", "5.6": "Foto"}, "Bildarten aus der Docling-Klassifikation (Logo zaehlt nicht)")
     import kategorie as kat

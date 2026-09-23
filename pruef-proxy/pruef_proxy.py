@@ -2878,6 +2878,36 @@ def _pdfs_erneuern_wenn_faellig():
         pdfs_einlesen()
 
 
+def _beleg_tor(route, tor, dok):
+    """Welches Tor hat den Beleg-Klick abgewiesen?
+
+    \u26d4 Warum das noetig wurde (23.09.): In _stelle stehen ZWEI Tore mit
+      WORTGLEICHER Meldung ("Dieses Dokument liegt nicht vor"), in _pdf
+      ebenfalls. Das ist Absicht - niemand soll ueber die Fehlermeldung
+      Namen erraten koennen. Fuer den Nutzer ist das richtig, fuer die
+      Fehlersuche toedlich: Zwei voellig verschiedene Ursachen sehen von
+      aussen identisch aus. Die zugangsprobe hat deshalb nur EINES der
+      beiden gemessen (Rechte: in Ordnung) und den Fehler nicht gefunden.
+
+    \u2b50 Die entscheidende Angabe ist `abdruck`: Traegt der geschriebene
+      Name einen Abdruck, den PDFS_ABDRUCK kennt, ist der Name in Ordnung
+      und es liegt an Datei oder Recht. Kennt ihn niemand, ist schon der
+      Name in der Antwort falsch - dann ist es derselbe Fehler wie der
+      Schluesselsalat im Antworttext, nicht ein zweiter.
+
+    \u26d4 Gibt KEINEN Dokumentnamen aus - nur Laenge und Ja/Nein. Diese
+      Zeile landet im Protokoll, und Protokolle werden weitergereicht.
+    """
+    try:
+        bekannt = "ja" if schluessel.abdruck_finden(dok or "",
+                                                    PDFS_ABDRUCK) else "nein"
+        print("[Beleg-Tor] %s abgewiesen bei '%s' (Name %d Zeichen, "
+              "Abdruck bekannt: %s)" % (route, tor, len(dok or ""), bekannt),
+              file=sys.stderr, flush=True)
+    except Exception:
+        pass
+
+
 def _pdf_schluessel_roh(name):
     """Den echten Schluessel in PDFS zu einem geschriebenen Namen finden.
 
@@ -5466,6 +5496,7 @@ class Griff(BaseHTTPRequestHandler):
             # zusammengesetzt.
             pfad = _archivdatei(name)
         if not pfad or not os.path.exists(pfad):
+            _beleg_tor("/pdf", "weder PDF noch Originaldatei", name)
             self._fehler(404, "Dieses Dokument liegt nicht vor.")
             return
         # KI4KI-TOR-PDF: Angemeldet zu sein genuegt nicht. Das Dokument
@@ -5473,6 +5504,7 @@ class Griff(BaseHTTPRequestHandler):
         # Konto ohne jede Zuweisung an das vollstaendige PDF, sobald es den
         # Namen kannte. Antwort wie bei einem unbekannten Namen.
         if not dokument_erlaubt(name, self.headers):
+            _beleg_tor("/pdf", "kein Recht", name)
             self._fehler(404, "Dieses Dokument liegt nicht vor.")   # wortgleich mit "unbekannt"
             return
         try:
@@ -9598,13 +9630,16 @@ class Griff(BaseHTTPRequestHandler):
         except ValueError:
             seite = 1
         zitat = (felder.get("zitat") or [""])[0]
+        _geschrieben = stamm
         stamm = _pdf_schluessel(stamm)
         if not stamm:
+            _beleg_tor("/stelle", "nicht im PDF-Index", _geschrieben)
             self._sende_html("<p>Dieses Dokument liegt nicht vor.</p>", 404)
             return
         # KI4KI-TOR-STELLE: siehe _pdf. Die Fundstellenseite zeigt das
         # Zitat im Klartext und verlinkt das Seitenbild.
         if not dokument_erlaubt(stamm, self.headers):
+            _beleg_tor("/stelle", "kein Recht", _geschrieben)
             self._sende_html("<p>Dieses Dokument liegt nicht vor.</p>", 404)
             return
         gesamt = pdfstelle.seitenzahl(stamm) or seite
