@@ -239,6 +239,54 @@ und gleicht ab, was n8n **wirklich geladen** hat. Aufruf auf dem Host:
 2. **`LESBAR_BYTE`** (siehe oben), gehört zu Teil 3.
 3. **Die Protokoll-Wiederholung** bei jedem Minutentakt (§3, Punkt 2).
 
+## 5d - ⚠ OFFENE ENTSCHEIDUNG mit Verfallsdatum: IBM Granite als Einbetter?
+
+Emrach am 23.09.: *"ich dachte wegen der einbettung... und des rag
+systems.. damit sachen besser und schneller gefunden werden."*
+
+### Was fuer Granite spricht - und es ist NICHT die Qualitaet
+
+> "released under the Apache 2.0 license with cryptographic signatures,
+> ISO certification, and full transparency disclosures"
+> (ibm.com/granite/docs/models/granite4-1, abgerufen 23.09.)
+
+⭐ Fuer eine Anlage, die an Partner eines Uni-Instituts geht, ist die
+Herkunftsfrage echt. Qwen ist Alibaba, Gemma ist Google mit eigenen
+Bedingungen. Apache 2.0 + Signatur + ISO ist eine Antwort, die sich in ein
+Dokument schreiben laesst. Werkzeugaufrufe kann Granite laut IBM gut - das
+braucht der Assistent (`seiten_lesen`).
+
+⛔ Was die IBM-Seite NICHT sagt: nichts zu Deutsch, nichts zum
+Speicherbedarf. Beides ungemessen.
+
+### ⛔ Es loest den heutigen Fehler nicht
+
+Die Anlage FINDET die Lanxess-Rechnungen und nennt Seitenzahlen. Kaputt ist
+der Klick darauf (§5c). Ein anderer Einbetter aendert daran nichts.
+Und "schneller" auch nicht: Die 140 s waren das Schreiben der Antwort, nicht
+das Suchen - Suchen ueber 2.184 Dokumente dauert Millisekunden.
+
+### ⭐ Das Zeitfenster - deshalb steht es hier und nicht im Papierkorb
+
+```
+Einbetter wechseln = ALLES neu einbetten
+   jetzt:   120 Dokumente    -> machbar
+   nachher: 6.395 Dokumente  -> der ganze Lauf (67 h) nochmal
+```
+
+⛔ Also: NACH der Belegreparatur, VOR dem grossen Lauf. Danach ist die
+Tuer praktisch zu. Das ist der einzige Grund, die Frage nicht zu vertagen.
+
+### Womit entschieden wird
+
+⚠ Mit einer Messung, nicht mit einer Meinung: 20 echte Fragen, bei denen
+bekannt ist, welches Dokument die Antwort traegt - einmal `bge-m3`, einmal
+Granite, Treffer zaehlen. Ohne gemessenen Mangel an bge-m3 bleibt bge-m3.
+
+⭐ Die drei Rollen sind GETRENNT zu entscheiden. Chat (`qwen3.8`) und
+Analyse (`gemma4:e2b`) sind jederzeit umstellbar - ein Pull, eine
+Einstellung, zurueck in einer Minute. Nur der Einbetter hat das Verfallsdatum.
+
 ## 5c - ⛔ HIER WEITERMACHEN (24.09.): zwei Fehler an den Belegen
 
 Die Aufnahmekette traegt (§5b). Aber die aufgenommenen Dokumente sind
