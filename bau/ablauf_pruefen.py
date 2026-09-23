@@ -715,6 +715,49 @@ def test_stand_steht_im_protokoll():
            "wirklich und setzt den Stand ein")
 
 
+def test_docling_laesst_der_grafikkarte_luft():
+    """Docling darf der Sprachmaschine nicht den Speicher wegnehmen.
+
+    ⛔ Gemessen 23.09. abends auf der A40 (46.068 MiB):
+
+        gemma4:12b   8,9 GB   49%/51% CPU/GPU   <- haelbe Antwort auf CPU
+        qwen3.8      17  GB   100% GPU
+        gemma4:e2b   2,0 GB   100% GPU
+        ki4ki-docling        12.222 MiB
+        frei:                   927 MiB
+
+      Das Modell, das die Chats beantwortet, rechnete zur HAELFTE auf der
+      CPU. Genau dieser Zustand steht seit dem 04.08. in der Doku:
+      "Ollama bekam 931 MiB und rechnete auf der CPU (4,4 statt ~40 t/s)"
+      - damals 931 MiB frei, jetzt 927.
+
+    ⭐ Die Ursache stand danebengeschrieben:
+      DOCLING_SERVE_ENG_LOC_NUM_WORKERS=5. Jeder Worker haelt seine
+      eigenen Modelle; fuenf davon sind die 12,2 GB. Das Heilmittel (1)
+      war am 04.08. dokumentiert und irgendwann auf 5 hochgesetzt - ohne
+      Begruendung in der Compose.
+
+    ⚠ Es ist ein Tausch: Ein Worker wandelt Dokumente langsamer. Fuer
+      einen grossen Aufnahmelauf darf man ihn hochsetzen - aber nicht
+      dauerhaft, denn der Chat laeuft jeden Tag und die Aufnahme nicht.
+      Deshalb: Vorgabe 1, ueber KI4KI_DOCLING_WORKERS hebbar.
+    """
+    print("\nDocling laesst der Grafikkarte Luft")
+    wurzel = os.path.dirname(PLAENE)
+    compose = os.path.join(wurzel, "docker-compose.yml")
+    if not os.path.exists(compose):
+        pruefe(False, "docker-compose.yml fehlt - NICHT geprueft")
+        return
+    t = io.open(compose, encoding="utf-8").read()
+    pruefe("DOCLING_SERVE_ENG_LOC_NUM_WORKERS=5" not in t,
+           "⛔ nicht mehr fest auf 5 - das nahm der Sprachmaschine "
+           "10 GB weg und schob sie zur Haelfte auf die CPU")
+    pruefe("DOCLING_SERVE_ENG_LOC_NUM_WORKERS="
+           "${KI4KI_DOCLING_WORKERS:-1}" in t,
+           "Vorgabe 1, fuer einen Aufnahmelauf ueber "
+           "KI4KI_DOCLING_WORKERS hebbar")
+
+
 def test_plaene_unversehrt():
     """Die Plaene muessen ladbar und vollstaendig bleiben."""
     print("\nAblaufplaene unversehrt")
@@ -813,6 +856,7 @@ if __name__ == "__main__":
     test_rueckgabe_garantiert()
     test_stiller_durchgang_meldet_sich()
     test_stand_steht_im_protokoll()
+    test_docling_laesst_der_grafikkarte_luft()
     test_plaene_unversehrt()
     test_was_n8n_wirklich_geladen_hat()
     print("\nGeprueft wurden die Plaene in: %s" % PLAENE)

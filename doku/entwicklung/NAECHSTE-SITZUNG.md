@@ -239,6 +239,96 @@ und gleicht ab, was n8n **wirklich geladen** hat. Aufruf auf dem Host:
 2. **`LESBAR_BYTE`** (siehe oben), gehört zu Teil 3.
 3. **Die Protokoll-Wiederholung** bei jedem Minutentakt (§3, Punkt 2).
 
+## 4h - ⭐⭐⭐ BEWIESEN UND BEHOBEN: das Chat-Modell rechnete zur Haelfte auf der CPU
+
+```
+NAME              SIZE      PROCESSOR          UNTIL
+gemma4:e2b        2.0 GB    100% GPU           Forever
+gemma4:12b        8.9 GB    49%/51% CPU/GPU    23 hours   ⛔
+qwen3.8:latest    17  GB    100% GPU           22 hours
+
+ki4ki-docling            12.222 MiB  (DOCLING_SERVE_ENG_LOC_NUM_WORKERS=5)
+frei                        927 MiB von 46.068
+```
+
+⛔ **`gemma4:12b` ist das Modell des Gespraechsmodus** - also genau das,
+das die Chats beantwortet. Es lief zu **51 % auf der CPU**. Das erklaert
+alles von heute Abend: 53,9 Token/s, 140 s, 160 s, Abbrueche bei 240 s.
+
+### Warum Ollama es nicht selbst geloest hat
+
+⭐ Die Erklaerung liegt im Zusammenspiel, nicht in einer einzelnen
+Einstellung:
+
+1. Docling haelt mit **fuenf Workern** 12,2 GB - jeder Worker haelt seine
+   eigenen Modelle.
+2. qwen3.8 (17 GB) ist mit `keep_alive: 24h` **festgenagelt**.
+3. Als gemma4:12b geladen werden sollte, war kein Platz mehr - und Ollama
+   **durfte** qwen nicht verdraengen.
+4. Also schob es gemma zur Haelfte auf die CPU. Kein Fehler, keine
+   Meldung: es rechnet eben langsamer.
+
+⚠ `keep_alive: 24h` ist fuer sich genommen richtig (Emrach: *"doch, soll
+er - ausser man wechselt im chat, dann soll das erst laden"*). Falsch ist
+die **Kombination** aus drei festgenagelten Modellen und einem
+Docling, das die Haelfte des Speichers besetzt haelt, ohne zu arbeiten.
+
+### Behoben (sofort, weil es jede Partner-Anlage betrifft)
+
+```yaml
+- DOCLING_SERVE_ENG_LOC_NUM_WORKERS=${KI4KI_DOCLING_WORKERS:-1}
+```
+
+Rechnung: Docling faellt von 12,2 GB auf rund 2,4 GB. Dann stehen
+
+```
+qwen3.8 17,0 + gemma4:12b 8,9 + gemma4:e2b 2,0 + docling 2,4 = 30,3 GB
+frei: rund 15,7 GB  ->  gemma4:12b passt GANZ auf die Grafikkarte
+```
+
+⚠ Ein Tausch: Ein Worker wandelt Dokumente langsamer. Fuer einen grossen
+Aufnahmelauf `KI4KI_DOCLING_WORKERS` hochsetzen, danach zurueck - der Chat
+laeuft jeden Tag, die Aufnahme nicht.
+
+⛔ **Fuer Partner besonders wichtig:** Wer eine kleinere Karte hat als
+die A40 (46 GB), trifft das frueher und haerter. Emrach: *"das wird den
+partnern jetzt schon aergern dass das so laeuft."*
+
+### ⭐ Das eigentliche Ziel: Speicher nach Bedarf, nicht auf Vorrat
+
+Emrach, woertlich: *"wir brauchen ein intelligentes system... wenn
+dokumente verarbeitet werden soll docling kommen... wenn nicht, dann raus
+damit... auch beim modellwechsel in den threads... rein raus rein raus."*
+
+Richtig, und es ist machbar - die Bausteine gibt es schon:
+
+| Wann | Was | Wie |
+|---|---|---|
+| Aufnahme startet | Docling hoch | n8n hat schon einen Baustein "Grafikkarte freigeben"; dieselbe Stelle kann den Container starten |
+| Aufnahme fertig | Docling runter | Container stoppen gibt den Speicher **sicher** frei - `/v1/clear/converters` tat es nachweislich NICHT (12,2 GB standen trotz Aufruf) |
+| Modellwechsel im Thread | altes Modell entladen | Ollama nimmt `keep_alive: 0` je Anfrage - ein Aufruf auf das alte Modell gibt es frei, bevor das neue laedt |
+
+⚠ Der Preis ist jeweils die **Ladezeit beim Wiederkommen**: Docling
+braucht beim Start seine Modelle, ein Sprachmodell zehn bis dreissig
+Sekunden. Genau deshalb darf nur das raus, was gerade NICHT gebraucht
+wird - und das aktive Modell bleibt festgenagelt.
+
+⛔ Das ist ein eigenes Stueck Arbeit mit eigener Abnahme, nicht ein
+Handgriff heute Abend. Aber es ist der richtige Entwurf, und die
+Reparatur oben macht ihn nicht ueberfluessig, sondern kauft Zeit dafuer.
+
+### ⚠ Was ich daraus lerne
+
+Ich habe sechs Stunden an Token-Deckeln, Zeitgrenzen und Lebenszeichen
+gearbeitet. Alles davon war notwendig - aber **nichts davon war die
+Ursache**. Ein `nvidia-smi` und ein `ollama ps` haetten in zwanzig
+Sekunden gezeigt, dass die Maschine zur Haelfte auf der CPU rechnet.
+
+⭐ **Regel:** Bevor man an Stellschrauben dreht, misst man, ob die
+Maschine ueberhaupt laeuft, wie sie soll. "Es ist langsam" ist eine
+Aussage ueber die MASCHINE, nicht ueber die Einstellung, die man gerade
+in der Hand haelt.
+
 ## 4g - ⭐⭐⭐ DIE EIGENTLICHE URSACHE: die Grafikkarte ist voll
 
 Emrach, woertlich: *"die antworten muessen wie aus der pistole geschossen

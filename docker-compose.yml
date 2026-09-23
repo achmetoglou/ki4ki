@@ -77,7 +77,20 @@ services:
     #   am Dokument, nicht am Rechner: eine grosse Arbeit mit vielen
     #   Abbildungen braucht laenger als 3600 Sekunden.
     #   BEHELF - richtig waere der asynchrone Weg (/v1/convert/file/async).
-    - DOCLING_SERVE_ENG_LOC_NUM_WORKERS=5
+    # ⛔ EINS, nicht fuenf. Jeder Worker haelt seine EIGENEN Modelle im
+    #   Grafikspeicher. Gemessen 23.09. auf der A40 (46 GB):
+    #       docling (5 Worker)   12.222 MiB
+    #       qwen3.8              17,0 GB   100% GPU
+    #       gemma4:12b            8,9 GB   49%/51% CPU/GPU  ⛔
+    #       frei                    927 MiB
+    #   Das Modell, das die Chats beantwortet, rechnete zur HAELFTE
+    #   auf der CPU - daher Antwortzeiten von 160 s und Abbrueche.
+    #   Derselbe Zustand steht seit dem 04.08. in der Doku (damals
+    #   931 MiB frei), und dort war 1 das Heilmittel.
+    # ⚠ Ein Tausch: Ein Worker wandelt Dokumente langsamer. Fuer
+    #   einen grossen Aufnahmelauf hochsetzen, danach zurueck - der
+    #   Chat laeuft jeden Tag, die Aufnahme nicht.
+    - DOCLING_SERVE_ENG_LOC_NUM_WORKERS=${KI4KI_DOCLING_WORKERS:-1}
     # ⭐ OHNE DIESE ZWEI liefert Docling bei aktivierter Bildbeschreibung
     #   LEEREN Text zurueck (der ganze Convert bricht ab) - und die Aufnahme
     #   sortiert das Dokument still als "rohtext leer" aus. Der Aufnahme-
