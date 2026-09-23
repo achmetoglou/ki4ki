@@ -260,9 +260,19 @@ ki4ki-docling                            12.222 MiB
 rechnete auf der CPU (4,4 statt ~40 t/s)."* Damals 931 MiB, heute 927.
 
 ⭐ **Ollama haelt drei Modelle gleichzeitig.** Unser eigener Code setzt
-`keep_alive: "24h"` (`gespraech.py`) - die Modelle bleiben also einen
-ganzen Tag im Speicher, auch wenn niemand fragt. Dazu Doclings 12 GB, die
-es auch im Leerlauf nicht hergibt.
+`keep_alive: "24h"` an vier Stellen (`absicht.py`, `gespraech.py`,
+`assistent.py`, `pruef_proxy.py`).
+
+⛔ **Das ist RICHTIG so, und mein erster Schluss daraus war falsch.**
+Emrach, woertlich: *"doch, soll er - ausser man wechselt im chat, dann
+soll das erst laden."* Genau. Ein entladenes Modell muss beim naechsten
+Mal von der Platte gelesen werden; das sind zehn bis dreissig Sekunden
+VOR der ersten Antwort. Wer `keep_alive` kuerzt, macht die erste Frage
+nach jeder Pause langsam - also genau das Gegenteil des Ziels.
+
+⭐ **Das Problem ist nicht, WIE LANGE die Modelle bleiben, sondern DASS
+ES DREI SIND.** Die Frage lautet nicht "schneller entladen?", sondern
+"warum sind drei gleichzeitig noetig?".
 
 ### ⛔ Was ich falsch gemacht habe
 
@@ -303,11 +313,31 @@ ehrlicher als heute.
 
 ### Naechste Schritte, in dieser Reihenfolge
 
-1. **Grafikspeicher freiraeumen** - das ist die Ursache, nicht das Gefuehl
-   - welche Modelle haelt Ollama? (`ollama ps` im Container)
-   - `keep_alive` von 24 h herunter, oder ungenutzte Modelle entladen
-   - Docling: gibt `/v1/clear/converters` den Speicher wirklich frei?
-     (Der Ablaufplan ruft es, die 12 GB stehen trotzdem.)
+1. **Grafikspeicher freiraeumen** - das ist die Ursache, nicht das Gefuehl.
+   ⛔ `keep_alive` NICHT anfassen (siehe oben). Zwei echte Hebel:
+
+   **a) Docling gibt 12.222 MiB nicht her, obwohl es nichts tut.**
+   Der beste Hebel: 12 GB, ohne dass sich an der Antwortqualitaet
+   irgendetwas aendert. Der Ablaufplan ruft zwar
+   `/v1/clear/converters` ("Grafikkarte freigeben"), der Speicher
+   steht trotzdem. Schon am 04.08. als "Docling gibt Grafikspeicher
+   NIE frei" dokumentiert; damals half
+   `DOCLING_SERVE_ENG_LOC_NUM_WORKERS=1`. Pruefen, ob das noch gilt.
+
+   **b) Zwei Chat-Modelle laufen parallel.**
+   ```
+   KI4KI_MODELL_NAME=gemma4:12b        <- der Proxy
+   KI4KI_GESPRAECH_MODELL=gemma4:12b   <- der Gespraechsmodus
+   chatModel: "qwen3.8:latest"         <- die Arbeitsbereiche
+   ```
+   Bis zu 22 GB haengen an einem davon. Auf EIN Modell zu gehen
+   raeumt am meisten frei.
+   ⚠ Das ist aber eine **Qualitaetsentscheidung**, keine reine
+   Speicherfrage: gemma4 ist fuer den Gespraechsmodus mit Werkzeugen
+   gesetzt worden. Erst messen, ob qwen dieselben Werkzeugaufrufe
+   sauber beherrscht - sonst tauscht man Tempo gegen Verlaesslichkeit.
+
+   ⭐ Erst a), dann messen. Vielleicht erledigt sich b) danach.
 2. **Danach neu messen** - erst dann weiss man, was der Deckel wirklich
    kostet. Alle Zahlen von heute (53,9 Token/s) stammen von einer vollen
    Grafikkarte.
