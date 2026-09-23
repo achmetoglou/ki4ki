@@ -324,3 +324,35 @@ def kern_aus_prompt(prompt):
     t = prompt or ""
     i = t.find(MARKE_ABSCHNITT)
     return (t if i < 0 else t[:i]).rstrip()
+
+
+def zugangs_schluessel(authorization, cookie):
+    """Stabiler Schluessel fuer den Dokumentzugang-Zwischenspeicher.
+
+    ⛔ Gemessen 23.09.: Das Laden eines Gespraechsverlaufs dauerte
+      2.248 ms fuer 14 Byte Antwort. Die Zeit ging fuer die Abfrage ALLER
+      Arbeitsbereiche drauf - obwohl es dafuer einen Zwischenspeicher mit
+      300 Sekunden Haltbarkeit gibt.
+
+    ⛔ Der griff nie. Sein Schluessel enthielt den ganzen
+      `ki4ki_zugang`-Cookie, und der hat die Form
+      `<ablauf>.<kennung>.<unterschrift>`: Die Ablaufzeit setzt der Proxy
+      bei JEDER Antwort neu, die Unterschrift wandert mit. Neuer Cookie,
+      neuer Schluessel, alles nochmal - der Proxy machte seinen eigenen
+      Zwischenspeicher bei jeder Antwort kaputt.
+
+    ⭐ Massgeblich ist allein die KENNUNG in der Mitte: Sie sagt, zu wem
+      die Marke gehoert, und bleibt ueber die Sitzung gleich. Alles
+      andere am Cookie bleibt unangetastet - eine andere
+      AnythingLLM-Sitzung ist weiterhin ein anderer Zugang.
+    """
+    teile = []
+    for stueck in (cookie or "").split(";"):
+        name, _, wert = stueck.strip().partition("=")
+        if name == "ki4ki_zugang":
+            # <ablauf>.<kennung>.<unterschrift> -> nur die Kennung
+            felder = wert.split(".")
+            wert = felder[1] if len(felder) >= 3 else ""
+        if name:
+            teile.append(name + "=" + wert)
+    return (authorization or "") + "|" + ";".join(teile)

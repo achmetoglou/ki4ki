@@ -239,6 +239,69 @@ und gleicht ab, was n8n **wirklich geladen** hat. Aufruf auf dem Host:
 2. **`LESBAR_BYTE`** (siehe oben), gehört zu Teil 3.
 3. **Die Protokoll-Wiederholung** bei jedem Minutentakt (§3, Punkt 2).
 
+## 4a - GEFUNDEN 23.09.: der Threadwechsel dauerte 2,2 s, weil ein Zwischenspeicher nie traf
+
+Rueckmeldung: *"das umschalten der threads braucht voll lange aufeinmal"*.
+An einer Netzwerk-Aufzeichnung (Firefox HAR) gemessen:
+
+```
+/api/workspace/auw/threads                      19 ms
+/api/workspace/auw/parsed-files                 20 ms
+/api/workspace/auw/thread/<id>/chats          2248 ms   <- 14 Byte Antwort
+```
+
+⭐ **2,2 Sekunden fuer `{"history":[]}`.** Und die Antwort trug
+`set-cookie: ki4ki_zugang` und `cache-control: no-store` - unsere
+Kopfzeilen, nicht die von AnythingLLM. Der Pfad lief also durch den Proxy.
+
+### Die Ursache
+
+Beim Laden eines Verlaufs ruft der Proxy `erlaubte_dokumente()`. Das fragt
+**jeden Arbeitsbereich einzeln** bei AnythingLLM ab - eine dieser Antworten
+ist allein **42 KB** (`/api/workspace/auw`, in derselben Aufzeichnung).
+
+Dafuer gibt es `_DOKZUGANG` mit 300 Sekunden Haltbarkeit. Der Speicher traf
+**nie**:
+
+```python
+ausweis = Authorization + "|" + Cookie        # der Schluessel
+```
+
+Der Cookie ist `ki4ki_zugang=<ablauf>.<kennung>.<unterschrift>`, und
+`<ablauf>` setzt der Proxy bei **jeder Antwort** neu. In der Aufzeichnung
+sichtbar: `1790206354...` hinein, `1790206687...` heraus.
+
+⛔ **Der Proxy machte seinen eigenen Zwischenspeicher bei jeder Antwort
+kaputt.** Neuer Cookie → neuer Schluessel → alles nochmal.
+
+⭐ Das erklaert auch das "auf einmal": Mit jedem Dokument in AuW wurde die
+Abfrage teurer. Der Zwischenspeicher haette das abgefangen - er kam nie
+zum Zug.
+
+### Gebaut
+
+`rolle.zugangs_schluessel()` baut den Schluessel aus dem **stabilen** Teil:
+der Kennung in der Mitte der Marke. Ablaufzeit und Unterschrift fliegen
+raus, alles andere am Cookie bleibt - eine andere AnythingLLM-Sitzung ist
+weiterhin ein anderer Zugang.
+
+### Womit die Pruefung rot wird
+
+`rollentest.py`, 4 Faelle. Gegen den Stub mit dem heutigen Verhalten:
+**1 Fehler** ("die wechselnde Ablaufzeit darf den Schluessel NICHT
+aendern"). Mutationsprobe (wieder den ganzen Cookie): 1 Fehler. Danach 0.
+
+⛔ **Zwei Gegenproben schuetzen die Sicherheit**, nicht die Schnelligkeit:
+eine andere Kennung MUSS einen anderen Schluessel ergeben, und eine andere
+Anmeldung ebenso. Sonst saehe ein Konto die Dokumente eines anderen - ein
+zu grosszuegiger Schluessel waere schlimmer als der langsame Weg.
+
+### ⛔ Abnahme
+
+Dieselbe Netzwerk-Aufzeichnung nach dem Einspielen. Erwartet: der erste
+Threadwechsel kostet weiterhin ~2 s (der Speicher ist leer), **jeder
+weitere innerhalb von 300 Sekunden deutlich weniger**.
+
 ## 3z - GEBAUT 23.09.: die Fusszeile nennt kein Dokument mehr doppelt
 
 Meldung vom 15.09. aus 3l: *"steht fast bei jedem Output zwei mal die

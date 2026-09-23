@@ -2023,8 +2023,14 @@ def erlaubte_dokumente(kopfzeilen):
     wenn sich die Bereiche nicht ermitteln liessen. None bedeutet NICHT
     "alles erlaubt", sondern "unbekannt" - der Aufrufer lehnt dann ab.
     """
-    ausweis = (kopfzeilen.get("Authorization") or "") + "|" + \
-              (kopfzeilen.get("Cookie") or "")
+    # ⛔ NICHT den ganzen Cookie in den Schluessel: Die Marke
+    #   ki4ki_zugang traegt vorn eine Ablaufzeit, die dieser Proxy bei
+    #   JEDER Antwort neu setzt. Der Zwischenspeicher darunter (300 s)
+    #   traf deshalb nie - jedes Laden eines Verlaufs fragte alle
+    #   Arbeitsbereiche neu ab (gemessen 23.09.: 2.248 ms fuer 14 Byte
+    #   Antwort). Massgeblich ist die Kennung in der Mitte der Marke.
+    ausweis = rolle.zugangs_schluessel(kopfzeilen.get("Authorization"),
+                                       kopfzeilen.get("Cookie"))
     if not ausweis.strip("|"):
         return None
     marke = hashlib.sha256(ausweis.encode()).hexdigest()[:16]
