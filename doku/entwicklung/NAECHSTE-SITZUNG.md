@@ -239,6 +239,59 @@ und gleicht ab, was n8n **wirklich geladen** hat. Aufruf auf dem Host:
 2. **`LESBAR_BYTE`** (siehe oben), gehört zu Teil 3.
 3. **Die Protokoll-Wiederholung** bei jedem Minutentakt (§3, Punkt 2).
 
+## 5b - ✅ ABGENOMMEN 23.09. abends: die Aufnahmekette traegt
+
+Dieselben 39 Dokumente aus `aussortiert/` zurueck nach `input/` - bekannte
+Eingabe, vorher angesagte Erwartung:
+
+```
+                        vorher   erwartet   gemessen
+Uploads bei AnythingLLM      1       ~35         36
+kap input                   39         0          0
+Bestand                     84      ~119        120
+[LEERLAUF]                   -         0          0
+aussortiert (jpg/msg)        -        ~5          4
+```
+
+⭐ **Jede Zahl vorher angesagt, jede eingetroffen.** Das ist der sauberste
+Beweis des Tages - und er war nur moeglich, weil die Eingabe bekannt war.
+Ein frischer Ordner haette dieselbe Aussage nicht gehabt.
+
+⭐ **`[LEERLAUF]` kam nicht.** Der Return-Knoten musste nicht einspringen:
+Ist der Fehler an der Wurzel behoben, bleibt die Versicherung still. So
+soll es sein.
+
+### ⚠ Eine Zahl, die noch niemand erklaert hat
+
+`kap loeschen 5`. Vorher stand dort 0. Vermutlich die Dublettenbehandlung
+("neue Fassung erkannt - alte geloescht"), weil dieselben Dateien zum
+zweiten Mal durchliefen. **Nicht gemessen** - vor dem grossen Lauf
+nachsehen, was dort liegt und warum.
+
+### ⛔ Der grosse Lauf dauert TAGE, nicht Stunden
+
+Gemessen an diesem Durchgang:
+
+```
+39 Dokumente in rund 25 Minuten  =  38 Sekunden je Dokument
+6.395 Dokumente x 38 s           =  rund 67 Stunden
+```
+
+⛔ **Fast drei Tage.** Der Engpass ist nicht Docling, sondern die
+LLM-Analyse je Dokument: qwen3.8 mit ~18 Token/s, einmal pro Dokument,
+seriell.
+
+Hebel, in der Reihenfolge ihrer Wirkung:
+
+| Hebel | Wirkung | Preis |
+|---|---|---|
+| Analyse mit dem kleinen Modell (`gemma4:e2b`, 2 GB) | mehrfach schneller | schlechtere Schlagworte/Kategorien |
+| `KI4KI_DOCLING_WORKERS=5` | hilft nur der Wandlung | Chat wird zaeh |
+| Analyse ganz weglassen, spaeter nachholen | am schnellsten | Kategorien fehlen zunaechst |
+
+⭐ Vor dem grossen Lauf gehoert das entschieden - sonst laeuft die Anlage
+drei Tage und niemand weiss, ob das so gewollt war.
+
 ## 5a - ⭐⭐⭐ URSACHE GEFUNDEN UND BEHOBEN: Ablaufplan 3 hatte denselben Fehler
 
 Der Befund aus §5 ist geklaert - und es war **meine halbe Arbeit vom
