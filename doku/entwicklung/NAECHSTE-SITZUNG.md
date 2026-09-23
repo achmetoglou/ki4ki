@@ -269,6 +269,23 @@ derselben Leitung koennten sich mitten in einem Stueck ins Wort fallen -
 dieselbe Fehlerklasse wie das Wettrennen beim Chat-Anhang von heute
 Mittag. Hier arbeitet der zweite Faden, und der erste schickt.
 
+### ⛔ Nachtrag am selben Tag: die erste Fassung muellte den Chat zu
+
+Das Lebenszeichen ging als leeres `textResponseChunk` mit **neuer**
+Kennung raus. AnythingLLM macht daraus jedes Mal eine eigene, leere
+Nachricht - der Chat war voller riesiger Leerflaechen, und die Antwort
+kam trotzdem nicht.
+
+⭐ Richtig ist `statusResponse` mit **gleicher** Kennung: Sie ersetzt die
+vorige Meldung, erzeugt keinen neuen Block und wird am Ende mit
+`removeStatusResponse` weggeraeumt. Genau dafuer gibt es sie - und sie
+wurde im selben Griff schon fuer "Denke nach …" benutzt. Ich habe einen
+neuen Weg gebaut, wo der richtige danebenlag.
+
+⭐ Nebeneffekt, und ein guter: Der Mensch sieht jetzt
+*"Formuliere die Antwort … (42 s)"* statt einer stummen Seite. Bei
+Antworten, die zwei Minuten brauchen, ist das kein Beiwerk.
+
 ### Womit die Pruefung rot wird
 
 `test_lange_antwort_haelt_die_leitung_wach`: Gegen den Stub **1 Fehler**
@@ -276,6 +293,13 @@ Mittag. Hier arbeitet der zweite Faden, und der erste schickt.
 (Lebenszeichen weglassen): 1 Fehler. Danach 0.
 Gegenproben: Eine schnelle Antwort bekommt **kein** Lebenszeichen, und
 ein Fehler im Arbeitsfaden kommt unveraendert beim Aufrufer an.
+
+`test_das_lebenszeichen_macht_keine_leeren_nachrichten` faengt den
+Rueckfall: Mutationsprobe (wieder neue Kennung) → rot.
+⚠ Diese eine Pruefung liest den Quelltext, weil die Stelle in einem
+HTTP-Griff steckt, der ohne Server nicht aufrufbar ist. Sie ist damit
+schwaecher als eine Verhaltenspruefung - sie faengt genau den Fehler, der
+heute passiert ist, und nicht mehr.
 
 ### ⭐ Was am selben Lauf ABGENOMMEN ist
 

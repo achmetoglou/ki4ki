@@ -7853,11 +7853,17 @@ class Griff(BaseHTTPRequestHandler):
         #   (NS_ERROR_NET_PARTIAL_TRANSFER, hier BrokenPipeError).
         #   Der Rohtext darf nicht durchgereicht werden - er ist noch
         #   nicht gegen die Dokumente geprueft. Also ein leeres Stueck.
+        # ⛔ NICHT als textResponseChunk mit neuer Kennung: Daraus macht
+        #   AnythingLLM jedes Mal eine neue, LEERE Nachricht - gemessen
+        #   23.09., der Chat war voller riesiger Leerflaechen.
+        #   statusResponse mit GLEICHER Kennung ersetzt die vorige Meldung;
+        #   genau dafuer ist sie da. Und der Mensch sieht dabei, dass etwas
+        #   passiert, statt vor einer stummen Seite zu sitzen.
+        _wach_seit = time.time()
+
         def _wachhalten():
-            self._strom_stueck({"uuid": _neue_marke("wach"),
-                                "type": "textResponseChunk",
-                                "textResponse": "", "sources": [],
-                                "close": False, "error": False})
+            self._stand(stand, "Formuliere die Antwort … (%d s)"
+                        % int(time.time() - _wach_seit))
 
         e = gespraechsmodus.mit_lebenszeichen(lambda: gespraechsmodus.fuehren(
             _frage_modell, GESPRAECHE.verlauf_kurz(gespraech_k, hoechstens=20), assistent._titel_saubern(faden_dok) if faden_dok else None,

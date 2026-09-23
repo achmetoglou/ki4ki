@@ -199,6 +199,40 @@ def test_fehler_gehen_nicht_verloren():
                "der urspruengliche Fehler kommt durch, nicht ein Ersatz")
 
 
+def test_das_lebenszeichen_macht_keine_leeren_nachrichten():
+    """Das Lebenszeichen darf den Chat nicht zumuellen.
+
+    ⛔ Gemessen 23.09.: Die erste Fassung schickte ein leeres
+      textResponseChunk mit NEUER Kennung. AnythingLLM macht daraus jedes
+      Mal eine eigene, leere Nachricht - der Chat war voller riesiger
+      Leerflaechen, und die Antwort kam trotzdem nicht.
+
+    ⭐ Richtig ist statusResponse mit GLEICHER Kennung: Die ersetzt die
+      vorige Meldung, erzeugt keinen neuen Block und wird am Ende mit
+      removeStatusResponse weggeraeumt.
+
+    ⚠ Diese Pruefung liest den Quelltext, weil die Stelle in einem
+      HTTP-Griff steckt, der ohne Server nicht aufrufbar ist. Sie ist
+      damit schwaecher als eine Verhaltenspruefung - aber sie faengt
+      genau den Rueckfall, der heute passiert ist.
+    """
+    print("\nDas Lebenszeichen erzeugt keine leeren Nachrichten")
+    hier = os.path.dirname(os.path.abspath(__file__))
+    quelle = open(os.path.join(hier, "pruef_proxy.py"), encoding="utf-8").read()
+    i = quelle.find("def _wachhalten():")
+    pruefe(i > 0, "die Stelle gibt es noch")
+    if i <= 0:
+        return
+    block = quelle[i:i + 400]
+    pruefe("self._stand(stand," in block,
+           "das Lebenszeichen geht ueber die Statuszeile mit fester Kennung")
+    pruefe("_neue_marke" not in block,
+           "⛔ und NICHT mit einer neuen Kennung - das gaebe je "
+           "Lebenszeichen eine leere Nachricht")
+    pruefe("textResponseChunk" not in block,
+           "⛔ und nicht als Antwort-Stueck")
+
+
 if __name__ == "__main__":
     test_abschnitt_wird_erkannt()
     test_hinweis_wird_angehaengt()
@@ -207,5 +241,6 @@ if __name__ == "__main__":
     test_die_werte_kommen_auch_bei_partnern_an()
     test_lange_antwort_haelt_die_leitung_wach()
     test_fehler_gehen_nicht_verloren()
+    test_das_lebenszeichen_macht_keine_leeren_nachrichten()
     print("\n%d Fehler" % len(FEHLER))
     sys.exit(1 if FEHLER else 0)
