@@ -192,7 +192,8 @@
         16
       ],
       "id": "b1e6281c-6da5-4464-9816-4c4270bc871e",
-      "name": "If"
+      "name": "If",
+      "onError": "continueRegularOutput"
     },
     {
       "parameters": {
@@ -226,7 +227,8 @@
         208
       ],
       "id": "ee746176-e694-4195-b38f-4e9862ce71ce",
-      "name": "If1"
+      "name": "If1",
+      "onError": "continueRegularOutput"
     },
     {
       "parameters": {
@@ -260,7 +262,8 @@
         400
       ],
       "id": "4d469734-8fdd-4345-89ce-1dce6ee4ceb1",
-      "name": "If2"
+      "name": "If2",
+      "onError": "continueRegularOutput"
     },
     {
       "parameters": {
@@ -294,7 +297,8 @@
         592
       ],
       "id": "70ee748c-1839-4056-95ae-802d648fe7ac",
-      "name": "If3"
+      "name": "If3",
+      "onError": "continueRegularOutput"
     },
     {
       "parameters": {
@@ -328,11 +332,12 @@
         784
       ],
       "id": "60f733e4-c9ad-4998-8b54-099a15869295",
-      "name": "If4"
+      "name": "If4",
+      "onError": "continueRegularOutput"
     },
     {
       "parameters": {
-        "numberInputs": 2
+        "numberInputs": 3
       },
       "type": "n8n-nodes-base.merge",
       "typeVersion": 3.2,
@@ -341,7 +346,8 @@
         336
       ],
       "id": "31574f36-6f0b-41d8-9ce7-8d082e809347",
-      "name": "Merge"
+      "name": "Merge",
+      "onError": "continueRegularOutput"
     },
     {
       "parameters": {
@@ -378,7 +384,9 @@
         0
       ],
       "id": "7d5d62af-b106-4b90-a182-9a70c6164fea",
-      "name": "Docling-Antwort auspacken"
+      "name": "Docling-Antwort auspacken",
+      "onError": "continueRegularOutput",
+      "alwaysOutputData": true
     },
     {
       "parameters": {
@@ -412,7 +420,8 @@
         0
       ],
       "id": "fbe85017-c072-43e9-94b7-d8f344bf79d0",
-      "name": "Text leer?"
+      "name": "Text leer?",
+      "onError": "continueRegularOutput"
     },
     {
       "parameters": {
@@ -498,7 +507,9 @@
         -160
       ],
       "id": "89385085-8e12-485b-8f4f-43bd8d830ad2",
-      "name": "Docling-Antwort auspacken 2"
+      "name": "Docling-Antwort auspacken 2",
+      "onError": "continueRegularOutput",
+      "alwaysOutputData": true
     },
     {
       "id": "7c1f0b7e-2a55-4a1e-9c6a-vereinheitlich",
@@ -511,7 +522,9 @@
       ],
       "parameters": {
         "jsCode": "// Jede Nicht-PDF-Datei wird zu GENAU EINEM Element wie aus Docling:\n//   { data, docling_filename, seiten, fehler, ohne_bilder }\n// Excel/CSV liefern je Zeile ein Element (n8n 'Extract from File') - die\n// werden hier zu einer Markdown-Tabelle MIT Kopfzeile zusammengesetzt\n// (so erkennt der Proxy Pruefungskataloge: Frage | Antwort richtig | ...),\n// darunter je Zeile ein Klartext-Satz fuer die Wortsuche. HTML/Text/Tika\n// liefern ein Element mit Text.\nconst items = $input.all();\nconst start = $('Start').first();\nconst name = (start.binary && start.binary.data && start.binary.data.fileName) || (start.json && start.json.fileName) || 'dokument';\nconst clean = v => String(v == null ? '' : v).replace(/\\s+/g, ' ').trim();\nlet text = '';\nif (items.length === 1 && typeof items[0].json.data === 'string') {\n  text = items[0].json.data;\n} else if (items.length === 1 && typeof items[0].json.text === 'string') {\n  text = items[0].json.text;\n} else {\n  const rows = items.map(i => i.json).filter(r => r && typeof r === 'object' && !Array.isArray(r));\n  const keys = [];\n  rows.forEach(r => Object.keys(r).forEach(k => { if (!keys.includes(k)) keys.push(k); }));\n  const belegt = keys.filter(k => rows.some(r => clean(r[k])));\n  if (belegt.length) {\n    text = '| ' + belegt.map(clean).join(' | ') + ' |\\n| ' + belegt.map(() => '---').join(' | ') + ' |\\n'\n      + rows.map(r => '| ' + belegt.map(k => clean(r[k])).join(' | ') + ' |').join('\\n');\n    text += '\\n\\n' + rows.map((r, i) => 'Zeile ' + (i + 1) + ': ' + belegt.map(k => clean(r[k]) ? (clean(k) + ': ' + clean(r[k])) : '').filter(Boolean).join(' · ')).join('\\n');\n  }\n}\nreturn [{ json: {\n  data: text,\n  docling_filename: name,\n  seiten: 1,\n  fehler: text.trim() ? '' : 'Aus der Datei liess sich kein Text gewinnen',\n  ohne_bilder: false,\n  versuch: 1\n} }];\n"
-      }
+      },
+      "onError": "continueRegularOutput",
+      "alwaysOutputData": true
     },
     {
       "id": "5d2e9f31-8c44-4f0b-b6d1-tika-rueckfall",
@@ -594,7 +607,8 @@
           "combinator": "or"
         },
         "options": {}
-      }
+      },
+      "onError": "continueRegularOutput"
     },
     {
       "id": "3e7d9b10-5a2c-4f6e-9d8b-office-pdf0001",
@@ -638,6 +652,57 @@
       "alwaysOutputData": true,
       "notes": "Scheitert hier EINE Datei, geht sie ohne Text weiter - sie darf den Stapel nicht mitreissen. Ohne das gab n8n 2.31.4 fuer den ganzen Durchgang nur ein Ergebnis zurueck (assignPairedItems: reading 'entries'), und alle Dateien kamen mit null Zeichen heraus, bei gemeldetem Erfolg. Gemessen 22.09.",
       "notesInFlow": false
+    },
+    {
+      "parameters": {
+        "mode": "manual",
+        "duplicateItem": false,
+        "assignments": {
+          "assignments": [
+            {
+              "id": "rf1",
+              "name": "__rueckfall",
+              "value": true,
+              "type": "boolean"
+            },
+            {
+              "id": "rf2",
+              "name": "grund",
+              "value": "kein Zweig der Unterkette hat ein Element geliefert",
+              "type": "string"
+            }
+          ]
+        },
+        "includeOtherFields": false,
+        "options": {}
+      },
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        -904,
+        436
+      ],
+      "id": "rueckfall00000000000000000000000000",
+      "name": "Rueckfall",
+      "alwaysOutputData": true,
+      "onError": "continueRegularOutput",
+      "notes": "Haengt direkt am Ausloeser und liefert IMMER ein Element. Ohne ihn kann der Merge leer bleiben - dann gibt die Unterausfuehrung nichts zurueck und legt den ganzen Block still (gemessen 23.09.)."
+    },
+    {
+      "parameters": {
+        "jsCode": "// Ablaufplan 2 ist eine Funktion: EIN Element hinein, EIN Element hinaus.\n// Dieser Baustein ist die Zusicherung dafuer.\n//\n// ⛔ Gemessen am 23.09.: Gab die Unterausfuehrung nichts zurueck, brach\n//   im Elternteil assignPairedItems, der Baustein \"Code\" las eine leere\n//   Liste und lieferte return [] - der ganze Durchgang endete GRUEN und\n//   leer. Eine einzige stoerrische Datei (.db) legte so jede Minute den\n//   gesamten Block still, 180 Minuten lang, bis die Claim-Garantie sie\n//   aus dem Eingang schob.\n//\n// ⭐ Der Zweig \"Rueckfall\" haengt direkt am Ausloeser und liefert IMMER\n//   ein Element an den Merge. Deshalb hat dieser Baustein auch dann etwas\n//   zu lesen, wenn kein Fachzweig etwas geliefert hat - ohne sich darauf\n//   zu verlassen, dass n8n einen Baustein mit leerem Eingang ueberhaupt\n//   ausfuehrt.\n\n// --- WAEHLEN ---\nconst _waehlen = (elemente, name) => {\n  const liste = elemente || [];\n  const echt = liste.filter(e => e && e.json && e.json.__rueckfall !== true);\n  if (echt.length) return [echt[0]];\n  const grund = (liste[0] && liste[0].json && liste[0].json.grund)\n    || 'kein Zweig der Unterkette hat ein Element geliefert';\n  // Leerer Text UND ein Grund: Damit behandelt der Elternteil die Datei\n  // wie jede andere gescheiterte Extraktion und legt sie ehrlich nach\n  // aussortiert - statt sie liegen zu lassen und den naechsten Durchgang\n  // erneut zu vergiften. Der Dateiname muss mit, sonst findet die\n  // Paarung ueber docling_filename im Elternteil ihn nicht wieder.\n  return [{ json: {\n    ok: false,\n    grund: grund,\n    data: '',\n    docling_filename: name || null,\n    seiten: 1,\n    fehler: 'Unterkette ohne Ergebnis: ' + grund,\n    ohne_bilder: true,\n    versuch: 1\n  } }];\n};\n// --- ENDE WAEHLEN ---\n\nlet _name = '';\ntry { _name = $('Start').first().binary.data.fileName || ''; } catch (e) { _name = ''; }\nif (!_name) {\n  try { _name = $('Start').first().json.fileName || ''; } catch (e) { _name = ''; }\n}\nreturn _waehlen($input.all(), _name);\n"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        588,
+        336
+      ],
+      "id": "returnknoten0000000000000000000000",
+      "name": "Return",
+      "alwaysOutputData": true,
+      "onError": "continueRegularOutput",
+      "notes": "Die Rueckgabe der Unterkette: immer genau ein Element."
     }
   ],
   "connections": {
@@ -782,6 +847,11 @@
             "node": "Office?",
             "type": "main",
             "index": 0
+          },
+          {
+            "node": "Rueckfall",
+            "type": "main",
+            "index": 0
           }
         ]
       ]
@@ -893,6 +963,28 @@
         [
           {
             "node": "Docling PDF-Extraktion",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Rueckfall": {
+      "main": [
+        [
+          {
+            "node": "Merge",
+            "type": "main",
+            "index": 2
+          }
+        ]
+      ]
+    },
+    "Merge": {
+      "main": [
+        [
+          {
+            "node": "Return",
             "type": "main",
             "index": 0
           }

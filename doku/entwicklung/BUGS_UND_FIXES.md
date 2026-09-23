@@ -889,7 +889,7 @@ qwen"*. Entfernt.
 
 ---
 
-## 23 · Eine stoerrische Datei riss den ganzen Stapel mit (22.09.2026, BEHOBEN)
+## 23 · Eine stoerrische Datei riss den ganzen Stapel mit (22.09.2026, NUR HALB BEHOBEN → siehe 29)
 
 ⛔ **Der gefährlichste Fund des Tages** — und er wäre im Nachtlauf über
 4.300 Dateien mit Sicherheit eingetreten.
@@ -1183,6 +1183,58 @@ gar nicht erst in den Eingang legen, oder die Reste danach löschen. Kein
 Datenverlust in beiden Fällen — der Schlüssel ist auf jeder Stufe derselbe.
 
 ---
+
+## 29 — Die Unterkette sagte nie zu, dass sie etwas zurückgibt (23.09.2026, GEBAUT)
+
+**Symptom.** Eine einzige `.db` im Eingang legte jeden Durchgang still — kein
+Markdown, kein Upload, keine Ablage, und der Durchgang meldete **Erfolg**. Die
+Datei blieb liegen und vergiftete die nächste Minute erneut, 180 Minuten lang,
+bis die Claim-Garantie sie aus dem Eingang schob.
+
+**Ursache, in einer Zeile:** Ablaufplan 2 endete auf einem `Merge`. Ein Merge gibt
+zurück, was ankommt — und sagt **nicht** zu, dass überhaupt etwas ankommt. Kam
+nichts, brach im Elternteil `assignPairedItems`, der Baustein `Code` las
+`$('Dateien in JSON umwandeln').all()` als leere Liste und lieferte `return []`.
+Ab da war der Durchgang leer, aber grün.
+
+**⛔ Warum Punkt 23 den Fehler nicht gefangen hat.** Die dort gebaute Prüfung
+`test_unterkette_reisst_nicht_mit` sieht Bausteine **einzeln** an (Fehlerabfang je
+Baustein) und war am 23.09. grün, während der Fehler lief. Gezählt hat sie
+außerdem nur HTTP- und Extract-Bausteine — **elf weitere** Bausteine des Plans
+konnten die Unterausführung abbrechen, darunter alle fünf Weichen, der Merge
+selbst und drei Code-Bausteine.
+
+**Gebaut.**
+
+1. Ein Zweig `Rueckfall` hängt direkt am Auslöser und liefert **immer** ein
+   Element an den Merge (dritter Eingang). Damit hängt die Zusicherung nicht
+   daran, ob n8n einen Baustein mit leerem Eingang überhaupt ausführt.
+2. Ein Baustein `Return` am Ende wählt aus: gibt es ein echtes Ergebnis, gewinnt
+   das; sonst `{ok: false, grund: …}` mit **leerem Text und Dateinamen**. Der
+   Elternteil behandelt das wie jede gescheiterte Extraktion — die Störenfriede
+   wandern ehrlich nach `aussortiert`, statt liegen zu bleiben.
+3. Alle elf abbruchfähigen Bausteine haben einen Fehlerabfang bekommen.
+
+**Die Prüfung** `test_rueckgabe_garantiert` in `bau/ablauf_pruefen.py` prüft
+nicht Bausteine, sondern den **Weg**: Gibt es einen Pfad vom Auslöser zum
+Ausgang, auf dem kein Baustein das Element verlieren kann?
+
+⭐ **Womit sie rot wird** (das gehört zu jeder Prüfung dazu):
+| Eingabe | Ergebnis |
+|---|---|
+| der Plan von `c2c4a21` (vor dem Umbau) | **14 Fehler** — kein `Return`, kein zugesicherter Weg, 11 Bausteine ohne Abfang |
+| Rueckfall-Zweig entfernt | rot (als eingebaute Gegenprobe im Test selbst) |
+| `return [echt[0]]` → `return liste` | rot: „echtes Ergebnis + Rueckfall → genau 1 Element“ |
+| der heutige Plan | 0 Fehler |
+
+**⛔ Was damit NICHT behoben ist — der Verstärker im Elternteil.** `Code` in
+Ablaufplan 1 liefert weiterhin still `return []`, wenn die Unterausführung als
+Ganzes scheitert (Zeitgrenze, Speicher, Unterablauf nicht aktiv). Der
+naheliegende Riegel — stattdessen werfen — wäre **falsch**: Der Durchgang endet
+dann vor `Sperre freigeben`, die Laufsperre bleibt liegen und blockiert alles bis
+zum 120-Minuten-Notnagel. Genau dieser Fehler ist am 04.08. schon einmal
+passiert. Richtig wäre ein Fehlerzweig, der die Sperre in jedem Fall freigibt —
+eigenes Stück Arbeit, noch nicht gebaut.
 
 ## Offen / vor einer Vermarktung zu klären
 

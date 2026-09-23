@@ -461,11 +461,139 @@ def test_unterkette_reisst_nicht_mit():
                    % n["name"][:38])
 
 
+def _zugesicherter_weg(plan, ausgang):
+    """Gibt es einen Weg vom Ausloeser zum Ausgang, auf dem kein Knoten
+    das Element verlieren kann?
+
+    Durchlassend ist nur, was ein Element hineinbekommt und dasselbe
+    wieder herausgibt: ein Set-Baustein, ein No-Op, ein Merge im Modus
+    "anhaengen". Eine Weiche (If/Switch/Filter) schickt das Element
+    woanders hin, ein Aufruf (HTTP, Code, Extract) kann scheitern oder
+    eine leere Liste liefern - ueber beide fuehrt kein zugesicherter Weg.
+    """
+    knoten_nach_name = {n["name"]: n for n in plan["nodes"]}
+    rand = [n["name"] for n in plan["nodes"]
+            if n["type"].endswith("executeWorkflowTrigger")]
+    gesehen = set(rand)
+    while rand:
+        akt = rand.pop()
+        for zweig in (plan["connections"].get(akt, {}).get("main") or []):
+            for c in (zweig or []):
+                ziel = c["node"]
+                if ziel == ausgang:
+                    return True
+                if ziel in gesehen:
+                    continue
+                k = knoten_nach_name.get(ziel) or {}
+                typ = k.get("type", "").split(".")[-1]
+                if typ == "merge":
+                    if (k.get("parameters") or {}).get("mode") not in (None, "append"):
+                        continue
+                elif typ not in ("set", "noOp"):
+                    continue
+                gesehen.add(ziel)
+                rand.append(ziel)
+    return False
+
+
+# Bausteine, die eine Unterausfuehrung ABBRECHEN koennen, wenn sie
+# scheitern - und damit gar nichts zurueckgeben.
+ABBRUCHFAEHIG = ("httpRequest", "extractFromFile", "code", "if", "switch",
+                 "filter", "merge", "executeWorkflow")
+
+
+def test_rueckgabe_garantiert():
+    """Ablaufplan 2 muss IMMER genau ein Element zurueckgeben.
+
+    ⛔ Gemessen am 23.09.: Eine einzige .db im Eingang gab kein Element
+      zurueck. Im Elternteil brach assignPairedItems, der Baustein "Code"
+      las eine leere Liste und lieferte return [] - der Durchgang endete
+      GRUEN und leer, und zwar jede Minute neu, solange die Datei lag.
+
+    ⭐ Warum test_unterkette_reisst_nicht_mit das nicht gefangen hat:
+      Der prueft Bausteine EINZELN (Fehlerabfang je Baustein) und war am
+      23.09. gruen, waehrend der Fehler lief. Eine Rueckgabe ist erst
+      zugesichert, wenn es einen WEG vom Ausloeser zum Ausgang gibt, auf
+      dem kein Baustein sie verschlucken kann - und wenn kein Baustein
+      die Ausfuehrung vorher abbrechen kann.
+    """
+    print("\nAblaufplan 2 gibt immer genau ein Element zurueck")
+    plan = _plan_lesen("2_Dateien-in-JSON-umwandeln.json")
+    if plan is None:
+        return
+
+    # 1 - Genau ein Ausgang, und der heisst Return.
+    ausgaenge = [n["name"] for n in plan["nodes"]
+                 if not any(any(z or []) for z in
+                            (plan["connections"].get(n["name"], {}).get("main") or []))
+                 and not n["type"].endswith("stickyNote")]
+    pruefe(ausgaenge == ["Return"],
+           "genau ein Ausgang, und der heisst Return (ist: %s)" % ausgaenge)
+
+    # 2 - Der zugesicherte Weg. DAS ist die eigentliche Pruefung.
+    pruefe(_zugesicherter_weg(plan, "Return"),
+           "es gibt einen Weg zum Return, auf dem kein Baustein das "
+           "Element verlieren kann")
+
+    # 3 - Gegenprobe zu 2: ohne den Rueckfall-Zweig muss derselbe Test
+    #     FEHLSCHLAGEN. Sonst prueft er nichts.
+    ohne = json.loads(json.dumps(plan))
+    ohne["connections"] = dict(
+        (q, v) for q, v in ohne["connections"].items() if q != "Rueckfall")
+    pruefe(not _zugesicherter_weg(ohne, "Return"),
+           "Gegenprobe: ohne den Rueckfall-Zweig ist der Weg NICHT mehr "
+           "zugesichert - die Pruefung kann also rot werden")
+
+    # 4 - Kein Baustein darf die Unterausfuehrung abbrechen.
+    for n in plan["nodes"]:
+        if n["type"].split(".")[-1] in ABBRUCHFAEHIG:
+            pruefe(n.get("onError") in ("continueRegularOutput",
+                                        "continueErrorOutput"),
+                   "%-38s kann die Ausfuehrung nicht abbrechen"
+                   % n["name"][:38])
+
+    # 5 - Das Verhalten des Return-Bausteins, ausgefuehrt statt gelesen.
+    kn = [n for n in plan["nodes"] if n.get("name") == "Return"]
+    if not kn:
+        pruefe(False, "Return-Baustein fehlt - Punkt 5 ist NICHT geprueft")
+        return
+    js = ausschnitt(kn[0].get("parameters", {}).get("jsCode", "") or "",
+                    "// --- WAEHLEN ---", "// --- ENDE WAEHLEN ---",
+                    "die Auswahl im Return-Baustein")
+    if js is None:
+        return
+    faelle = """
+      const echt   = {json: {data: 'Text', docling_filename: 'a.pdf'}};
+      const rueck  = {json: {__rueckfall: true, grund: 'nichts geliefert'}};
+      const raus = [];
+      raus.push(_waehlen([echt, rueck], 'a.pdf').length);
+      raus.push(_waehlen([rueck], 'a.pdf').length);
+      raus.push(_waehlen([], 'a.pdf').length);
+      raus.push(_waehlen([echt, rueck], 'a.pdf')[0].json.data);
+      raus.push(_waehlen([rueck], 'a.pdf')[0].json.ok);
+      raus.push(_waehlen([rueck], 'a.pdf')[0].json.docling_filename);
+      raus.push(String(_waehlen([rueck], 'a.pdf')[0].json.fehler || '') !== '');
+      raus.push(_waehlen([rueck], 'a.pdf')[0].json.data);
+      console.log(JSON.stringify(raus));
+    """
+    e = json.loads(node_lauf(js + faelle))
+    pruefe(e[0] == 1, "echtes Ergebnis + Rueckfall -> genau 1 Element")
+    pruefe(e[1] == 1, "nur der Rueckfall -> genau 1 Element")
+    pruefe(e[2] == 1, "gar nichts angekommen -> genau 1 Element")
+    pruefe(e[3] == "Text", "das echte Ergebnis gewinnt, nicht der Rueckfall")
+    pruefe(e[4] is False, "im Fehlerfall steht ok: false drin")
+    pruefe(e[5] == "a.pdf",
+           "der Fehlerfall traegt den Dateinamen - sonst findet die "
+           "Paarung im Elternteil ihn nicht wieder")
+    pruefe(e[6] is True, "im Fehlerfall steht ein Grund drin")
+    pruefe(e[7] == "", "im Fehlerfall ist der Text leer -> aussortiert")
+
+
 def test_plaene_unversehrt():
     """Die Plaene muessen ladbar und vollstaendig bleiben."""
     print("\nAblaufplaene unversehrt")
     for datei, knotenzahl in (("1_KI4KI-Masse-Ingest.json", 30),
-                              ("2_Dateien-in-JSON-umwandeln.json", 20)):
+                              ("2_Dateien-in-JSON-umwandeln.json", 22)):
         d = json.load(io.open(os.path.join(PLAENE, datei), encoding="utf-8"))
         pruefe(len(d["nodes"]) == knotenzahl,
                "%s hat %d Knoten (erwartet %d)"
@@ -556,6 +684,7 @@ if __name__ == "__main__":
     test_docling_einstellungen()
     test_bereichserkennung()
     test_office_pdf_liegt_neben_dem_original()
+    test_rueckgabe_garantiert()
     test_plaene_unversehrt()
     test_was_n8n_wirklich_geladen_hat()
     print("\nGeprueft wurden die Plaene in: %s" % PLAENE)

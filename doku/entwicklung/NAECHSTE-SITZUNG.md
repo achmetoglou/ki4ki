@@ -1,11 +1,12 @@
 # Einstieg in die nächste Sitzung
 
-**Stand 21.09.2026, abends.** Diese Datei ersetzt das Zusammensuchen am
+**Stand 23.09.2026, nachmittags.** Diese Datei ersetzt das Zusammensuchen am
 Sitzungsanfang. Sie sagt, wo die Ziele stehen, was entschieden ist, was offen
 ist und was als Beweis zählt. **Erst lesen, dann arbeiten.**
 
-⭐ **Wer nur eines liest: §3d.** Dort steht, was am 21.09. gebaut und
-entschieden wurde — und was davon noch aussteht.
+⭐ **Wer nur eines liest: §3l** - drei offene Nutzermeldungen, die
+aelteste vom 27.08. Sie treffen den Nutzer direkt und wiegen schwerer als
+der KAP-Lauf. Was am 23.09. gebaut wurde, steht in §3m.
 
 ---
 
@@ -233,6 +234,85 @@ und gleicht ab, was n8n **wirklich geladen** hat. Aufruf auf dem Host:
 2. **`LESBAR_BYTE`** (siehe oben), gehört zu Teil 3.
 3. **Die Protokoll-Wiederholung** bei jedem Minutentakt (§3, Punkt 2).
 
+## 3m - GEBAUT 23.09. nachmittags: Return-Knoten, Abnahme offen
+
+### Was gebaut ist
+
+Der Return-Knoten aus 3k steht. Ablaufplan 2 ist jetzt eine Funktion mit
+zugesicherter Rueckgabe: **ein Element hinein, genau ein Element hinaus.**
+
+| | |
+|---|---|
+| `Rueckfall` (Set) | haengt direkt am Ausloeser, liefert IMMER ein Element an den Merge (3. Eingang) |
+| `Return` (Code) | waehlt aus: echtes Ergebnis gewinnt, sonst `{ok:false, grund}` mit leerem Text + Dateiname |
+| 11 Bausteine | Fehlerabfang ergaenzt - Weichen, Merge, Code-Bausteine |
+| `bau/ablauf_pruefen.py` | neue Pruefung `test_rueckgabe_garantiert` |
+
+⭐ **Warum der Rueckfall-Zweig und nicht nur `alwaysOutputData` am Return:**
+Ob n8n einen Baustein mit **leerem** Eingang ueberhaupt ausfuehrt, ist nicht
+sicher - und `alwaysOutputData` greift laut Doku, wenn ein Baustein *nichts
+zurueckgibt*, nicht wenn er *gar nicht laeuft*. Der Rueckfall-Zweig haengt am
+Ausloeser, der immer genau ein Element hat. Damit steht die Zusicherung
+unabhaengig von dieser offenen Frage.
+
+⭐ **Der Dateiname muss im Fehlerfall mit.** Der Elternteil paart ueber
+`docling_filename` (Reparatur vom 26.08.). Ohne Namen verschiebt sich die
+Zuordnung, und ein Dokument bekaeme den Text eines anderen.
+
+### Die Pruefung prueft den WEG, nicht die Bausteine
+
+`test_unterkette_reisst_nicht_mit` war am 23.09. **gruen, waehrend der Fehler
+lief** - sie sieht Bausteine einzeln an und zaehlte nur HTTP und Extract.
+Die neue Pruefung fragt stattdessen: *Gibt es einen Weg vom Ausloeser zum
+Ausgang, auf dem kein Baustein das Element verlieren kann?*
+
+⭐ **Womit sie rot wird** - am Plan von `c2c4a21` gemessen, nicht behauptet:
+
+```
+Plan vor dem Umbau                  14 Fehler
+Rueckfall-Zweig entfernt            rot (Gegenprobe steckt im Test selbst)
+return [echt[0]] -> return liste    rot ("genau 1 Element")
+Plan nach dem Umbau                  0 Fehler
+```
+
+### ⛔ Die Abnahme steht noch aus - erst danach gilt das als behoben
+
+Kein Beweis ohne Lauf. Die Pruefung sagt, der Plan ist richtig verdrahtet;
+sie sagt **nicht**, dass n8n sich so verhaelt.
+
+1. `git pull && ./aktualisiere.sh`
+   ⚠ **`aktualisiere.sh` loest die Laufsperre selbst** (Zeile 63). Der
+   Eingang ist mit 0 leer, also passiert erst etwas, wenn eine Datei
+   hineinkommt - aber man sollte es wissen.
+2. **Dieselbe `.db`** nach `kap/input/_probe` legen - die Datei, die es
+   ausgeloest hat.
+3. Einen Durchgang abwarten, dann messen:
+   `docker exec ki4ki-pruef-proxy python3 /app/laufstand.py` und `linkprobe.py`
+
+| | |
+|---|---|
+| **Traegt es** | `.db` liegt in `aussortiert`, Eingang leer, Durchgang gruen |
+| **Traegt es nicht** | `.db` bleibt liegen - dann ist die Unterausfuehrung als GANZES gescheitert, nicht nur ein Zweig |
+
+4. Danach eine Handvoll gemischter Dateien MIT der `.db` zusammen. Erwartet:
+   die anderen laufen durch, die `.db` wird aussortiert, **der Block ueberlebt**.
+
+### ⛔ Was NICHT behoben ist: der Verstaerker im Elternteil
+
+`Code` in Ablaufplan 1 liefert weiterhin still `return []`, wenn die
+Unterausfuehrung als Ganzes scheitert (Zeitgrenze, Speicher, Unterablauf nicht
+aktiv). Der Return-Knoten hilft dagegen nicht - er laeuft dann gar nicht.
+
+⛔ **Der naheliegende Riegel waere falsch.** "Dann eben werfen" beendet den
+Durchgang vor `Sperre freigeben` - die Laufsperre bleibt liegen und blockiert
+alles bis zum 120-Minuten-Notnagel. Genau das ist am 04.08. schon einmal
+passiert. Richtig waere ein Fehlerzweig, der die Sperre in JEDEM Fall
+freigibt. Eigenes Stueck Arbeit.
+
+⚠ Zweiter offener Punkt, unveraendert aus 3j: **was `export:workflow` in
+n8n 2.x exportiert** (Entwurf oder veroeffentlichte Fassung). Solange das
+offen ist, ist `test_was_n8n_wirklich_geladen_hat` schwaecher als sein Name.
+
 ## 3l - OFFENE MELDUNGEN aus /rueckmeldungen (Stand 23.09.)
 
 ⭐ **Zuerst der gute Teil: K2 funktioniert.** Am 22.09. stand hier noch
@@ -282,7 +362,7 @@ Absicht erkennt. **Erst je einen Versuch bauen, dann zusammenfassen.**
 ⭐ Diese drei treffen den Nutzer direkt und liegen seit Wochen. Der
 KAP-Lauf tut das nicht.
 
-## 3k - GEMESSEN 23.09. mittags: die Kette traegt, EINE Datei legt sie still
+## 3k - GEMESSEN 23.09. mittags: die Kette traegt, EINE Datei legt sie still (Reparatur in 3m)
 
 ### Der Versuch
 
