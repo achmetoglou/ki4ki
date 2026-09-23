@@ -13,6 +13,7 @@ Schalter: KI4KI_ABSICHT_MODELL=1. Modell: KI4KI_ABSICHT_MODELL_NAME.
 Alle Funktionen ausser _modell_aufruf sind ohne Netz testbar (dialogtest.py).
 """
 import json
+import ollamaruf
 import os
 import re
 import time
@@ -113,8 +114,9 @@ def _modell_aufruf(prompt, modell=None, timeout=None):
     }).encode("utf-8")
     req = urllib.request.Request(URL, data=leib, headers={"Content-Type": "application/json"},
                                  method="POST")
-    with urllib.request.urlopen(req, timeout=timeout or TIMEOUT) as r:
-        antwort = json.load(r)
+    # ⛔ ollamaruf, nicht urlopen - siehe dort: ohne echtes
+    #   Schliessen rechnet Ollama nach einer Zeitueberschreitung weiter.
+    antwort = ollamaruf.fragen(URL, leib, timeout or TIMEOUT)
     return ((antwort.get("message") or {}).get("content") or "").strip()
 
 

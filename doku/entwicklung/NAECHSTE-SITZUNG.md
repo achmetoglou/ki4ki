@@ -239,6 +239,59 @@ und gleicht ab, was n8n **wirklich geladen** hat. Aufruf auf dem Host:
 2. **`LESBAR_BYTE`** (siehe oben), gehört zu Teil 3.
 3. **Die Protokoll-Wiederholung** bei jedem Minutentakt (§3, Punkt 2).
 
+## 4j - GEBAUT 23.09. spaet: aufgegebene Anfragen werden bei Ollama abgesagt
+
+Die Reparatur zum Befund aus §4i.
+
+`pruef-proxy/ollamaruf.py` fuehrt die Verbindung zu Ollama selbst und
+schliesst sie in einem `finally` - in JEDEM Fall, auch bei
+Zeitueberschreitung. Nur daran merkt Ollama, dass niemand mehr zuhoert,
+und bricht die Erzeugung ab.
+
+⛔ Vorher: `urllib.request.urlopen(req, timeout=...)`. Laeuft die
+Zeitgrenze ab, wirft das eine Ausnahme und ueberlaesst die Verbindung dem
+Aufraeumer. Ollama merkt davon nichts.
+
+### Alle vier Aufrufstellen umgestellt
+
+| Datei | wofuer |
+|---|---|
+| `gespraech.py` | der Gespraechsmodus - die langen Antworten, hier entstanden die Zombies |
+| `pruef_proxy.py` | Zusammenfassungen (Zeitgrenze 900 s) |
+| `absicht.py` | Absichtserkennung |
+| `assistent.py` | Auffangnetz, zwei Stellen |
+
+⭐ Gegenprobe: `grep "with urlopen"` findet in diesen Dateien **keine**
+Stelle mehr, die Ollama ohne Absage ruft. Genau die Sorte Durchgang, die
+am 04.08. gefehlt hat ("13 Stellen, 3 gefunden").
+
+### Womit die Pruefung rot wird
+
+`ollamaruftest.py`, 4 Faelle mit einem vorgetaeuschten Draht, der
+mitschreibt, ob er geschlossen wurde:
+
+```
+Stub (heutiges urlopen-Verhalten)        Fehler (geht ins echte Netz)
+close() aus dem finally entfernt         3 Fehler
+nach der Reparatur                       0 Fehler
+```
+
+⭐ Der entscheidende Fall heisst
+`test_zeitgrenze_sagt_ollama_ab`: Die Zeitueberschreitung muss beim
+Aufrufer ankommen UND die Leitung muss zu sein. Beides zusammen, sonst
+ist es keine Absage.
+
+⚠ Was die Pruefung NICHT zeigt: ob Ollama daraufhin wirklich abbricht.
+Das ist eine Eigenschaft von Ollama, nicht von uns. **Abnahme:** Eine
+Anfrage in die Zeitgrenze laufen lassen und danach im Protokoll
+nachsehen, ob noch ein Auftrag rechnet:
+
+```bash
+docker logs --since 2m ki4ki-ollama 2>&1 | grep "print_timing" | tail -3
+```
+
+Kommt dort nach dem Abbruch nichts mehr, ist der Zombie weg.
+
 ## 4i - ⭐⭐⭐ DIE TODESSPIRALE: abgebrochene Anfragen rechnen weiter
 
 Im Ollama-Protokoll gefunden, waehrend `ollama stop` haengen blieb:

@@ -32,6 +32,7 @@ sich einzeln pruefen laesst, ohne den laufenden Dienst anzufassen:
     python3 assistent_test.py
 """
 import json
+import ollamaruf
 import os
 import re
 import threading
@@ -561,8 +562,8 @@ def _netz_frageart(frage):
         }).encode("utf-8")
         a = Request(NETZ_URL, data=leib,
                     headers={"Content-Type": "application/json"}, method="POST")
-        with urlopen(a, timeout=NETZ_TIMEOUT) as r:
-            antwort = json.loads(r.read())
+        # ⛔ siehe ollamaruf.py
+        antwort = ollamaruf.fragen(NETZ_URL, leib, NETZ_TIMEOUT)
         inhalt = ((antwort.get("message") or {}).get("content") or "").lower()
         for f in _NETZ_ORDNUNG:
             if f in inhalt:
@@ -596,9 +597,10 @@ def netz_bildwunsch(frage):
         }).encode("utf-8")
         a = Request(NETZ_URL, data=leib,
                     headers={"Content-Type": "application/json"}, method="POST")
-        with urlopen(a, timeout=NETZ_TIMEOUT) as r:
-            inhalt = (((json.loads(r.read()).get("message") or {})
-                       .get("content") or "")).strip().upper()
+        # ⛔ siehe ollamaruf.py
+        inhalt = ((ollamaruf.fragen(NETZ_URL, leib, NETZ_TIMEOUT)
+                   .get("message") or {}).get("content")
+                  or "").strip().upper()
         if inhalt.startswith("JA"):
             return True
         if inhalt.startswith("NEIN"):

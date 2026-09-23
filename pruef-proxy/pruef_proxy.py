@@ -58,6 +58,7 @@ import pruefprotokoll
 import veredeln
 import wortsuche
 import anhang
+import ollamaruf
 import fusszeile
 
 ZIEL = os.environ.get("KI4KI_ZIEL") or "http://127.0.0.1:3001"
@@ -7093,11 +7094,9 @@ class Griff(BaseHTTPRequestHandler):
             "options": {"temperature": 0.2, "num_ctx": 65536},
             "keep_alive": "24h",
         }).encode()
-        req = urllib.request.Request(
-            MODELL_ZIEL, data=daten, method="POST",
-            headers={"Content-Type": "application/json"})
-        with urllib.request.urlopen(req, timeout=zeitgrenze) as r:
-            antwort = json.load(r)
+        # ⛔ Siehe ollamaruf.py: ohne echtes Schliessen rechnet
+        #   Ollama nach einer Zeitueberschreitung weiter.
+        antwort = ollamaruf.fragen(MODELL_ZIEL, daten, zeitgrenze)
         return ((antwort.get("message") or {}).get("content") or "").strip()
 
     def _zusammenfassung(self, frage, erzwinge=None):

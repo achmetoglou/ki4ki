@@ -24,6 +24,7 @@ Alles hier ist ohne Netz testbar: `fuehren()` bekommt `rufen` (Modell) und
 import json
 import os
 import re
+import ollamaruf
 import threading
 import time
 import urllib.request
@@ -284,10 +285,11 @@ def _modell_aufruf(messages, tools=True, denken=None, modell=None):
                     "num_predict": ANTWORT_TOKEN},
         "keep_alive": "24h",
     }).encode("utf-8")
-    req = urllib.request.Request(URL, data=leib, headers={"Content-Type": "application/json"},
-                                 method="POST")
-    with urllib.request.urlopen(req, timeout=TIMEOUT) as r:
-        antwort = json.load(r)
+    # ⛔ ollamaruf, nicht urlopen: Bei einer Zeitueberschreitung
+    #   muss die Verbindung WIRKLICH zugehen, sonst rechnet Ollama
+    #   weiter ins Leere (gemessen 23.09.: zwei Zombie-Auftraege
+    #   bei 0,41 t/s, die jede naechste Frage mitbremsten).
+    antwort = ollamaruf.fragen(URL, leib, TIMEOUT)
     m = dict(antwort.get("message") or {})
     m["_nutzung"] = {"prompt": int(antwort.get("prompt_eval_count") or 0), "antwort": int(antwort.get("eval_count") or 0),
                      "dauer_ms": int((antwort.get("total_duration") or 0) / 1e6)}
