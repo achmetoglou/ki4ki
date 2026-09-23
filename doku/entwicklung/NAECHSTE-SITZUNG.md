@@ -239,6 +239,86 @@ und gleicht ab, was n8n **wirklich geladen** hat. Aufruf auf dem Host:
 2. **`LESBAR_BYTE`** (siehe oben), gehört zu Teil 3.
 3. **Die Protokoll-Wiederholung** bei jedem Minutentakt (§3, Punkt 2).
 
+## 4g - ⭐⭐⭐ DIE EIGENTLICHE URSACHE: die Grafikkarte ist voll
+
+Emrach, woertlich: *"die antworten muessen wie aus der pistole geschossen
+kommen.. bei jeder frage... wie bei chatgpt oder claude"*.
+
+Gemessen am 23.09. abends, nachdem ich stundenlang am Token-Deckel
+gedreht hatte:
+
+```
+Grafikspeicher  46.068 MiB gesamt | 44.564 belegt | 927 MiB frei
+
+ki4ki-ollama    22.238 + 4.032 + 6.030 = 32.300 MiB  (drei Modelle)
+ki4ki-docling                            12.222 MiB
+```
+
+⛔ **927 MiB frei von 46 GB.** Das ist derselbe Zustand, der am
+04.08. schon einmal dokumentiert wurde - dort stand woertlich:
+*"Docling gibt Grafikspeicher NIE frei. Ollama bekam 931 MiB und
+rechnete auf der CPU (4,4 statt ~40 t/s)."* Damals 931 MiB, heute 927.
+
+⭐ **Ollama haelt drei Modelle gleichzeitig.** Unser eigener Code setzt
+`keep_alive: "24h"` (`gespraech.py`) - die Modelle bleiben also einen
+ganzen Tag im Speicher, auch wenn niemand fragt. Dazu Doclings 12 GB, die
+es auch im Leerlauf nicht hergibt.
+
+### ⛔ Was ich falsch gemacht habe
+
+Ich habe den ganzen Abend am **Token-Deckel** gedreht: 1800 → 8192 → 4096
+→ 2048. Jedes Mal wurde die Antwort nur **kuerzer**, nie schneller. Der
+Deckel begrenzt, WIE VIEL geschrieben wird - nicht, wie schnell.
+
+⭐ **Fuenfte Spielart derselben Regel aus §7:** Ich habe die Stellschraube
+gemessen, die ich in der Hand hatte, statt die Maschine, die die Arbeit
+macht. Ein `nvidia-smi` haette das in zehn Sekunden gezeigt - und es
+stand als Fundstelle seit dem 04.08. in unserer eigenen Doku.
+
+### ⭐ Und der zweite, unabhaengige Grund: wir streamen nicht
+
+ChatGPT und Claude fuehlen sich nicht deshalb schnell an, weil sie
+schneller rechnen - sondern weil das **erste Wort nach einer Sekunde**
+dasteht. Unser Proxy ruft das Modell mit `"stream": False` und zeigt
+**gar nichts**, bis alles fertig UND geprueft ist.
+
+⛔ Das ist bewusst so gebaut: Die Antwort wird gegen die Dokumente
+geprueft, bevor sie erscheint. Nichts Ungeprueftes geht raus - das ist
+der Produktanspruch.
+
+⚠ **Aber der Preis ist genau das Gefuehl, ueber das sich Emrach
+beschwert.** Diese Abwaegung gehoert entschieden, nicht stillschweigend
+beibehalten:
+
+| Weg | Gefuehl | Beleg |
+|---|---|---|
+| heute: erst pruefen, dann zeigen | stumme Wartezeit | nichts Ungeprueftes sichtbar |
+| streamen, Fusszeile danach | erstes Wort sofort | der Text ist kurz sichtbar, bevor die Pruefung laeuft |
+
+⭐ Der Mittelweg, der beides haelt: **streamen, und die Pruefung haengt
+hinten an** - Fusszeile, gepruefte Zitate, Warnungen. Wo die Pruefung
+heute still etwas streicht (erfundene Abbildungsnummern), wuerde sie es
+dann **benennen** statt es unsichtbar zu entfernen. Das waere sogar
+ehrlicher als heute.
+
+### Naechste Schritte, in dieser Reihenfolge
+
+1. **Grafikspeicher freiraeumen** - das ist die Ursache, nicht das Gefuehl
+   - welche Modelle haelt Ollama? (`ollama ps` im Container)
+   - `keep_alive` von 24 h herunter, oder ungenutzte Modelle entladen
+   - Docling: gibt `/v1/clear/converters` den Speicher wirklich frei?
+     (Der Ablaufplan ruft es, die 12 GB stehen trotzdem.)
+2. **Danach neu messen** - erst dann weiss man, was der Deckel wirklich
+   kostet. Alle Zahlen von heute (53,9 Token/s) stammen von einer vollen
+   Grafikkarte.
+3. **Dann entscheiden**, ob gestreamt wird.
+4. Das **Budget ueber den ganzen Zug** bleibt richtig, ist aber nach 1.
+   vielleicht gar nicht mehr dringend.
+
+⚠ **Fuer Partner wichtig:** Wer eine kleinere Karte hat als die A40
+(46 GB), trifft das frueher und haerter. Das gehoert in die
+Installationsunterlage, sobald die Zahlen nach dem Aufraeumen stehen.
+
 ## 4f - ENTSCHIEDEN 23.09. abends: 2048 Token, und die Zeitgrenze kam nie an
 
 Emrach, woertlich: *"keiner wartet so lange auf eine antwort sind jetzt
