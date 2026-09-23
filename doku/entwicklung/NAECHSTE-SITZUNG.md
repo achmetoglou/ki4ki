@@ -239,6 +239,70 @@ und gleicht ab, was n8n **wirklich geladen** hat. Aufruf auf dem Host:
 2. **`LESBAR_BYTE`** (siehe oben), gehört zu Teil 3.
 3. **Die Protokoll-Wiederholung** bei jedem Minutentakt (§3, Punkt 2).
 
+## 3y - URSACHE GEFUNDEN 23.09.: die Meldung vom 18.09. ist ein Laengendeckel
+
+### Der Versuch, in einem FRISCHEN Faden
+
+```
+kurze Antworten verlangt  -> alle 11 beantwortet (4 6 8 ... 24)
+lange Antworten verlangt  -> Abbruch MITTEN IM WORT:
+        "... Alltagsbeispiel: Du hast 12 Stifte und bekommst"
+```
+
+⭐ **Der Beweis steht nicht in der Anzahl, sondern im Schnitt.** Ein
+Modell, das selbst aufhoert, endet sauber. Ein Schnitt mitten im Wort ist
+die Unterschrift einer Token-Grenze.
+
+`gespraech.py` rief das Modell mit `num_predict: 1800` - fest verdrahtet,
+waehrend das Kontextfenster 65.536 fasst. Bei Fachtext (2,1 Zeichen je
+Token, gemessen in `mehrstufig.py`) sind 1800 Token rund 3.800 Zeichen -
+**etwa vier ausfuehrliche Antworten**. Genau das meldete der Nutzer am
+18.09.: *"bricht aber in der 4ten Frage ab"*.
+
+⚠ Meine Vorhersage war "Abbruch bei 5 bis 9", tatsaechlich kam er bei 11.
+Der Grund: Die Rechenaufgaben-Antworten sind hochgradig wiederholend und
+zahlenreich, die brauchen weniger als 2,1 Zeichen je Token. Die
+Groessenordnung stimmte, die Zahl nicht - und die Richtung des Befunds
+haengt nicht daran.
+
+### Gebaut
+
+| | |
+|---|---|
+| `ANTWORT_TOKEN` (`KI4KI_ANTWORT_TOKEN`) | Vorgabe **4096** statt fest 1800, ohne Neubau aenderbar |
+| `abgeschnitten()` | liest Ollamas `done_reason`; faellt auf die Token-Zahl zurueck, wenn die Fassung es nicht meldet |
+| `abschnitt_vermerken()` | haengt einen sichtbaren Hinweis an, statt stumm mitten im Wort zu enden |
+| `nutzung["abgeschnitten"]` | im Protokoll auswertbar: wie oft trifft es uns wirklich? |
+
+⭐ **Das Schlimmste war nicht der Deckel, sondern die Stille.** Die
+Antwort endete mitten im Wort, und nichts sagte, dass etwas fehlt. Wer es
+nicht bemerkt, haelt Unvollstaendiges fuer vollstaendig - bei einer
+Wissensdatenbank der teuerste Fehler. Dieselbe Krankheit wie der gruene
+leere Durchgang aus 3o.
+
+### ⛔ Zum VIERTEN Mal an einem Tag: die Pruefung sass auf der falschen Ebene
+
+Die erste Fassung der Pruefreihe testete `abgeschnitten()` und
+`abschnitt_vermerken()` **einzeln**. Als ich die eine Zeile entfernte, die
+beide im Gespraechszug verbindet, blieb sie **gruen**.
+
+⭐ Jetzt faehrt `test_der_hinweis_kommt_wirklich_im_gespraechszug_an`
+einen echten Zug durch `fuehren()` mit einem vorgetaeuschten Modell.
+Mutationsproben: Verdrahtung entfernt → rot; Grenze zurueck auf 1800 →
+rot.
+
+⚠ **Und ein Eigentor:** Ich habe die Mutation mit
+`git checkout -- gespraech.py` zurueckgenommen - das hat die ganze,
+noch nicht committete Reparatur geloescht. Wiederherstellbar nur, weil das
+Einbau-Skript noch im Arbeitsordner lag. **Eine Mutationsprobe wird mit
+einer Kopie zurueckgedreht, nie mit `git checkout`.**
+
+### ⛔ Abnahme steht aus
+
+Nach `aktualisiere.sh` denselben Lauf B wiederholen, in einem frischen
+Faden. Erwartet: Die elfte Antwort ist vollstaendig - und wenn doch
+abgeschnitten wird, steht es jetzt dabei.
+
 ## 3x - BEOBACHTET 23.09.: mehrere Fragen werden in den Pruefungskatalog umgeleitet
 
 Beim Versuch zur Meldung vom 18.09. (elf Fragen, vier beantwortet) trat

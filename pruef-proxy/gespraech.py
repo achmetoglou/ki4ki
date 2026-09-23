@@ -33,6 +33,14 @@ URL = (os.environ.get("KI4KI_GESPRAECH_URL") or os.environ.get("KI4KI_NETZ_URL")
        or "http://nothink-proxy:11435/api/chat")
 TIMEOUT = float(os.environ.get("KI4KI_GESPRAECH_TIMEOUT") or "240")
 MAX_RUNDEN = int(os.environ.get("KI4KI_GESPRAECH_RUNDEN") or "5")
+# ⛔ Bis zum 23.09. stand hier fest 1800. Gemessen an einer Anweisung mit
+#   elf Fragen: kurze Antworten kamen alle durch, ausfuehrliche brachen
+#   MITTEN IM WORT ab ("... Du hast 12 Stifte und bekommst"). Genau das
+#   meldete ein Nutzer am 18.09.: "bricht in der 4ten Frage ab" - bei
+#   Fachtext (2,1 Zeichen je Token) reichen 1800 Token fuer rund vier
+#   ausfuehrliche Antworten. Das Kontextfenster fasst 65.536; der Deckel
+#   war die Engstelle, nicht das Modell.
+ANTWORT_TOKEN = int(os.environ.get("KI4KI_ANTWORT_TOKEN") or "4096")
 # Gesamtbudget je Zug: sonst sieht der Mensch bei haengendem Modell bis zu
 # 6 x 240 s "Denke nach ..." (Fund 01.09.).
 BUDGET = float(os.environ.get("KI4KI_GESPRAECH_BUDGET") or "300")
@@ -271,7 +279,8 @@ def _modell_aufruf(messages, tools=True, denken=None, modell=None):
         "tools": WERKZEUGE if tools else [],
         "stream": False,
         "think": bool(DENKEN if denken is None else denken),
-        "options": {"temperature": 0, "num_ctx": 65536, "num_predict": 1800},
+        "options": {"temperature": 0, "num_ctx": 65536,
+                    "num_predict": ANTWORT_TOKEN},
         "keep_alive": "24h",
     }).encode("utf-8")
     req = urllib.request.Request(URL, data=leib, headers={"Content-Type": "application/json"},
@@ -281,7 +290,43 @@ def _modell_aufruf(messages, tools=True, denken=None, modell=None):
     m = dict(antwort.get("message") or {})
     m["_nutzung"] = {"prompt": int(antwort.get("prompt_eval_count") or 0), "antwort": int(antwort.get("eval_count") or 0),
                      "dauer_ms": int((antwort.get("total_duration") or 0) / 1e6)}
+    # ⭐ Ollama sagt selbst, WARUM es aufgehoert hat. Bis zum 23.09. hat das
+    #   niemand gelesen - eine abgeschnittene Antwort sah aus wie eine fertige.
+    m["_abgeschnitten"] = abgeschnitten(antwort)
     return m
+
+
+def abgeschnitten(antwort):
+    """Hat das Modell an der Token-Grenze aufgehoert statt von selbst?
+
+    Erste Wahl ist `done_reason` ("length" gegen "stop"). Aeltere
+    Ollama-Fassungen melden das nicht; dann bleibt die Zahl: Wer die
+    Grenze auf das Token genau ausreizt, wurde fast sicher geschnitten.
+    """
+    if (antwort or {}).get("done_reason") == "length":
+        return True
+    if (antwort or {}).get("done_reason"):
+        return False
+    return int((antwort or {}).get("eval_count") or 0) >= ANTWORT_TOKEN
+
+
+_ABSCHNITT_HINWEIS = (
+    "\n\n---\n*⚠ Diese Antwort wurde an der Laengengrenze **abgeschnitten** "
+    "(%d Token). Frag nach dem fehlenden Teil - zum Beispiel \u201eschreib ab "
+    "Punkt X weiter\u201c - oder stell weniger Fragen auf einmal.*")
+
+
+def abschnitt_vermerken(text, wurde_abgeschnitten):
+    """Einen Abschnitt benennen, statt ihn zu verschweigen.
+
+    ⛔ Das Schlimmste am Deckel war nicht der Deckel, sondern die Stille:
+      Die Antwort endete mitten im Wort, und nichts sagte, dass da noch
+      etwas fehlt. Wer es nicht bemerkt, haelt Unvollstaendiges fuer
+      vollstaendig - bei einer Wissensdatenbank der teuerste Fehler.
+    """
+    if not wurde_abgeschnitten or not text:
+        return text
+    return text + (_ABSCHNITT_HINWEIS % ANTWORT_TOKEN)
 
 
 _BILDNENNUNG = re.compile(r"\[?\b(?:Abbildung|Abb\.?|Bild|Figure|Fig\.?)\s*(\d{1,2}[.\-]\d{1,3})\b\]?", re.I)
@@ -499,6 +544,8 @@ def fuehren(frage, verlauf, faden_dok, dokumente, werkzeug, rufen=None, kontakt=
         calls = m.get("tool_calls") or []
         for k, v in (m.get("_nutzung") or {}).items():
             nutzung[k] = nutzung.get(k, 0) + int(v or 0)
+        if m.get("_abgeschnitten"):
+            nutzung["abgeschnitten"] = 1
         if not calls:
             # Als Text hingeschriebene Aufrufe -> echte Aufrufe (einmal je Runde)
             ps = pseudo_aufrufe(inhalt)
@@ -597,6 +644,7 @@ def fuehren(frage, verlauf, faden_dok, dokumente, werkzeug, rufen=None, kontakt=
             text = bereinigen(m.get("content") or "").strip()
         except Exception as e2:
             fehler = "Modell: %s" % str(e2)[:120]
+    text = abschnitt_vermerken(text, bool(nutzung.get("abgeschnitten")))
     return {"text": text, "aufrufe": aufrufe, "dokumente": beruehrt,
             "runden": len(aufrufe), "ms": int((time.time() - begonnen) * 1000),
             "fehler": fehler, "nutzung": nutzung}
