@@ -236,6 +236,51 @@ und gleicht ab, was n8n **wirklich geladen** hat. Aufruf auf dem Host:
 2. **`LESBAR_BYTE`** (siehe oben), gehört zu Teil 3.
 3. **Die Protokoll-Wiederholung** bei jedem Minutentakt (§3, Punkt 2).
 
+## 3r - GEBAUT 23.09. abends: der Ablaufplan nennt seinen Stand
+
+Emrachs Frage: *"wann soll ich oben das orange Publish machen? vllt liegt
+es daran?"* Berechtigt - und bis jetzt **nicht beantwortbar**. Nichts im
+Betrieb sagte, aus welchem Commit der laufende Ablaufplan stammt.
+
+Ab sofort schreibt der Baustein, der ohnehin jede Minute eine Zeile
+schreibt, den Commit voran:
+
+```
+[Stand f48e900] Bereich kap: 1 zu verarbeiten, 0 schon im Bestand, ...
+```
+
+`aktualisiere.sh` setzt `__STAND__` aus `git rev-parse --short HEAD` ein -
+auf einer **Kopie**, die Repo-Datei bleibt unveraendert.
+
+⭐ Damit ist die offene Frage aus 3j ("was exportiert `export:workflow`
+in n8n 2.x - Entwurf oder veroeffentlichte Fassung?") **umgangen statt
+beantwortet**: Es ist egal, welche Fassung der Export zeigt, wenn der
+LAUFENDE Ablaufplan selbst sagt, woher er kommt.
+
+### ⛔ Zum Publish-Knopf: weiterhin NICHT druecken
+
+Der Knopf veroeffentlicht den **Entwurf**, und was in `d0810e64` steckt,
+weiss niemand. Er kann aelter sein als alles, was seit dem 21.09. gebaut
+wurde. Der Stempel klaert die Frage ohne Risiko:
+
+| im Protokoll steht | Bedeutung |
+|---|---|
+| der Commit, den `aktualisiere.sh` gemeldet hat | ✅ es laeuft, was wir gepusht haben - Publish waere ein Rueckschritt |
+| ein **aelterer** Commit | ⛔ der Import erreicht die laufende Fassung nicht - DANN ist Publish (oder der Direktweg aus dem Gedaechtnis) noetig |
+| `[Stand __STAND__]` woertlich | der Plan wurde an `aktualisiere.sh` vorbei eingespielt |
+
+### Womit die Pruefung rot wird
+
+`test_stand_steht_im_protokoll`, 6 Stellen. Vor dem Bau: **5 Fehler**.
+Danach 0. Die Gegenprobe fuehrt den Ersetzungsbefehl wirklich aus.
+
+⚠ **Eine Pruefung davon war zuerst falsch gebaut.** Sie verlangte, dass
+`docker cp "$wf"` verschwindet - die Zeile bleibt aber zu Recht stehen,
+nur die Schleife darueber aendert sich. Eine Pruefung, die korrekter Code
+nicht erfuellen kann, ist genauso wertlos wie eine, die nie rot wird.
+Korrigiert auf: die Schleife darf nicht mehr ueber `n8n-workflows/*.json`
+laufen, sondern ueber die gestempelten Kopien.
+
 ## 3q - GEBAUT 23.09. abends: Nichtdokumente raeumen sich weg
 
 `bau/nichtdokumente_wegraeumen.py` holt die uebersprungenen Dateien aus den

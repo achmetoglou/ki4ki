@@ -656,6 +656,65 @@ def test_stiller_durchgang_meldet_sich():
            "Meldung nur in die Browser-Konsole und nie ins Protokoll")
 
 
+def test_stand_steht_im_protokoll():
+    """Jeder Durchgang muss sagen, AUS WELCHEM Commit er stammt.
+
+    ⛔ Am 23.09. konnte niemand beantworten, ob die gepushten Aenderungen
+      im Betrieb ueberhaupt ankommen. In n8n stand der Publish-Knopf
+      orange; `import:workflow` schreibt moeglicherweise nur den Entwurf,
+      waehrend der Ausloeser die veroeffentlichte Fassung fuehrt (so
+      gemessen 2026-06-25 am Telegram-Briefing). Drei Reparaturen lagen
+      auf dem System, und ihre Abnahme waere wertlos gewesen, wenn gar
+      nicht sie laufen.
+
+    ⭐ Der Stempel beantwortet das fuer immer und kostet nichts: Der
+      Baustein, der ohnehin jede Minute eine Zeile schreibt, stellt den
+      Commit voran. Ein Blick ins Protokoll sagt, welche Fassung laeuft.
+    """
+    print("\nDer laufende Ablaufplan nennt seinen Stand")
+    plan = _plan_lesen("1_KI4KI-Masse-Ingest.json")
+    if plan is None:
+        return
+    kn = [n for n in plan["nodes"] if n.get("name") == "Nur ein Bereich je Durchgang"]
+    if not kn:
+        pruefe(False, "Baustein fehlt - NICHT geprueft")
+        return
+    js = kn[0]["parameters"]["jsCode"]
+    pruefe(js.count("__STAND__") == 1,
+           "der Platzhalter steht genau einmal im Baustein (ist: %d)"
+           % js.count("__STAND__"))
+    zeile = [z for z in js.splitlines() if "console.log" in z]
+    pruefe(bool(zeile) and "__STAND__" in "\n".join(zeile[:3]),
+           "und zwar in der Zeile, die JEDER Durchgang schreibt")
+
+    # Das Einspielen muss ihn ersetzen - sonst steht der Platzhalter im Log.
+    wurzel = os.path.dirname(PLAENE)
+    skript = os.path.join(wurzel, "aktualisiere.sh")
+    if not os.path.exists(skript):
+        pruefe(False, "aktualisiere.sh fehlt - NICHT geprueft")
+        return
+    sh = io.open(skript, encoding="utf-8").read()
+    pruefe("__STAND__" in sh and "rev-parse" in sh,
+           "aktualisiere.sh setzt den Commit ein")
+    # ⚠ NICHT auf 'docker cp "$wf"' pruefen - die Zeile bleibt zu Recht
+    #   stehen. Entscheidend ist, WORUEBER die Schleife laeuft: ueber die
+    #   gestempelten Kopien, nicht ueber die Dateien im Repo.
+    pruefe("for wf in n8n-workflows/*.json; do docker cp" not in sh,
+           "die Einspiel-Schleife laeuft NICHT mehr ueber die Repo-Dateien "
+           "- sonst liesse sich der Stempel ueberspringen")
+    pruefe('for wf in "${_wfdir}"/*.json; do docker cp' in sh,
+           "sondern ueber die gestempelten Kopien")
+
+    # Gegenprobe, ausgefuehrt: ersetzt der Befehl wirklich?
+    quelle = os.path.join(PLAENE, "1_KI4KI-Masse-Ingest.json")
+    e = subprocess.run(["sed", "s/__STAND__/pruefstand9/g", quelle],
+                       capture_output=True, text=True, timeout=60)
+    pruefe(e.returncode == 0 and "__STAND__" not in e.stdout
+           and "pruefstand9" in e.stdout,
+           "Gegenprobe: der Ersetzungsbefehl entfernt den Platzhalter "
+           "wirklich und setzt den Stand ein")
+
+
 def test_plaene_unversehrt():
     """Die Plaene muessen ladbar und vollstaendig bleiben."""
     print("\nAblaufplaene unversehrt")
@@ -753,6 +812,7 @@ if __name__ == "__main__":
     test_office_pdf_liegt_neben_dem_original()
     test_rueckgabe_garantiert()
     test_stiller_durchgang_meldet_sich()
+    test_stand_steht_im_protokoll()
     test_plaene_unversehrt()
     test_was_n8n_wirklich_geladen_hat()
     print("\nGeprueft wurden die Plaene in: %s" % PLAENE)

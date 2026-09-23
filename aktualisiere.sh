@@ -50,8 +50,20 @@ docker compose up -d
 # fuehrt n8n nicht aus) und n8n neu starten, damit es die Fassung laedt.
 echo "→ Ablaufplaene einspielen ..."
 set +e
+# ⭐ Stand-Stempel. Jeder Durchgang schreibt ins Protokoll, AUS WELCHEM
+#   Commit der laufende Ablaufplan stammt. Damit beantwortet ein Blick ins
+#   Protokoll die Frage "laeuft wirklich, was wir gepusht haben?" - die am
+#   23.09. niemand beantworten konnte, weil der Publish-Knopf orange stand
+#   und unklar war, ob import:workflow nur den Entwurf schreibt.
+#   Ersetzt wird auf einer KOPIE; die Datei im Repo bleibt unveraendert.
+_stand="$(git rev-parse --short HEAD 2>/dev/null || echo unbekannt)"
+_wfdir="$(mktemp -d)"
+for wf in n8n-workflows/*.json; do
+  sed "s/__STAND__/${_stand}/g" "$wf" > "${_wfdir}/$(basename "$wf")"
+done
 docker exec ki4ki-n8n sh -c 'rm -rf /tmp/wf && mkdir -p /tmp/wf' >/dev/null 2>&1
-for wf in n8n-workflows/*.json; do docker cp "$wf" ki4ki-n8n:/tmp/wf/ >/dev/null 2>&1; done
+for wf in "${_wfdir}"/*.json; do docker cp "$wf" ki4ki-n8n:/tmp/wf/ >/dev/null 2>&1; done
+rm -rf "${_wfdir}"
 if docker exec ki4ki-n8n n8n import:workflow --separate --input=/tmp/wf >/dev/null 2>&1; then
   _ok=1
   for _wid in 1DKWgDbdCiwa25E1 uK5WCYhjVqPawcvP J8pPkKTKmkFTXjGn; do
@@ -61,7 +73,7 @@ if docker exec ki4ki-n8n n8n import:workflow --separate --input=/tmp/wf >/dev/nu
   # Der Neustart bricht einen laufenden Durchgang ab - seine Sperre waere
   # sonst bis zu 120 Minuten verwaist und die Aufnahme so lange dicht.
   docker exec ki4ki-n8n rmdir /files/json/.lauf.sperre >/dev/null 2>&1 || true
-  [ "$_ok" = 1 ] && echo "  Ablaufplaene eingespielt und aktiviert (n8n neu gestartet)" \
+  [ "$_ok" = 1 ] && echo "  Ablaufplaene eingespielt und aktiviert, Stand ${_stand} (n8n neu gestartet)" \
     || echo "  ⚠ Nicht alle Ablaufplaene aktiviert - bitte in n8n (Port 5678) pruefen"
 else
   echo "  ⚠ Ablaufplaene konnten nicht importiert werden - bitte in n8n (Port 5678) von Hand importieren"
