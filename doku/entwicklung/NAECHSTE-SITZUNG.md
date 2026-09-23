@@ -255,7 +255,14 @@ durch `archiv/` und `aussortiert/`; dort stoeren Nichtdokumente niemanden.
 Entscheidend ist allein der **Parkplatz** - die wandern in den Eingang und
 bleiben dort liegen, jeden Durchgang neu.
 
-⭐ Deshalb zaehlt das Werkzeug jetzt **je Ablagestufe**. Die Gesamtzahl
+⭐ Deshalb zaehlt das Werkzeug jetzt **je Ablagestufe**.
+
+⛔ **Beim ersten Anlauf blieb die Aufschluesselung unsichtbar.** Sie stand
+nur bei MEHR ALS EINER Stufe da - lagen alle Treffer im Parkplatz, fehlte
+sie genau dann, wenn die Frage eine eindeutige Antwort gehabt haette. Eine
+Ausgabe, die sich bei Eindeutigkeit versteckt, ist schlechter als gar
+keine: Man haelt die Zahl fuer unaufgeschluesselt und raet weiter.
+Die Ausgabe liegt jetzt in `bericht()` und ist damit pruefbar. Die Gesamtzahl
 allein haette zu einer Planung auf falscher Grundlage gefuehrt - dieselbe
 Sorte Fehler wie "41 .db" (aus 813 Dateien) gegen "263 Ordner-Merkdateien"
 (aus 6.889): zwei Zahlen, zwei Nenner, ein Missverstaendnis.

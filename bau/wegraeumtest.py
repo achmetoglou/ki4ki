@@ -232,6 +232,31 @@ def test_zahlen_je_stufe():
         shutil.rmtree(d, ignore_errors=True)
 
 
+def test_bericht_nennt_die_stufe_immer():
+    """Auch wenn ALLES in einer Stufe liegt, muss sie dastehen.
+
+    ⛔ Gemessen 23.09.: Der Bericht zeigte die Aufschluesselung nur bei
+      mehr als einer Stufe. Lagen alle 409 Treffer im Parkplatz, fehlte
+      sie genau dann, wenn die Frage "wo liegen sie?" eine eindeutige
+      Antwort gehabt haette. Eine Ausgabe, die sich bei Eindeutigkeit
+      versteckt, ist schlechter als gar keine - man haelt die Zahl fuer
+      unaufgeschluesselt und raet weiter.
+    """
+    print("\nDer Bericht nennt die Stufe auch bei nur einer")
+    e = {"gesehen": 6886, "erkannt": 409, "verschoben": 0,
+         "gruende": {"Ordner-Merkdatei": 262},
+         "stufen": {"parkplatz": 409}, "namen": []}
+    zeilen = "\n".join(w.bericht(e, alles=True, wirklich=False))
+    pruefe("parkplatz" in zeilen,
+           "die Stufe steht im Bericht, auch als einzige")
+    pruefe("409" in zeilen, "mit ihrer Zahl")
+    leer = "\n".join(w.bericht(
+        {"gesehen": 5, "erkannt": 0, "verschoben": 0, "gruende": {},
+         "stufen": {}, "namen": []}, alles=False, wirklich=False))
+    pruefe("Ablagestufe" not in leer,
+           "Gegenprobe: ohne Treffer keine leere Ueberschrift")
+
+
 if __name__ == "__main__":
     test_zielpfad()
     test_trockenlauf_bewegt_nichts()
@@ -241,5 +266,6 @@ if __name__ == "__main__":
     test_viele_namen_sprengen_den_aufruf_nicht()
     test_pakete_bleiben_unter_der_befehlsgrenze()
     test_zahlen_je_stufe()
+    test_bericht_nennt_die_stufe_immer()
     print("\n%d Fehler" % len(FEHLER))
     sys.exit(1 if FEHLER else 0)

@@ -181,6 +181,40 @@ def wegraeumen(wurzel, wirklich=False, jetzt=None, namen_zeigen=False,
     return erg
 
 
+def bericht(e, alles=False, wirklich=False, zeigen=False):
+    """Die Ausgabe als Zeilen - damit sie pruefbar ist.
+
+    ⛔ Die Aufschluesselung stand frueher nur bei MEHR ALS EINER Stufe da.
+      Lagen alle Treffer in einer, fehlte sie genau dann, wenn die Frage
+      "wo liegen sie?" eine eindeutige Antwort gehabt haette. Eine
+      Ausgabe, die sich bei Eindeutigkeit versteckt, ist schlechter als
+      gar keine - man haelt die Zahl fuer unaufgeschluesselt.
+    """
+    z = ["Dateien %-18s: %d"
+         % ("ueberall" if alles else "in den Eingaengen", e["gesehen"]),
+         "davon keine Dokumente     : %d" % e["erkannt"]]
+    for g, n in sorted(e["gruende"].items(), key=lambda x: -x[1]):
+        z.append("    %-22s %d" % (g, n))
+    if e["stufen"]:
+        z.append("je Ablagestufe:")
+        for st, n in sorted(e["stufen"].items(), key=lambda x: -x[1]):
+            hinweis = ""
+            if st == "parkplatz":
+                hinweis = "   <- wandern in den Eingang und bleiben liegen"
+            elif st in ("archiv", "aussortiert"):
+                hinweis = "   (stoeren dort niemanden)"
+            elif st == "input":
+                hinweis = "   <- werden mit --wirklich geraeumt"
+            z.append("    %-22s %d%s" % (st, n, hinweis))
+    if zeigen:
+        for n, g in e["namen"]:
+            z.append("    %-40s %s" % (n[:40], g))
+    z.append("verschoben                : %d%s"
+             % (e["verschoben"],
+                "" if wirklich else "   (Trockenlauf - mit --wirklich raeumen)"))
+    return z
+
+
 if __name__ == "__main__":
     args = [a for a in sys.argv[1:] if not a.startswith("--")]
     wirklich = "--wirklich" in sys.argv
@@ -191,23 +225,5 @@ if __name__ == "__main__":
         raise SystemExit("Kein Ordner: %s" % wurzel)
     e = wegraeumen(wurzel, wirklich=wirklich, namen_zeigen=zeigen,
                    alles=alles)
-    print("Dateien %-18s: %d"
-          % ("ueberall" if alles else "in den Eingaengen", e["gesehen"]))
-    print("davon keine Dokumente     : %d" % e["erkannt"])
-    for g, n in sorted(e["gruende"].items(), key=lambda x: -x[1]):
-        print("    %-22s %d" % (g, n))
-    if len(e["stufen"]) > 1:
-        print("je Ablagestufe:")
-        for st, n in sorted(e["stufen"].items(), key=lambda x: -x[1]):
-            hinweis = ""
-            if st == "parkplatz":
-                hinweis = "   <- wandern in den Eingang und bleiben liegen"
-            elif st in ("archiv", "aussortiert"):
-                hinweis = "   (stoeren dort niemanden)"
-            print("    %-22s %d%s" % (st, n, hinweis))
-    if zeigen:
-        for n, g in e["namen"]:
-            print("    %-40s %s" % (n[:40], g))
-    print("verschoben                : %d%s"
-          % (e["verschoben"],
-             "" if wirklich else "   (Trockenlauf - mit --wirklich raeumen)"))
+    for _z in bericht(e, alles=alles, wirklich=wirklich, zeigen=zeigen):
+        print(_z)
