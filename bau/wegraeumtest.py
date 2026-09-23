@@ -206,6 +206,32 @@ def test_pakete_bleiben_unter_der_befehlsgrenze():
            "leere Liste macht keinen Aerger")
 
 
+def test_zahlen_je_stufe():
+    """Die Gesamtzahl allein taugt nicht zur Planung.
+
+    ⛔ Gemessen 23.09.: `--alles` meldete 410 Nichtdokumente. Darin
+      stecken aber auch die, die in archiv/ und aussortiert/ liegen und
+      dort niemanden stoeren. Die Zahl, die vor dem KAP-Lauf zaehlt, ist
+      allein die im PARKPLATZ - denn die wandern in den Eingang und
+      bleiben dort liegen.
+    """
+    print("\nZahlen je Ablagestufe")
+    d = baum()
+    try:
+        e = w.wegraeumen(d, wirklich=False, alles=True)
+        pruefe(e["stufen"].get("input") == 3,
+               "drei im Eingang (ist: %s)" % e["stufen"].get("input"))
+        pruefe(e["stufen"].get("parkplatz") == 1,
+               "einer im Parkplatz (ist: %s)" % e["stufen"].get("parkplatz"))
+        pruefe(sum(e["stufen"].values()) == e["erkannt"],
+               "die Stufen ergeben zusammen die Gesamtzahl")
+        nur = w.wegraeumen(d, wirklich=False)
+        pruefe(nur["stufen"].get("parkplatz") is None,
+               "ohne --alles taucht der Parkplatz gar nicht auf")
+    finally:
+        shutil.rmtree(d, ignore_errors=True)
+
+
 if __name__ == "__main__":
     test_zielpfad()
     test_trockenlauf_bewegt_nichts()
@@ -214,5 +240,6 @@ if __name__ == "__main__":
     test_vorschau_ueber_den_parkplatz()
     test_viele_namen_sprengen_den_aufruf_nicht()
     test_pakete_bleiben_unter_der_befehlsgrenze()
+    test_zahlen_je_stufe()
     print("\n%d Fehler" % len(FEHLER))
     sys.exit(1 if FEHLER else 0)

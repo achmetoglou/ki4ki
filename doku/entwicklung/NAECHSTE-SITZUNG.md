@@ -239,6 +239,33 @@ und gleicht ab, was n8n **wirklich geladen** hat. Aufruf auf dem Host:
 2. **`LESBAR_BYTE`** (siehe oben), gehört zu Teil 3.
 3. **Die Protokoll-Wiederholung** bei jedem Minutentakt (§3, Punkt 2).
 
+## 3w - GEMESSEN 23.09.: 410 Nichtdokumente, nicht 95
+
+```
+Dateien ueberall          : 6889
+davon keine Dokumente     :  410     = 6 % des Bestands
+    Ordner-Merkdatei       263       Thumbs.db / .DS_Store
+    macOS-Metadatei         92       ._*
+    Office-Sperrdatei       54
+    versteckte Datei         1
+```
+
+⚠ **Die 410 sind noch nicht die Zahl, die zaehlt.** `--alles` laeuft auch
+durch `archiv/` und `aussortiert/`; dort stoeren Nichtdokumente niemanden.
+Entscheidend ist allein der **Parkplatz** - die wandern in den Eingang und
+bleiben dort liegen, jeden Durchgang neu.
+
+⭐ Deshalb zaehlt das Werkzeug jetzt **je Ablagestufe**. Die Gesamtzahl
+allein haette zu einer Planung auf falscher Grundlage gefuehrt - dieselbe
+Sorte Fehler wie "41 .db" (aus 813 Dateien) gegen "263 Ordner-Merkdateien"
+(aus 6.889): zwei Zahlen, zwei Nenner, ein Missverstaendnis.
+
+⛔ **Was 410 im Eingang bedeuten wuerden:** Sie blockieren nichts (das ist
+seit 3m/3p geklaert), aber sie gehen nie weg. Bei Bloecken von 25 waere in
+jedem Durchgang ein Teil davon dabei, der Eingang wuerde nie leer, und
+"Eingang leer" bliebe als Fertig-Zeichen unbrauchbar. Vor dem KAP-Lauf
+einmal `--wirklich` laufen lassen - danach ist der Eingang ehrlich.
+
 ## 3v - ABGENOMMEN 23.09.: der Chat-Anhang liest alle drei
 
 ```

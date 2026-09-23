@@ -115,6 +115,17 @@ def ziel_fuer(pfad):
     return os.sep.join(teile[:i] + ["aussortiert"] + teile[i + 1:])
 
 
+STUFEN = ("input", "parkplatz", "archiv", "aussortiert", "loeschen")
+
+
+def _stufe(pfad):
+    """In welcher Ablagestufe liegt die Datei? '' wenn in keiner."""
+    for teil in pfad.split(os.sep):
+        if teil in STUFEN:
+            return teil
+    return ""
+
+
 def _eingaenge(wurzel, alles=False):
     """Alle Dateien unterhalb eines input/-Ordners - oder, mit alles=True,
     ueberall.
@@ -137,13 +148,19 @@ def wegraeumen(wurzel, wirklich=False, jetzt=None, namen_zeigen=False,
     treffer = _gruende(sorted(set(os.path.basename(p) for p in alle)))
 
     erg = {"gesehen": len(alle), "erkannt": 0, "verschoben": 0,
-           "gruende": {}, "namen": []}
+           "gruende": {}, "stufen": {}, "namen": []}
     for pfad in alle:
         grund = treffer.get(os.path.basename(pfad))
         if not grund:
             continue
         erg["erkannt"] += 1
         erg["gruende"][grund] = erg["gruende"].get(grund, 0) + 1
+        # ⭐ Je Ablagestufe zaehlen. Die Gesamtzahl allein taugt nicht zur
+        #   Planung: Nichtdokumente in archiv/ und aussortiert/ stoeren
+        #   niemanden. Was vor dem grossen Lauf zaehlt, ist der PARKPLATZ -
+        #   die wandern in den Eingang und bleiben dort liegen.
+        _st = _stufe(pfad) or "(sonst)"
+        erg["stufen"][_st] = erg["stufen"].get(_st, 0) + 1
         if namen_zeigen:
             erg["namen"].append((os.path.basename(pfad), grund))
         ziel = ziel_fuer(pfad)
@@ -179,6 +196,15 @@ if __name__ == "__main__":
     print("davon keine Dokumente     : %d" % e["erkannt"])
     for g, n in sorted(e["gruende"].items(), key=lambda x: -x[1]):
         print("    %-22s %d" % (g, n))
+    if len(e["stufen"]) > 1:
+        print("je Ablagestufe:")
+        for st, n in sorted(e["stufen"].items(), key=lambda x: -x[1]):
+            hinweis = ""
+            if st == "parkplatz":
+                hinweis = "   <- wandern in den Eingang und bleiben liegen"
+            elif st in ("archiv", "aussortiert"):
+                hinweis = "   (stoeren dort niemanden)"
+            print("    %-22s %d%s" % (st, n, hinweis))
     if zeigen:
         for n, g in e["namen"]:
             print("    %-40s %s" % (n[:40], g))
