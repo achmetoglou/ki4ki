@@ -36,6 +36,7 @@ import urllib.request
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import belegquelle  # noqa: E402
 import mk_md  # noqa: E402
 import pdfstelle  # noqa: E402
 import schluessel  # noqa: E402
@@ -123,6 +124,38 @@ def echte_seiten(rohtext, basisname):
         return rohtext
 
 
+def eintrag_rechnen(bereich, unterpfad):
+    """Ein Eintrag fuer /schluessel - Schluessel, Abdruck und die Office-Regel.
+
+    Eigene Funktion, damit die Rechnung ohne laufenden Dienst pruefbar ist
+    (belegquellentest.py). Wirft ValueError weiter, wenn der Bereich fehlt
+    oder geraten waere - der Aufrufer macht daraus einen Fehlereintrag.
+
+    ⭐ nur_beleg=True heisst: Diese PDF ist KEIN eigenes Dokument, sondern die
+      gewandelte Fassung des Office-Originals daneben. Sie traegt dessen
+      Schluessel und Abdruck, damit der Belegsprung des Originals in ihr
+      landet - und sie darf nicht hochgeladen werden, sonst steht dasselbe
+      Dokument zweimal im Katalog.
+    """
+    kpfad = schluessel.kennpfad(bereich, unterpfad)
+    # Der Teil hinter dem Bereich - die Stufe hat kennpfad() schon abgeworfen.
+    rest = kpfad.split("/", 1)[1]
+    traeger = belegquelle.original_zu(bereich, rest)
+    # ⛔ Traeger ist der PFAD DES ORIGINALS. Aus ihm - nicht aus dem der PDF -
+    #   entstehen Schluessel UND Abdruck. Beide aus derselben Quelle, sonst
+    #   zeigt der eine woandershin als der andere.
+    quelle = traeger or rest
+    return {
+        "bereich": bereich,
+        "unterpfad": unterpfad,
+        "schluessel": schluessel.schluessel(bereich, quelle),
+        "abdruck": schluessel.fingerabdruck(
+            schluessel.kennpfad(bereich, quelle)),
+        "nur_beleg": bool(traeger),
+        "traeger": traeger or "",
+    }
+
+
 class Griff(BaseHTTPRequestHandler):
     protocol_version = "HTTP/1.1"
 
@@ -154,6 +187,14 @@ class Griff(BaseHTTPRequestHandler):
         Eine Rechnung, zwei Leser: Der Proxy ruft schluessel.py direkt auf,
         n8n ueber diesen Weg. Dass beide Kopien der Datei gleich sind,
         bewacht schluesseltest.py.
+
+        ⭐ Hier gilt auch die Office-Regel (belegquelle.py): Liegt neben einer
+          PDF das gleichnamige Word- oder PowerPoint-Original, bekommt sie
+          dessen Schluessel und Abdruck und wird mit nur_beleg=True
+          gekennzeichnet. Ohne das stuende jedes Office-Dokument zweimal im
+          Katalog - einmal unter dem Abdruck des Originals, einmal unter dem
+          der PDF -, und der zweite Eintrag waere fuer die Auswertung nie
+          aufloesbar.
         """
         n = int(self.headers.get("Content-Length") or 0)
         if n > HOECHSTENS:
@@ -169,13 +210,7 @@ class Griff(BaseHTTPRequestHandler):
             bereich = str(eintrag.get("bereich") or "")
             unterpfad = str(eintrag.get("unterpfad") or "")
             try:
-                kpfad = schluessel.kennpfad(bereich, unterpfad)
-                fertig.append({
-                    "bereich": bereich,
-                    "unterpfad": unterpfad,
-                    "schluessel": schluessel.schluessel(bereich, unterpfad),
-                    "abdruck": schluessel.fingerabdruck(kpfad),
-                })
+                fertig.append(eintrag_rechnen(bereich, unterpfad))
             except ValueError as e:
                 # ⛔ NICHT raten. Ein geratener Bereich macht aus einem
                 #   bereichsrelativen Pfad still den "Bereich archiv" - und
