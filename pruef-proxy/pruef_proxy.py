@@ -611,7 +611,18 @@ def _nach_ui_loeschung(names):
 def _dokument_loeschen(pdf):
     """Eine Datei (PDF, Excel, Word, ...) aus <bereich>/loeschen/ ueberall
     entfernen. True = fertig."""
-    wurzel = os.path.dirname(os.path.dirname(pdf))
+    # \u26d4 Zweimal dirname() hiess: "der Ordner ueber loeschen/" - richtig,
+    #   solange die Datei FLACH dort lag. Seit die Wache auch Unterordner
+    #   abgeht, ist es falsch: Bei loeschen/Kunde/274821/x.pdf kam
+    #   "loeschen/Kunde" heraus statt des Bereichs. Sichtbar wurde es daran,
+    #   dass nach einem Lauf VIER Dateien namens loeschen.log in den
+    #   Kundenordnern lagen statt einer im Bereich (gemessen 25.09.).
+    # \u26a0 Das Loeschen selbst ging trotzdem gut - _schluessel_der_datei
+    #   rechnet ueber _basis_von und findet den Bereich selbst. Genau das
+    #   macht den Fehler heimtueckisch: Das Sichtbare stimmte, das Protokoll
+    #   lief woanders hin, und die Vormerkliste wurde im falschen Ordner
+    #   gesucht.
+    wurzel = _loesch_wurzel(pdf)
     name = os.path.basename(pdf)
     stamm = _stamm(name)
     # Der Schluessel dieser Datei, nicht ihr Name: Erst damit trifft der
@@ -2702,6 +2713,29 @@ def _basis_von(pfad):
         if p == a or p.startswith(a + os.sep):
             return w
     return PDF_ORDNER
+
+
+def _loesch_wurzel(pdf):
+    """Der BEREICHSORDNER zu einer Datei unter <bereich>/loeschen/...
+
+    \u26d4 Hier stand zweimal os.path.dirname() - "der Ordner ueber
+      loeschen/". Richtig, solange die Datei FLACH dort lag. Seit die Wache
+      auch Unterordner abgeht, ist es falsch: Bei
+      loeschen/Kunde/274821/x.pdf kam "loeschen/Kunde" heraus statt des
+      Bereichs.
+
+    \u26a0 Das Loeschen selbst ging trotzdem gut - _schluessel_der_datei
+      rechnet ueber _basis_von und findet den Bereich selbst. Genau das
+      machte den Fehler heimtueckisch: Das Sichtbare stimmte. Auffallen
+      konnte er nur daran, dass nach einem Lauf VIER Dateien namens
+      loeschen.log in den Kundenordnern lagen statt einer im Bereich
+      (gemessen 25.09.).
+    """
+    basis = _basis_von(os.path.dirname(pdf))
+    rel = os.path.relpath(pdf, basis).replace(os.sep, "/").split("/", 1)
+    if len(rel) > 1:
+        return os.path.join(basis, rel[0])
+    return os.path.dirname(os.path.dirname(pdf))
 
 
 def _schluessel_der_datei(wurzel, dateiname):

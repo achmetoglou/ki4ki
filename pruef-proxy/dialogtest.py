@@ -1732,6 +1732,31 @@ def szenario_27_wegabgleich_und_bildarten():
     #   fest, die gefehlt hat.
     pruefe("for _w, _u, _dateien in os.walk(lo)" in _quelle_pp,
            "die Loesch-Wache geht mit os.walk durch loeschen/")
+    # \u26d4 Und die zweite Haelfte derselben Reparatur: Wer Unterordner
+    #   abgeht, muss den Bereich auch richtig zurueckrechnen. Zweimal
+    #   dirname() ergab bei loeschen/Kunde/274821/x.pdf "loeschen/Kunde" -
+    #   das Protokoll landete in den Kundenordnern statt im Bereich.
+    _t = tempfile.mkdtemp()
+    _alt_pdf, _alt_ein = pruef_proxy.PDF_ORDNER, pruef_proxy.EINGANG_ORDNER
+    try:
+        pruef_proxy.PDF_ORDNER = _t
+        pruef_proxy.EINGANG_ORDNER = _t
+        _tief = os.path.join(_t, "kap", "loeschen", "Kunde", "274821")
+        os.makedirs(_tief)
+        _soll = os.path.join(_t, "kap")
+        pruefe(pruef_proxy._loesch_wurzel(os.path.join(_tief, "x.pdf")) == _soll,
+               "Bereich stimmt auch tief im Unterordner")
+        pruefe(pruef_proxy._loesch_wurzel(
+            os.path.join(_t, "kap", "loeschen", "y.pdf")) == _soll,
+               "und flach weiterhin")
+        # Gegenprobe: die alte Rechnung liefert bei der tiefen Datei etwas
+        # ANDERES - ohne diese Zeile waere die Pruefung auch dann gruen,
+        # wenn beide Wege dasselbe ergaeben und sie nichts unterschiede.
+        _naiv = os.path.dirname(os.path.dirname(os.path.join(_tief, "x.pdf")))
+        pruefe(_naiv != _soll,
+               "Gegenprobe: die alte Rechnung war hier nachweislich falsch")
+    finally:
+        pruef_proxy.PDF_ORDNER, pruef_proxy.EINGANG_ORDNER = _alt_pdf, _alt_ein
     pruefe("for f in sorted(os.listdir(lo))" not in _quelle_pp,
            "die alte flache Schleife ist weg")
     # Gegenprobe: mit der alten Zeile wird die erste Pruefung rot.
