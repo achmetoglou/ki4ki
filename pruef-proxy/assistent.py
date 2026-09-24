@@ -1510,6 +1510,20 @@ def ist_fundstellenfrage(frage):
     return bool(_WO_STEHT_DAS.match((frage or "").strip()))
 
 
+# ⛔ Dasselbe Muster wie gespraech._BELEG und selbstcheck.BELEG - eine Form,
+#   drei Leser. Es MUSS mit einer Ziffer beginnen duerfen: seit der Umstellung
+#   auf das Kuerzel schreibt das Modell die zehn Zeichen nach dem letzten
+#   doppelten Bindestrich, und die kommen aus schluessel.ALPHABET, das mit
+#   '0123456789' endet. Das Beispiel aus dem Systemtext selbst,
+#   "(3hifpjz74w, S. 125)", fiel durch das alte "[A-Za-z]..." durch.
+#   Ebenso muss die Laenge reichen: ohne Kuerzel schreibt das Modell laut
+#   Regel 2 den VOLLSTAENDIGEN Namen, und der ist laenger als 41 Zeichen.
+#   Weiter als das Haus-Muster wird hier NICHT geoeffnet: Klammer und Komma
+#   bleiben ausgeschlossen, sonst frisst es Fliesstext.
+_KLAMMERBELEG = re.compile(
+    r"\(\s*([A-Za-z0-9ÄÖÜäöüß][^(),\n]{1,90}?)\s*,\s*S\.?\s*(\d{1,4})\s*\)")
+
+
 def fundstellen_aus(antwort):
     """[(Kennung, Seite, Link)] aus einer Antwort - Links zuerst, dann Klammerbelege."""
     aus, gesehen = [], set()
@@ -1517,7 +1531,7 @@ def fundstellen_aus(antwort):
         k = (m.group(1).strip(), int(m.group(2)))
         if k not in gesehen:
             gesehen.add(k); aus.append((k[0], k[1], m.group(3)))
-    for m in re.finditer(r"\(([A-Za-z][\w\-\. ]{2,40}?),\s*S\.\s*(\d+)\)", antwort or ""):
+    for m in _KLAMMERBELEG.finditer(antwort or ""):
         k = (m.group(1).strip(), int(m.group(2)))
         if k not in gesehen:
             gesehen.add(k); aus.append((k[0], k[1], "/stelle?dok=%s&seite=%d" % (k[0], k[1])))

@@ -54,7 +54,13 @@ WERKZEUGE = [
         "name": "seiten_lesen",
         "description": "Liest die zur Frage passenden Seiten EINES Dokuments (woertliche Suche nach den Begriffen der Frage) und gibt ihren Text mit Seitenzahlen zurueck. Fuer konkrete inhaltliche Fragen. Fuer 'worum geht es', 'Ueberblick', 'Ergebnisse insgesamt' nutze stattdessen zusammenfassen.",
         "parameters": {"type": "object", "properties": {
-            "dokument": {"type": "string", "description": "Kennung aus der Dokumentliste, z.B. DS-24-005"},
+            # ⛔ Das Beispiel war bis 24.09. "z.B. DS-24-005" - neun Zeichen,
+            #   waehrend die echten Pfad-Schluessel 137 haben. Das Modell
+            #   kuerzte daraufhin selbst, und ein selbst gekuerzter Name
+            #   findet kein Dokument. Das Kuerzel dagegen schlaegt
+            #   absicht._kennung_finden ueber schluessel.abdruck_finden()
+            #   nach - derselbe Weg wie beim Beleg-Link.
+            "dokument": {"type": "string", "description": "Kuerzel des Dokuments aus der Dokumentliste - die zehn Zeichen nach dem letzten doppelten Bindestrich, z.B. 3hifpjz74w. Hat ein Name kein Kuerzel, den Namen vollstaendig"},
             "frage": {"type": "string", "description": "Wonach gesucht wird - Fachbegriffe, nicht Fuellwoerter"}},
             "required": ["dokument", "frage"]}}},
     {"type": "function", "function": {
@@ -79,7 +85,7 @@ WERKZEUGE = [
             "required": ["begriffe"]}}},
     {"type": "function", "function": {
         "name": "stoerfall_suchen",
-        "description": "Stoerfallassistenz: sucht in Fehlerkatalogen, Handbuechern, Pruef- und Fehlerberichten nach Anlage, Fehlercode und Symptom und liefert die passenden Stellen mit Seite und Gueltigkeitsstatus. Danach antwortest du als Tabelle Ursache | Massnahme | Quelle (Kennung, S.) | Gueltigkeit.",
+        "description": "Stoerfallassistenz: sucht in Fehlerkatalogen, Handbuechern, Pruef- und Fehlerberichten nach Anlage, Fehlercode und Symptom und liefert die passenden Stellen mit Seite und Gueltigkeitsstatus. Danach antwortest du als Tabelle Ursache | Massnahme | Quelle (Kuerzel, S.) | Gueltigkeit.",
         "parameters": {"type": "object", "properties": {
             "anlage": {"type": "string"}, "fehlercode": {"type": "string"}, "symptom": {"type": "string"}},
             "required": []}}},
@@ -187,7 +193,7 @@ def system_text(faden_dok=None, dokumente=None, kontakt="", rolle="", allgemeinw
         #   sucht (abdruck_finden). Zehn Zeichen schreibt ein Modell
         #   fehlerfrei ab, 137 nicht.
         "2. Jede Aussage aus einem Dokument endet mit (Kuerzel, S. n). Das KUERZEL sind die zehn Zeichen nach dem LETZTEN doppelten Bindestrich des Dokumentnamens: aus 'kap-Lanxess-...-Rechnung--3hifpjz74w' wird (3hifpjz74w, S. 1). Hat ein Name kein solches Kuerzel, schreibst du ihn VOLLSTAENDIG. \u26d4 Kuerze einen Namen NIE selbst mit „…“ oder '...' ab - ein selbst gekuerzter Name ergibt keinen Beleg und keinen Link. "
-        "Die wichtigste Aussage je Punkt belegst du mit einem WOERTLICHEN Zitat von der Seite in „…“, danach (Kennung, S. n).\n"
+        "Die wichtigste Aussage je Punkt belegst du mit einem WOERTLICHEN Zitat von der Seite in „…“, danach (Kuerzel, S. n).\n"
         "3. Will der Mensch mehrere Dinge in einem Satz, erledige ALLE (z.B. zusammenfassen UND Bild zeigen).\n"
         "4. Eine Rueckmeldung ('das ist falsch', 'nein, Grafiken zeigen', 'sicher?', 'warum stand da X?') "
         "ist keine neue Suche: Lies, was du zuletzt geantwortet hast, und reagiere darauf - korrigiere, "
@@ -220,7 +226,7 @@ def system_text(faden_dok=None, dokumente=None, kontakt="", rolle="", allgemeinw
         "eigenen Seitenzahlen. Fehlt dir eine Seitenzahl, lass sie weg.\n"
         "12. 'Zeig mir die Seite / eine Seite mit Formeln' -> seite_zeigen mit der Seitenzahl aus seiten_lesen.\n"
         "13. STOERFALL (Anlage, Fehlercode, Symptom, 'was tun bei', 'Ursache', 'Abhilfe'): stoerfall_suchen, dann "
-        "Tabelle | Ursache | Massnahme | Quelle (Kennung, S. n) | Gueltigkeit |. Nur Massnahmen, die auf den "
+        "Tabelle | Ursache | Massnahme | Quelle (Kuerzel, S. n) | Gueltigkeit |. Nur Massnahmen, die auf den "
         "Seiten stehen. Findet sich nichts Belegtes: KEINE eigene Vermutung - sag 'nicht im Bestand belegt' und "
         "nenne den Ansprechpartner. Steht bei einer Quelle 'nicht freigegeben' oder 'abgelaufen', sag das dazu.\n"
         "14. PRUEFUNGSFRAGEN (Optionen A-D, 'welche Aussage ist falsch/richtig', 'was ist keine Aufgabe von'): "

@@ -16,6 +16,7 @@ import json
 import ollamaruf
 import os
 import re
+import schluessel
 import time
 import urllib.request
 
@@ -69,10 +70,19 @@ def anweisung(frage, schritte, faden_dok, letzte_art, offene_wahl, dokumente):
         "mit seiner NEUEN EINGABE will - im Zusammenhang des Gespraechs - und gib "
         "es als JSON aus. Du antwortest NICHT inhaltlich, du ordnest nur ein.",
         "MOEGLICHE AKTIONEN:\n" + "\n".join("- %s: %s" % (a, e) for a, e in AKTIONEN),
+        # ⛔ GEMESSEN 24.09.: Hier stand "IMMER die KENNUNG ... (z.B.
+        #   DS-24-005)" - ein NEUN Zeichen langes Beispiel, waehrend die
+        #   echten Pfad-Schluessel 137 Zeichen haben. Das Modell kuerzte
+        #   selbst, und aus einem selbst gekuerzten Namen wird kein
+        #   Dokument. Das KUERZEL ist genau das, was _kennung_finden ueber
+        #   schluessel.abdruck_finden() nachschlaegt.
         "REGELN:\n"
-        "- 'dokument' und 'zweites_dokument' sind IMMER die KENNUNG aus der Dokumentliste "
-        "(z.B. DS-24-005), nie ein Name. Nennt der Mensch einen Verfasser oder Titelworte, "
-        "waehle die passende Kennung. Bei 'vergleich' MUESSEN beide Kennungen stehen. "
+        "- 'dokument' und 'zweites_dokument' sind IMMER das KUERZEL des Dokuments aus der "
+        "Dokumentliste: die zehn Zeichen nach dem LETZTEN doppelten Bindestrich des Namens "
+        "(aus 'kap-Lanxess-...-Rechnung--3hifpjz74w' wird '3hifpjz74w'). Hat ein Name kein "
+        "solches Kuerzel, schreib ihn VOLLSTAENDIG - nie selbst mit '...' gekuerzt. "
+        "Nennt der Mensch einen Verfasser oder Titelworte, "
+        "waehle das passende Dokument. Bei 'vergleich' MUESSEN beide Angaben stehen. "
         "Sagt er 'die Arbeit', 'das Dokument', 'daraus', 'diese' - meint er das FADEN-DOKUMENT.\n"
         "- Ohne Nennung und ohne Faden-Dokument: bei frage_an_dokument/zusammenfassung/bild/fakten "
         "-> aktion 'klaerfrage'.\n"
@@ -149,8 +159,51 @@ def parsen(text):
     return d
 
 
+def _ohne_endung(name):
+    """Eine ECHTE Endung abschneiden - nach der Regel aus schluessel.py.
+
+    Nicht os.path.splitext: das macht aus 'Angebot Nr. 4711' die Endung
+    '.4711' und wuerfe damit einen Teil des Abdrucks weg. '.md' und
+    '.json' bleiben hier stehen; die nimmt ohne_uuid() spaeter selbst.
+    """
+    roh = str(name or "")
+    endung = schluessel._endung_von(roh)
+    return roh[:-len(endung)] if endung else roh
+
+
+def _abdruckverzeichnis(namen):
+    """Abdruck -> Name, fuer genau die Dokumente DIESES Bereichs.
+
+    ⛔ Nur die uebergebenen Namen. Ein Abdruck, den es zwar im Bestand gibt,
+      dessen Dokument hier aber nicht liegt, darf kein Dokument bestimmen -
+      sonst liest die Anlage in der Akte eines fremden Kunden.
+
+    ⛔ Die Endung MUSS vorher weg. Im Schluessel steht sie HINTER dem
+      Abdruck; die letzten zehn alphanumerischen Zeichen sind dort also
+      nicht der Abdruck, sondern '...4711pdf'. Wer das Verzeichnis so
+      fuellt, legt jeden Eintrag falsch an - und weil abdruck_finden alle
+      Fenster durchgeht, faellt es beim SUCHEN nicht auf (dieselbe Falle
+      ist in schluesselwege_test.py als Gegenprobe festgehalten). Welcher
+      Punktteil eine echte Endung ist, entscheidet schluessel._endung_von
+      und nicht eine zweite Liste hier, die sofort auseinanderlaeuft.
+
+    Der erste Kandidat des so gekuerzten Namens IST sein Abdruck:
+    abdruck_kandidaten() wirft zusaetzlich den von AnythingLLM
+    angehaengten Kennungsteil weg und geht dann von RECHTS. Ein alter
+    kurzer Name ('DS-24-005.md' -> 'ds24005', sieben Zeichen) liefert gar
+    keinen Kandidaten und landet deshalb nicht im Verzeichnis - genau
+    richtig, er wird weiter ueber den Praefix-Weg gefunden.
+    """
+    aus = {}
+    for n in namen or []:
+        kand = schluessel.abdruck_kandidaten(_ohne_endung(n))
+        if kand:
+            aus.setdefault(kand[0], n)
+    return aus
+
+
 def _kennung_finden(genannt, namen):
-    """'DS-24-005' / 'ds-24-005.md' / 'DS 24 005' -> der Name aus `namen`."""
+    """'DS-24-005' / 'ds-24-005.md' / 'DS 24 005' / '3hifpjz74w' -> Name aus `namen`."""
     if not genannt:
         return None
     g = re.sub(r"[^a-z0-9]", "", str(genannt).lower().replace(".md", "").replace(".pdf", ""))
@@ -160,6 +213,28 @@ def _kennung_finden(genannt, namen):
         k = re.sub(r"[^a-z0-9]", "", str(n).lower().replace(".md", "").replace(".pdf", ""))
         if k == g:
             return n
+    # ⭐ Das KUERZEL. Seit der Umstellung der Zitierform schreibt das Modell
+    #   die zehn Zeichen nach dem letzten doppelten Bindestrich - also den
+    #   Abdruck, und der steht am ENDE des Namens. Die beiden anderen Wege
+    #   vergleichen von VORN (genau oder als Anfang) und koennen ihn
+    #   deshalb nie finden: '3hifpjz74w' ist weder der ganze Name
+    #   'kap-Lanxess-...-Rechnung--3hifpjz74w' noch dessen Anfang. Solange
+    #   das hier fehlte, war jedes Werkzeug mit einem Kuerzel als Dokument
+    #   ein "Dokument '...' unbekannt" - pruef_proxy._werkzeug ruft genau
+    #   diese Funktion.
+    # ⛔ Ueber abdruck_finden(), nicht selbst geschnitten: das ist die
+    #   einzige Art, wie im Haus ein Abdruck erkannt wird (schluessel.py).
+    # ⚠ Erst nachsehen, ob das Geschriebene ueberhaupt zehn zusammenhaengende
+    #   alphanumerische Zeichen hat. Ohne diesen Vorbehalt baut jede alte
+    #   Kennung ('DS-24-005') das ganze Verzeichnis auf, nur um es nie zu
+    #   benutzen - gemessen an 4.500 Namen sind das 32 ms je Aufruf, und
+    #   pruef_proxy._werkzeug ruft diese Funktion bei JEDEM Werkzeugaufruf.
+    geschrieben = _ohne_endung(genannt)
+    if schluessel.abdruck_kandidaten(geschrieben):
+        verzeichnis = _abdruckverzeichnis(namen)
+        treffer = schluessel.abdruck_finden(geschrieben, verzeichnis)
+        if treffer:
+            return verzeichnis[treffer]
     # Kennung als Anfang ("DS-24-005" in "DS-24-005 - Titel")
     for n in namen:
         k = re.sub(r"[^a-z0-9]", "", str(n).lower().replace(".md", ""))

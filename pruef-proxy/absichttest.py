@@ -18,6 +18,7 @@ import time
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import absicht      # noqa: E402
+import schluessel    # noqa: E402
 
 try:
     import assistent    # noqa: E402
@@ -25,14 +26,27 @@ try:
 except Exception:
     assistent = bestand = None
 
+# ⭐ Ein Dokument mit PFAD-SCHLUESSEL. Bis 24.09. bestanden alle Fixtures
+#   hier aus alten kurzen Namen ('DS-23-004.md') - deshalb konnte nie
+#   auffallen, dass _kennung_finden nur von VORN vergleicht und ein Kuerzel
+#   nie findet. Der Schluessel wird NICHT abgeschrieben, sondern aus einem
+#   echten Kennpfad gerechnet: so bleibt er richtig, wenn sich die
+#   Schluesselbildung aendert.
+KAP_PFAD = ("archiv/Lanxess Deutschland GmbH/Qualitaetssicherung/"
+            "Pruefberichte 2024/Charge 11 - Zugpruefung nach DIN EN ISO 527/"
+            "Pruefbericht Zugversuch Charge 11.pdf")
+KAP = schluessel.schluessel("kap", KAP_PFAD)                     # 136 Zeichen
+KAP_KUERZEL = schluessel.fingerabdruck(schluessel.kennpfad("kap", KAP_PFAD))
+
 DOKUMENTE_STANDARD = [
     "DS-23-004 — Malte Schön (2023): Eine simulationsgestützte Methodik zur Dimensionierung von statischen und dynamischen Mischteilen für die Extrusion",
     "DS-23-005 — Jonas Maximilian Müller (2023): Vorhersage des dehnratenabhängigen Schädigungsverhaltens von endlosfaserverstärkten Kunststoffen",
     "DS-24-005 — Fabian Becker (2024): Untersuchung des Einflusses einer Mitteneinspannung auf das statische und Ermüdungsverhalten von glasfaserverstärkten Kunststoffblattfedern",
     "DS-24-006 — Thilo Köbel (2024): Geometrieabhängige Einspritzprofilierung für das Spritzgießverfahren",
     "DS-24-007 — Maximilian Kramer (2024): Werkstoffgerechte Auslegung von Direktverschraubungen in duroplastischen Formmassen",
+    KAP,
 ]
-NAMEN = ["DS-23-004.md", "DS-23-005.md", "DS-24-005.md", "DS-24-006.md", "DS-24-007.md"]
+NAMEN = ["DS-23-004.md", "DS-23-005.md", "DS-24-005.md", "DS-24-006.md", "DS-24-007.md", KAP]
 
 B = "DS-24-005.md"
 FAELLE = [
@@ -69,10 +83,62 @@ FAELLE = [
     ("Smalltalk", [], None, None, "Hallo, wie geht's?", "smalltalk", "*"),
     ("Was kannst du", [], None, None, "Was kannst du alles?", "anlage", "*"),
     ("Umgangssprache", [("Fasse Becker zusammen", "zusammenfassung", "...")], B, "zusammenfassung", "jo und was kam dabei raus?", "frage_an_dokument", B),
+    # ⭐ Dokument mit Pfad-Schluessel: das Modell darf hier NUR noch das
+    #   Kuerzel liefern (Regel in absicht.anweisung). Erkennt der Waechter
+    #   es nicht, steht in 'dokument' None und der Fall wird rot.
+    ("Pfad-Schluessel Frage", [], None, None, "Was steht im Prüfbericht zur Zugprüfung von Charge 11?", "frage_an_dokument", KAP),
+    ("Pfad-Schluessel Folge", [("Was steht im Prüfbericht zur Zugprüfung von Charge 11?", "faden", "...")], KAP, "faden", "Wie viele Seiten hat der Bericht?", "fakten", KAP),
 ]
 
 
+# --------------------------------------------------------------------------
+# Schicht 0: OHNE Modell und OHNE Netz. Was hier rot wird, ist ein Fehler im
+# Proxy - nicht eine Laune des Sprachmodells. Genau deshalb steht es vor der
+# Modellreihe: ein kaputtes _kennung_finden soll nicht als schlechte
+# Trefferquote erscheinen, sondern als das, was es ist.
+# ⭐ pruef_proxy._werkzeug ruft absicht._kennung_finden fuer JEDEN
+#   Werkzeugaufruf ("dok_von"). Findet es das Kuerzel nicht, antwortet die
+#   Anlage auf jede Frage mit "Dokument '...' unbekannt".
+KENNUNGS_FAELLE = [
+    # (Beschreibung, so geschrieben, erwarteter Name oder None)
+    ("Kuerzel allein (die neue Zitierform)", KAP_KUERZEL, KAP),
+    ("Kuerzel mit Endung", KAP_KUERZEL + ".md", KAP),
+    ("Kuerzel in Klammerform", "(%s)" % KAP_KUERZEL, KAP),
+    ("ganzer Pfad-Schluessel", KAP, KAP),
+    ("Schluessel mit EINEM Strich (so gibt AnythingLLM ihn zurueck)",
+     KAP.replace("--", "-"), KAP),
+    # Der Praefix-Weg fuer alte kurze Kennungen muss weiter tragen.
+    ("alte Kennung genau", "DS-24-005.md", "DS-24-005.md"),
+    ("alte Kennung ohne Endung, klein", "ds-24-005", "DS-24-005.md"),
+    ("alte Kennung mit Leerzeichen", "DS 24 006", "DS-24-006.md"),
+    # ⛔ GEGENPROBE. Ohne sie waere die Reihe auch dann gruen, wenn
+    #   _kennung_finden einfach das erstbeste Dokument zurueckgibt.
+    ("fremdes Kuerzel gehoert nicht in diesen Bereich", "abcdefghij", None),
+    ("erfundene Kennung bleibt unbekannt", "DS-99-999", None),
+]
+
+
+def kennungen_pruefen():
+    """Findet _kennung_finden das Dokument? Rueckgabe: Zahl der Fehler."""
+    print("Schicht 0: Dokument aus dem geschriebenen Namen (ohne Modell)")
+    fehler = 0
+    for beschr, geschrieben, erwartet in KENNUNGS_FAELLE:
+        ist = absicht._kennung_finden(geschrieben, NAMEN)
+        ok = ist == erwartet
+        if not ok:
+            fehler += 1
+        print("  %s %-58s %-34s -> %s%s" % (
+            "ok  " if ok else "FEHL", beschr, repr(geschrieben)[:34],
+            (ist or "-")[:34],
+            "" if ok else "   erwartet %s" % (erwartet or "-")[:34]))
+    print("  %d Faelle, %d Fehler\n" % (len(KENNUNGS_FAELLE), fehler))
+    return fehler
+
+
 def main():
+    schicht0 = kennungen_pruefen()
+    if "--ohne-modell" in sys.argv:
+        return 1 if schicht0 else 0
     dokumente = DOKUMENTE_STANDARD
     namen = NAMEN
     # Auf der Anlage: den echten Katalog nehmen, wenn er die Testdokumente kennt
@@ -101,7 +167,9 @@ def main():
     print("\nTrefferquote: %d/%d = %.0f %%  |  Dauer: Ø %d ms, max %d ms  |  Modell: %s" % (
         treffer, gesamt, quote, sum(dauer) / max(1, len(dauer)), max(dauer or [0]), absicht.MODELL))
     print("Bedingung fuer Standard 'an': >= 90 %% -> %s" % ("ERFUELLT" if quote >= 90 else "NICHT erfuellt"))
-    return 0 if quote >= 90 else 1
+    if schicht0:
+        print("⛔ Schicht 0 hat %d Fehler - das Modell ist daran unschuldig." % schicht0)
+    return 0 if (quote >= 90 and not schicht0) else 1
 
 
 if __name__ == "__main__":

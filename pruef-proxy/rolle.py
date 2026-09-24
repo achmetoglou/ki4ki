@@ -173,7 +173,7 @@ MODI = {
 # (Tiefe fuer Azubis UND Wissenschaftler widerspruechlich, Reparaturen ein
 # Halbsatz), nachher 13 Zeilen mit Erkennung der Fragenden, typischen Fragen,
 # Stoerfall-Tabelle, SDB-Abschnitten, Abgrenzung - ohne erfundene Normnummer.
-META_AUFTRAG = """Du schreibst den Rollen-Absatz für einen Arbeitsbereich einer Wissensdatenbank. Die Datenbank antwortet nur aus hinterlegten Dokumenten; ein Kern-Prompt regelt bereits Belegpflicht, Zitierform (Kennung, S. n) und den Absage-Satz bei fehlender Information. Diese Grundregeln gelten schon — wiederhole sie nicht und ändere sie nicht. Dein Absatz sagt dem Modell nur, wie es sich in DIESEM Bereich verhält.
+META_AUFTRAG = """Du schreibst den Rollen-Absatz für einen Arbeitsbereich einer Wissensdatenbank. Die Datenbank antwortet nur aus hinterlegten Dokumenten; ein Kern-Prompt regelt bereits Belegpflicht, Zitierform (Kuerzel, S. n) und den Absage-Satz bei fehlender Information. Diese Grundregeln gelten schon — wiederhole sie nicht und ändere sie nicht. Dein Absatz sagt dem Modell nur, wie es sich in DIESEM Bereich verhält.
 
 ANGABEN DES BETREIBERS (Formularfelder, können Tippfehler oder Abkürzungen enthalten — verstehe die Absicht und schreibe die richtige Schreibweise):
 Fachgebiet: {fach}
