@@ -419,12 +419,22 @@ def test_belegvergleich():
     pruefe(doppelt.count("/stelle?") == 1,
            "fertige Verweise bleiben unangetastet")
 
-    # Der sichtbare Linktext bleibt das, was das Modell geschrieben hat -
-    # nicht der aufgeloeste Schluessel. Sonst stuende im Text ploetzlich ein
-    # anderer Name als in der Antwort des Modells.
+    # \u26d4 UMGEDREHT am 24.09. Hier stand: "der sichtbare Linktext bleibt
+    #   der geschriebene Name". Das war richtig, solange die Namen kurz
+    #   waren (DS-24-005). Mit dem Pfad-Schluessel schreibt das Modell
+    #   entweder 137 Zeichen oder das zehnstellige Kuerzel - beides ist
+    #   als Linktext unlesbar, und genau darueber kam die Rueckmeldung
+    #   ("das ist ja Wirrwarr an Signaturen im Text").
+    # \u2b50 Die Lehre aus demselben Tag: Was der Mensch LIEST, darf nicht
+    #   davon abhaengen, wie ein Modell etwas schreibt. Der Linktext kommt
+    #   jetzt aus dem aufgeloesten Schluessel.
+    # \u26a0 Das ZIEL muss trotzdem der volle Schluessel bleiben - sonst
+    #   zeigt ein lesbarer Text auf nichts. Beide Zeilen gehoeren zusammen.
     mit_md = p.mit_verweisen("Siehe (%s.md, S. 7)." % kap_b, quellen=[kap_b])
-    pruefe("%s.md" % kap_b in mit_md,
-           "der sichtbare Linktext bleibt der geschriebene Name")
+    pruefe("/stelle?dok=" + quote(kap_b) in mit_md,
+           "das Linkziel bleibt der volle Schluessel")
+    pruefe("](" in mit_md and ("%s.md" % kap_b) not in mit_md,
+           "der sichtbare Linktext ist der lesbare Titel, nicht der Schluessel")
 
     # ⛔ HIER liegt das eigentliche Risiko, und die Faelle oben treffen es
     #   nicht: Sie schreiben den Schluessel EXAKT, und das kann der alte

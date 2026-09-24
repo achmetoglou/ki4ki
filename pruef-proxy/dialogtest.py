@@ -17,6 +17,7 @@ import json
 import os
 import sys
 import tempfile
+import time
 
 HIER = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, HIER)
@@ -1618,6 +1619,62 @@ def szenario_27_wegabgleich_und_bildarten():
     #   Dokumenten verloren). Kommt morgen eine vierte Aufrufstelle dazu,
     #   faellt sie hier auf und nicht beim Kunden.
     import ast as _ast2
+    # \u26d4 JEDES Tor, das mit 404 abweist, braucht einen Melder. Sonst
+    #   sehen von aussen mehrere voellig verschiedene Ursachen gleich aus -
+    #   absichtlich, damit niemand Namen erraten kann, aber fuer die
+    #   Fehlersuche toedlich. Am 24.09. hatte ich vier von NEUN Toren
+    #   bedacht; _seitenbild blieb stumm, und das ist genau das Bild, das
+    #   /stelle einbettet: Der Nutzer kommt durch und sieht eine leere
+    #   Seite, ohne eine Zeile im Protokoll.
+    _quelle_tore = open(os.path.join(HIER, "pruef_proxy.py"),
+                        encoding="utf-8").read()
+    _baum_tore = _ast2.parse(_quelle_tore)
+
+    def _stumme_tore(baum):
+        stumm = []
+        for k in _ast2.walk(baum):
+            koerper = getattr(k, "body", None)
+            if not isinstance(koerper, list):
+                continue
+            for i, satz in enumerate(koerper):
+                # \u26a0 Nur die ABWEIS-ZEILE selbst, nicht das umschliessende
+                #   "if". Sonst zaehlt jede Stelle doppelt: Der Text steht ja
+                #   auch im unparse des ganzen if-Blocks, und dessen Vorgaenger
+                #   ist nie der Melder. Der erste Entwurf meldete deshalb elf
+                #   Tore, von denen fuenf in Ordnung waren.
+                # Die Abweisung ist ein Aufruf (self._fehler(...)) oder ein
+                # return. Ein Docstring ist ebenfalls ein Expr - der des
+                # Melders zitiert die Meldung und meldete sich selbst.
+                if isinstance(satz, _ast2.Expr) and isinstance(
+                        satz.value, _ast2.Constant):
+                    continue
+                if not isinstance(satz, (_ast2.Expr, _ast2.Return)):
+                    continue
+                roh = _ast2.unparse(satz)
+                # \u26a0 NUR die Tore, die ein DOKUMENT abweisen. Ein erster
+                #   Entwurf sah jeden 404 an und meldete 20 Stellen, davon
+                #   15 harmlose (unbekannte Route, fehlender Parameter).
+                #   Eine Pruefung, die ueberwiegend Harmloses anmeckert,
+                #   wird weggeklickt - und dann faellt auch die echte
+                #   Meldung nicht mehr auf. Lieber eng und ernst genommen.
+                if not ("Dieses Dokument liegt nicht vor" in roh
+                        or "unbekanntes Dokument" in roh):
+                    continue
+                nachbarn = _ast2.unparse(koerper[max(0, i - 1)]) if i else ""
+                if "_beleg_tor" not in nachbarn:
+                    stumm.append(satz.lineno)
+        return sorted(set(stumm))
+
+    _stumm = _stumme_tore(_baum_tore)
+    pruefe(not _stumm,
+           "jedes 404-Tor hat einen Melder davor (stumm: %s)"
+           % (_stumm or "keins"))
+    # Gegenprobe: einen Melder wegnehmen -> die Stelle wird gemeldet.
+    _ohne_melder = _quelle_tore.replace(
+        '            _beleg_tor("/seitenbild", "kein Recht", stamm)\n', "", 1)
+    pruefe(_ohne_melder != _quelle_tore, "Gegenprobe vorbereitet")
+    pruefe(_stumme_tore(_ast2.parse(_ohne_melder)),
+           "Gegenprobe: ein Tor ohne Melder wird gemeldet")
     _quelle_pp = open(os.path.join(HIER, "pruef_proxy.py"), encoding="utf-8").read()
 
     def _rufe(quelltext):
@@ -1648,8 +1705,19 @@ def szenario_27_wegabgleich_und_bildarten():
     #   LIEST, weckt das kein Vertrauen"). Was sie nicht bestaetigen kann,
     #   sagt sie - sie versteckt es nicht.
     _vorher = dict(pruef_proxy.PDFS), dict(pruef_proxy.PDFS_ABDRUCK)
+    _stand_vorher = pruef_proxy._PDFS_STAND[0]
     try:
         pruef_proxy.PDFS.clear(); pruef_proxy.PDFS_ABDRUCK.clear()
+        # \u26d4 DIESE ZEILE IST DER GRUND, WARUM DIE PRUEFUNG VORHER ROT WAR.
+        #   mit_verweisen ruft _pdf_schluessel; findet der nichts, ruft er
+        #   _pdfs_erneuern_wenn_faellig(), und das beginnt mit PDFS.clear().
+        #   _PDFS_STAND steht beim Start auf 0.0, die 15-Sekunden-Drossel
+        #   greift beim ERSTEN Mal also nicht - die Kulisse, die zwei Zeilen
+        #   weiter oben aufgebaut wird, war beim zweiten Aufruf weg. Die
+        #   Pruefung wurde dadurch rot, ohne dass an der Sache etwas war,
+        #   und ihre erste Haelfte war gruen, weil GAR NICHTS verlinkt wurde.
+        #   Eine gruene Zeile, die nichts belegt, ist schlimmer als eine rote.
+        pruef_proxy._PDFS_STAND[0] = time.time()
         pruef_proxy.PDFS["kap-Angebot-274666--h211x42jrj"] = "/dev/null"
         pruef_proxy.PDFS_ABDRUCK["h211x42jrj"] = "kap-Angebot-274666--h211x42jrj"
         _satz = ("Die Rechnung erfolgt in zwei Teilschritten "
@@ -1682,6 +1750,7 @@ def szenario_27_wegabgleich_und_bildarten():
     finally:
         pruef_proxy.PDFS.clear(); pruef_proxy.PDFS.update(_vorher[0])
         pruef_proxy.PDFS_ABDRUCK.clear(); pruef_proxy.PDFS_ABDRUCK.update(_vorher[1])
+        pruef_proxy._PDFS_STAND[0] = _stand_vorher
 
     t = "[Seite 3]\n<!-- image -->\n\nLine chart\n\nBild 6.17: Erreichter Druck\n\n<!-- image -->\n\nLogo\n\nText\n\nBild 6.18: Spannungen\n\n<!-- image -->\n\nPhotograph\n\nBild 5.6: Probekörper"
     pruefe(fadenfrage.bildarten_aus_text(t) == {"6.17": "Diagramm", "5.6": "Foto"}, "Bildarten aus der Docling-Klassifikation (Logo zaehlt nicht)")

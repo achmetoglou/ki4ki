@@ -7754,6 +7754,7 @@ class Griff(BaseHTTPRequestHandler):
                     % args.get("dokument"))
         schluessel = _pdf_schluessel(dok)
         if schluessel and not dokument_erlaubt(schluessel, self.headers):
+            _beleg_tor("Werkzeug", "kein Recht", dok)
             return "Dieses Dokument liegt nicht vor."
         if not schluessel and name in ("abbildungen_auflisten", "abbildung_zeigen", "seite_zeigen"):
             return ("%s liegt nicht als PDF vor (Excel/Word/Text) - es gibt keine Seitenbilder oder "
@@ -9814,8 +9815,10 @@ class Griff(BaseHTTPRequestHandler):
           dasselbe wie das Dokument.
         """
         stamm = (felder.get("dok") or [""])[0]
+        _geschrieben = stamm
         stamm = _pdf_schluessel(stamm)
         if not stamm:
+            _beleg_tor("/seitenbild", "nicht im PDF-Index", _geschrieben)
             self._fehler(404, "unbekanntes Dokument")
             return
         # ⚠ dokument_erlaubt ist eine Funktion des MODULS mit zwei
@@ -9824,6 +9827,7 @@ class Griff(BaseHTTPRequestHandler):
         #   Aufruf ab, und im Chat blieb das Bild leer. Genauso wie
         #   _seitenbild es macht:
         if not dokument_erlaubt(stamm, self.headers):
+            _beleg_tor("/seitenbild", "kein Recht", stamm)
             self._fehler(404, "unbekanntes Dokument")
             return
         try:
@@ -9858,8 +9862,10 @@ class Griff(BaseHTTPRequestHandler):
         except ValueError:
             seite = 1
         zitat = (felder.get("zitat") or [""])[0] or None
+        _geschrieben = stamm
         stamm = _pdf_schluessel(stamm)
         if not stamm:
+            _beleg_tor("/abbildung", "nicht im PDF-Index", _geschrieben)
             self._fehler(404, "unbekanntes Dokument")
             return
         # KI4KI-TOR-DATEI: Angemeldet zu sein genuegt nicht - das
@@ -9867,6 +9873,7 @@ class Griff(BaseHTTPRequestHandler):
         # Mit 404 abweisen, nicht mit 403: ein 403 verraet, dass es
         # das Dokument gibt.
         if not dokument_erlaubt(stamm, self.headers):
+            _beleg_tor("/abbildung", "kein Recht", stamm)
             self._fehler(404, "unbekanntes Dokument")
             return
         try:
