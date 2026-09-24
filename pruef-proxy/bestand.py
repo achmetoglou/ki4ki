@@ -243,18 +243,53 @@ _NETZ_URL = os.environ.get("KI4KI_NETZ_URL") or "http://nothink-proxy:11435/api/
 _NACHTRAG_SPERRE = threading.Lock()
 _NACHTRAG_LAEUFT = set()
 
+# \u26d4 GEMESSEN 24.09.: Im Katalog stand bei den Rechnungen des Instituts
+#   der KUNDE als Verfasser. Die Anweisung zaehlte auf, was ein Dokument
+#   sein kann - "wissenschaftliche Arbeit, Norm, Lehrgang, Handbuch,
+#   Bericht, Praesentation, Tabelle" - und Geschaeftsbriefe kamen darin
+#   nicht vor. Zum Verfasser sagte sie "sonst die herausgebende
+#   Organisation". In einem deutschen Geschaeftsbrief ist die auffaelligste
+#   Organisation oben das ANSCHRIFTENFELD, also der EMPFAENGER.
+#
+# \u2b50 Die Wurzel ist nicht der Satzbau, sondern die Annahme: Diese
+#   Anweisung wurde fuer HOCHSCHULSCHRIFTEN geschrieben. Im Bestand liegen
+#   inzwischen Rechnungen, Angebote, Anschreiben und Bestellungen. Dieselbe
+#   Wurzel wie bei der Schwelle "3 gemeinsame Fachwoerter", die an
+#   Dissertationen gemessen wurde und bei zwei fast gleichen Rechnungen
+#   nicht trennt. Eine Kalibrierung ueberlebt den Bestandswechsel nicht.
+#
+# \u26a0 Der Briefkopf steht bei einem Geschaeftsbrief oft NICHT als Text
+#   oben, sondern im Logo (Bild) oder in der Fusszeile (Bankverbindung,
+#   Registergericht, Telefonvorwahl). Deshalb wird ausdruecklich danach
+#   gefragt, statt auf "die erste Organisation" zu vertrauen.
 _DECKBLATT_ANWEISUNG = (
-    "Unten stehen die ersten Seiten eines Dokuments (Deckblatt, Impressum, "
-    "Titelseite) - eine wissenschaftliche Arbeit, eine Norm oder Richtlinie, ein "
-    "Lehrgang, ein Handbuch, ein Bericht, eine Praesentation oder eine Tabelle. "
-    "Der Text kann durch Texterkennung zerhackt sein (Wortreste, einzelne "
-    "Buchstaben) - ueberspringe solche Stellen und nimm die naechste lesbare. "
-    "Lies daraus den TITEL des Dokuments, wie er auf der Titelseite steht (bei "
-    "Lehrgaengen z.B. 'DVS-Lehrgang Fachmann fuer Kunststofflaminierer und "
-    "-kleber nach DVS 2213-1'; bei Normen Nummer und Titel), den VERFASSER (bei "
-    "'Autoren:'/'Verfasser:' die genannten Personen, sonst die herausgebende "
-    "Organisation - nicht Betreuer oder Gutachter) und das JAHR (Auflage, "
-    "Copyright oder Abgabe; bei Spannen wie '1980 - 2026' das letzte Jahr). "
+    "Unten stehen die ersten Seiten eines Dokuments - entweder eine "
+    "FACHSCHRIFT (wissenschaftliche Arbeit, Norm oder Richtlinie, Lehrgang, "
+    "Handbuch, Bericht, Praesentation, Tabelle) oder ein GESCHAEFTSBRIEF "
+    "(Rechnung, Angebot, Anschreiben, Bestellung, Auftragsbestaetigung, "
+    "Laufzettel, Abrechnung). Der Text kann durch Texterkennung zerhackt "
+    "sein (Wortreste, einzelne Buchstaben) - ueberspringe solche Stellen und "
+    "nimm die naechste lesbare. "
+    "Lies daraus den TITEL des Dokuments, wie er auf der Titelseite steht "
+    "(bei Lehrgaengen z.B. \'DVS-Lehrgang Fachmann fuer Kunststofflaminierer "
+    "und -kleber nach DVS 2213-1\'; bei Normen Nummer und Titel; bei einem "
+    "Geschaeftsbrief den Betreff oder die Belegart mit Nummer, z.B. "
+    "\'Rechnung Nr. 274821\'), den VERFASSER und das JAHR (Auflage, "
+    "Copyright oder Abgabe; bei Spannen wie \'1980 - 2026\' das letzte Jahr). "
+    "\n"
+    "VERFASSER heisst: wer das Dokument GESCHRIEBEN hat. Bei "
+    "\'Autoren:\'/\'Verfasser:\' die genannten Personen, sonst die "
+    "herausgebende Organisation - nicht Betreuer oder Gutachter. "
+    "ACHTUNG BEI GESCHAEFTSBRIEFEN: Verfasser ist der ABSENDER, nicht der "
+    "Empfaenger. Der Empfaenger steht im Anschriftenfeld oben links, oft als "
+    "groesster Block - der ist es NICHT. Den Absender erkennst du am "
+    "Briefkopf, an der Fusszeile (Bankverbindung, Registergericht, "
+    "Steuernummer), an der Telefonnummer des Sachbearbeiters oder an Woertern "
+    "wie \'Unsere Auftragsnummer\' (der Absender) gegenueber \'Ihre "
+    "Bestellnummer\' (der Empfaenger). Wer eine Rechnung stellt, ist der "
+    "Absender; wer bestellt hat, ist der Empfaenger. Laesst sich der Absender "
+    "nicht sicher erkennen, lass den Verfasser LEER - lieber leer als falsch. "
+    "\n"
     "Der Dateiname ist KEIN Titel. Ist kein Titel lesbar, lass ihn leer. "
     "Antworte NUR mit einer JSON-Zeile der Form "
     '{"titel": "...", "verfasser": "...", "jahr": "..."}. Nichts erfinden.')

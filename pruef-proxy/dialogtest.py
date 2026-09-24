@@ -1609,7 +1609,29 @@ def szenario_27_wegabgleich_und_bildarten():
     pruefe("Lanxess" in _f2.getvalue(),
            "Gegenprobe: ein Melder MIT Namen wuerde auffallen")
 
-    # ⛔ JEDE Aufrufstelle von mit_verweisen() muss den Bereichswaechter
+    # \u26d4 Die Deckblatt-Anweisung muss GESCHAEFTSBRIEFE kennen. Gemessen
+    #   24.09.: Im Katalog stand bei den Rechnungen des Instituts der KUNDE
+    #   als Verfasser, weil die Anweisung nur Hochschulschriften aufzaehlte
+    #   und zum Verfasser "die herausgebende Organisation" sagte - in einem
+    #   Brief ist das der Block im Anschriftenfeld, also der EMPFAENGER.
+    # \u26a0 Das prueft den WORTLAUT der Anweisung, nicht das Verhalten des
+    #   Modells. Es ist ein Rueckfallriegel: Nimmt jemand den Brief-Teil
+    #   wieder heraus, faellt es hier auf. Ob das Modell folgt, zeigt erst
+    #   ein Lauf an einem echten Beleg - das steht in NAECHSTE-SITZUNG.
+    import bestand as _bst_a
+    _anw = _bst_a._DECKBLATT_ANWEISUNG
+    for _wort in ("Rechnung", "Angebot", "ABSENDER", "Empfaenger",
+                  "Anschriftenfeld"):
+        pruefe(_wort in _anw,
+               "Deckblatt-Anweisung nennt '%s'" % _wort)
+    pruefe("lieber leer als falsch" in _anw,
+           "im Zweifel bleibt der Verfasser LEER statt falsch")
+    # Gegenprobe: Ohne den Brief-Teil faellt die Reihe auf die Nase.
+    _ohne = _anw.replace("ABSENDER", "Organisation")
+    pruefe("ABSENDER" not in _ohne,
+           "Gegenprobe: eine Anweisung ohne ABSENDER waere erkennbar")
+
+    # \u26d4 JEDE Aufrufstelle von mit_verweisen() muss den Bereichswaechter
     #   mitgeben. Ohne ihn darf die Anlage in einem Dokument nachschlagen,
     #   das in einem FREMDEN Bereich liegt - der Klick bliebe gesperrt, der
     #   NAME stuende aber im Antworttext.
