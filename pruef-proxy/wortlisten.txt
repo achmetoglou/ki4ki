@@ -85,3 +85,70 @@ Promotionen = DS
 Diss = DS
 Bachelorthesis = BS
 Masterthesis = M
+
+# ----------------------------------------------------------------------------
+#  GESCHAEFTSUNTERLAGEN - Arten OHNE Kennung im Dateinamen
+#
+#  Form:   Wort = -
+#
+#  Der Strich heisst: "Das ist eine Dokumentart, aber sie steht NICHT in den
+#  Buchstaben vor der Nummer."
+#
+#  ⛔ WARUM NICHT ALS KENNUNG: Eine Rechnung heisst "Rechnung_274821" oder
+#     "RE-2026-0041", nicht "DS-24-005". Traegt man sie oben unter [arten]
+#     ein, filtert die Anlage ueber die Buchstaben vor der Nummer, findet
+#     null Treffer und antwortet "wir haben keine Rechnungen" - obwohl
+#     hunderte im Regal liegen. Mit dem Strich filtert sie stattdessen ueber
+#     die KATEGORIE aus der Aufnahme, und die trifft.
+#
+#  ⛔ ZWEI ARTEN MIT DENSELBEN BUCHSTABEN: "PA" ist hier eine Projektarbeit,
+#     im Geschaeftsverkehr eine Preisanfrage; "M" eine Masterarbeit und eine
+#     Mahnung; "D" eine Diplomarbeit und ein Datum. Auseinander gehalten
+#     werden sie an der Jahreszahl: der Hochschulbestand schreibt sie
+#     ZWEIstellig (DS-24-005), die Geschaeftsnummern vierstellig
+#     (PA-2026-001). Wer hier Kennungen ergaenzt, muss das im Kopf haben.
+#
+#  ⚠ Ohne Eintrag laeuft die Anlage weiter; sie erkennt die Frage dann nur
+#    nicht als Frage nach einer Dokumentart.
+# ----------------------------------------------------------------------------
+Rechnung = -
+Rechnungen = -
+Gutschrift = -
+Gutschriften = -
+Mahnung = -
+Mahnungen = -
+Zahlungserinnerung = -
+Zahlungserinnerungen = -
+Angebot = -
+Angebote = -
+Kostenvoranschlag = -
+Preisanfrage = -
+Preisanfragen = -
+Angebotsanfrage = -
+Angebotsanfragen = -
+Bestellung = -
+Bestellungen = -
+Auftragsbestätigung = -
+Auftragsbestätigungen = -
+Lieferschein = -
+Lieferscheine = -
+Anschreiben = -
+Begleitschreiben = -
+Laufzettel = -
+Reisekostenabrechnung = -
+Reisekostenabrechnungen = -
+Reisekosten = -
+Spesenabrechnung = -
+Spesenabrechnungen = -
+Vertrag = -
+Verträge = -
+Vereinbarung = -
+Vereinbarungen = -
+Geheimhaltungsvereinbarung = -
+Geheimhaltungsvereinbarungen = -
+Verschwiegenheitserklärung = -
+Verschwiegenheitserklärungen = -
+Beleg = -
+Belege = -
+Geschäftsunterlage = -
+Geschäftsunterlagen = -

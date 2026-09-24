@@ -57,6 +57,59 @@ _WORT_ZU_ART.update({
     "abschlussarbeit": None, "abschlussarbeiten": None,   # mehrere Arten
 })
 
+# ⛔ GESCHAEFTSUNTERLAGEN. Im Bestand liegen Rechnungen, Angebote,
+# Bestellungen, Anschreiben, Laufzettel und Reisekostenabrechnungen eines
+# Auftragslabors. Wer danach fragt, bekam bisher gar nichts: das Wort stand
+# nirgends, gefragte_art() gab (None, None) zurueck.
+#
+# ⚠ Der Wert ist mit Absicht None - genau wie bei "abschlussarbeit". None
+#   heisst: das Wort IST eine Dokumentart, aber sie steckt NICHT in den
+#   Buchstaben vor der Nummer. Eine Rechnung heisst "Rechnung_274821" oder
+#   "RE-2026-0041", nie "DS-24-005"; ein Filter ueber die Kennung faende
+#   null Treffer und die Anlage meldete "wir haben keine Rechnungen",
+#   obwohl hunderte im Regal liegen. Mit None faellt die Auskunft auf den
+#   Filter ueber die KATEGORIE zurueck (assistent.py:1112 ff. ->
+#   kategorie.gefragte / bestand.nach_kategorie), und der trifft.
+_OHNE_KENNUNG = (
+    "rechnung", "rechnungen", "gutschrift", "gutschriften",
+    "mahnung", "mahnungen", "zahlungserinnerung", "zahlungserinnerungen",
+    "angebot", "angebote", "kostenvoranschlag",
+    "preisanfrage", "preisanfragen", "angebotsanfrage", "angebotsanfragen",
+    "bestellung", "bestellungen",
+    "auftragsbestätigung", "auftragsbestätigungen",
+    "auftragsbestaetigung", "auftragsbestaetigungen",
+    "lieferschein", "lieferscheine",
+    "anschreiben", "begleitschreiben",
+    "reisekostenabrechnung", "reisekostenabrechnungen", "reisekosten",
+    "spesenabrechnung", "spesenabrechnungen",
+    "laufzettel",
+    "vertrag", "verträge", "vertraege", "vereinbarung", "vereinbarungen",
+    "geheimhaltungsvereinbarung", "geheimhaltungsvereinbarungen",
+    "verschwiegenheitserklärung", "verschwiegenheitserklärungen",
+    "beleg", "belege", "geschäftsunterlage", "geschäftsunterlagen",
+    "geschaeftsunterlage", "geschaeftsunterlagen",
+)
+
+
+def _arten_ergaenzen(zuordnung, arten):
+    """Woerter ohne eigene Kennung nachtragen und tote Kennungen entschaerfen.
+
+    ⚠ Zeigt ein Wort auf eine Kennung, die es in den ARTEN gar nicht gibt
+      (Schreibfehler in wortlisten.txt, oder der Strich "-" fuer "hat keine
+      Kennung"), dann wird daraus None statt eines Filters, der nie trifft.
+      Eine gepflegte Wortliste darf eine Frage verschlechtern - sie darf sie
+      nicht ins Leere laufen lassen.
+    """
+    for wort, kennzeichen in list(zuordnung.items()):
+        if kennzeichen is not None and kennzeichen not in arten:
+            zuordnung[wort] = None
+    for wort in _OHNE_KENNUNG:
+        zuordnung.setdefault(wort, None)
+    return zuordnung
+
+
+_arten_ergaenzen(_WORT_ZU_ART, ARTEN)
+
 def _aus_datei():
     """Arten und gleichbedeutende Woerter aus wortlisten.txt holen.
 
@@ -78,6 +131,10 @@ if _datei_woerter:
     _WORT_ZU_ART = dict(_datei_woerter)
     _WORT_ZU_ART.setdefault("abschlussarbeit", None)
     _WORT_ZU_ART.setdefault("abschlussarbeiten", None)
+# ⚠ MUSS auch hier stehen: die Datei ERSETZT die eingebauten Woerter
+#   komplett (Zeile darueber), die Geschaeftswoerter waeren sonst wieder weg,
+#   sobald wortlisten.txt existiert - und sie existiert.
+_arten_ergaenzen(_WORT_ZU_ART, ARTEN)
 
 _ART_MUSTER = re.compile(
     r"\b(%s)\b" % "|".join(sorted(_WORT_ZU_ART, key=len, reverse=True)), re.I)
@@ -169,9 +226,21 @@ def _anzeige(name):
         return str(name or "")
 
 
+# ⛔ Dasselbe blinde Muster wie in kategorie.py: ein bis drei Buchstaben vor
+# einer Ziffer genuegten. Damit war "PA-2026-001-Preisanfrage.pdf" eine
+# Projektarbeit und "M-2026-0042" (Mahnung) eine Masterarbeit - art_von()
+# behauptete es, angaben()["art"] schrieb es weiter.
+#
+# Der Hochschulbestand schreibt die Kennung immer als Buchstaben,
+# ZWEIstelliges Jahr, laufende Nummer: DS-24-005, S-23-001, PA-24-002. Eine
+# Geschaeftsnummer traegt die Jahreszahl vierstellig und faellt heraus;
+# art_von() liefert dann None - unbekannt statt falsch.
+_KENNUNG_MUSTER = re.compile(r"([A-Za-z]{1,3})[-_ ]?(\d{2})[-_ ]\d")
+
+
 def kennung(name):
     """Buchstaben vor der Nummer: 'DS-00-000' -> 'DS'. Sonst None."""
-    m = re.match(r"([A-Za-z]{1,3})[-_ ]?\d", _anzeige(name).strip())
+    m = _KENNUNG_MUSTER.match(_anzeige(name).strip())
     return m.group(1).upper() if m else None
 
 

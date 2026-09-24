@@ -8,9 +8,23 @@ Bisher las das niemand (Rueckmeldung 27.08.: "wie erkennt das System, was was is
 Hier wird daraus eine KATEGORIE aus einer festen, je Bereich pflegbaren Liste
 (dokumente/<bereich>/kategorien.txt) und eine Handvoll THEMEN (Keywords).
 
-Rangfolge: Mensch (Kategorie im Chat gesetzt) > Kennung (DS-/BS-/M-...) >
-Pruefungskatalog (erkannt) > Stichwoerter aus Dokumenttyp, Titel, Dateiname,
-Tags > "Sonstiges". Kein Modellaufruf - alles deterministisch und pruefbar.
+Rangfolge: Mensch (Kategorie im Chat gesetzt) > Pruefungskatalog (erkannt) >
+Kennung (DS-/BS-/M-...) > Dokumenttyp > Titel > Dateiname/Tags >
+"Sonstiges". Kein Modellaufruf - alles deterministisch und pruefbar.
+
+⛔ ZWEI EINSCHRAENKUNGEN AN DER KENNUNG (sie stand frueher ganz oben und hat
+   blind gewonnen, siehe _KENNUNG_MUSTER und GESCHAEFTLICH):
+   1. Sie gilt nur in der Schreibweise des Hochschulbestands (DS-24-005).
+      "PA-2026-001-Preisanfrage" ist keine Projektarbeit.
+   2. Meldet die Aufnahme ausdruecklich eine Geschaeftsunterlage
+      ("Invoice"), schlaegt das die Kennung. Sonst waere "M-24-0042"
+      (Mahnung) fuer immer eine Masterarbeit.
+
+⛔ KEINE der Listen hier darf GESCHLOSSEN sein. Der Bestand ist gemischt:
+   neben Hochschulschriften liegen die Geschaeftsunterlagen eines
+   Auftragslabors. Was hier fehlt, wird nicht "unbekannt", sondern FALSCH
+   einsortiert - und das steht danach in der Aufnahme. Die Gegenproben dazu
+   stehen in kategorietest.py.
 """
 import os
 import re
@@ -19,7 +33,12 @@ DATEI = "kategorien.txt"
 
 # (Kategorie, Stichwoerter deutsch/englisch - klein, Teilwort genuegt)
 STANDARD = [
-    ("Prüfungskatalog", ["prüfungsfragen", "pruefungsfragen", "testfragen", "fragenkatalog", "prüfungskatalog", "exam question", "question catalog", "quiz"]),
+    # ⚠ "exam catalog" deckt auch "Exam catalogue" ab (Teilwortvergleich) -
+    #   und genau DIESEN Wert liefert die Aufnahme. Bisher stand er in keiner
+    #   Zeile: ein Pruefungskatalog fiel ueber den Dokumenttyp auf
+    #   "Sonstiges", solange ihn nicht der Pruefungskatalog-Erkenner selbst
+    #   gefunden hatte (ist_katalog). Gefunden von kategorietest.py.
+    ("Prüfungskatalog", ["prüfungsfragen", "pruefungsfragen", "testfragen", "fragenkatalog", "prüfungskatalog", "exam question", "exam catalog", "question catalog", "quiz"]),
     ("Dissertation", ["dissertation", "doktorarbeit", "phd thesis", "doctoral"]),
     ("Masterarbeit", ["masterarbeit", "master thesis", "master's thesis"]),
     ("Bachelorarbeit", ["bachelorarbeit", "bachelor thesis", "bachelor's thesis"]),
@@ -34,10 +53,62 @@ STANDARD = [
     ("Präsentation", ["präsentation", "praesentation", "presentation", "folien", "slides", "vortrag", "textbildpr", "schulungsunterlage"]),
     ("Lehrunterlage", ["lehrunterlage", "lerneinheit", "skript", "lecture", "training", "kursunterlage", "lehrgang", "unterrichts", "tutorial", "learning unit"]),
     ("Fachbuch", ["fachbuch", "lehrbuch", "textbook", "handbook", "book", "buch", "sachbuch", "monograph"]),
+    # --- Geschaeftsunterlagen -------------------------------------------
+    # Diese Liste war fuer HOCHSCHULSCHRIFTEN gebaut. Im Bestand liegen
+    # inzwischen die Geschaeftsunterlagen eines Auftragslabors. Ohne diese
+    # Zeilen faellt eine Rechnung auf "Sonstiges" - oder schlimmer auf
+    # "Datenblatt", weil sie Zahlen und eine Tabelle traegt.
+    #
+    # ⚠ Der Vergleich unten ist ein TEILWORTvergleich. Ein Stichwort mit
+    #   Leerzeichen davor trifft deshalb nur den Wortanfang: " rechnung "
+    #   muss so dastehen, sonst wird jede "Berechnung" und jedes
+    #   "Rechnungswesen" zur Rechnung. Das Muster darunter ersetzt
+    #   - _ . / durch Leerzeichen, "Rechnung_274821.pdf" trifft also.
+    ("Rechnung", [" rechnung ", " rechnungen ", " rechnungsnummer", " rechnungsdatum", " schlussrechnung", " teilrechnung", " abschlagsrechnung", "invoice", " gutschrift", "credit note"]),
+    ("Mahnung", [" mahnung ", " mahnungen ", " zahlungserinnerung", " dunning", " reminder "]),
+    ("Angebot", [" angebot ", " angebote ", " angebotsnummer", "kostenvoranschlag", "quotation", " offer "]),
+    ("Preisanfrage", [" preisanfrage", " angebotsanfrage", "request for quotation", " rfq "]),
+    ("Bestellung", [" bestellung ", " bestellungen ", " bestellnummer", " bestellschein", "purchase order"]),
+    ("Auftragsbestätigung", [" auftragsbestätigung", " auftragsbestaetigung", "order confirmation"]),
+    ("Lieferschein", [" lieferschein", "delivery note", " packliste", "packing list"]),
+    ("Anschreiben", [" anschreiben ", " begleitschreiben", "cover letter", "geschäftsbrief", "geschaeftsbrief"]),
+    ("Reisekostenabrechnung", [" reisekosten", " spesen", " spesenabrechnung", "expense report"]),
+    ("Laufzettel", [" laufzettel", "routing slip", " begleitzettel"]),
+    ("Vertrag/Vereinbarung", [" vertrag ", " verträge ", " vertraege ", " vertragsnummer", " werkvertrag", " rahmenvertrag", " contract", "agreement", " vereinbarung "]),
+    ("Geheimhaltungsvereinbarung", ["geheimhaltungsvereinbarung", "verschwiegenheitserklärung", "verschwiegenheitserklaerung", "non disclosure", "nondisclosure", " nda "]),
     ("Sonstiges", []),
 ]
+
+# Kategorien OHNE Hochschulbezug. Sagt die Aufnahme ausdruecklich, dass sie
+# eine Rechnung vor sich hat, schlaegt das die Kennung aus dem Dateinamen -
+# sonst bliebe "M-24-0042" (Mahnung) fuer immer eine Masterarbeit.
+# ⚠ Pflegt ein Bereich eine eigene kategorien.txt mit anderen Namen, greift
+#   die Sperre dort nicht. Sie kann nur nicht schaden: ohne Treffer bleibt
+#   alles so, wie es vorher war.
+GESCHAEFTLICH = {"Rechnung", "Mahnung", "Angebot", "Preisanfrage", "Bestellung",
+                 "Auftragsbestätigung", "Lieferschein", "Anschreiben",
+                 "Reisekostenabrechnung", "Laufzettel", "Vertrag/Vereinbarung",
+                 "Geheimhaltungsvereinbarung"}
+
 KENNUNG_ZU_KATEGORIE = {"DS": "Dissertation", "BS": "Bachelorarbeit", "M": "Masterarbeit", "D": "Masterarbeit",
                         "S": "Projektarbeit", "PA": "Projektarbeit"}
+
+# ⛔ Die Kennung galt bisher fuer JEDEN Namen, der mit ein bis drei Buchstaben
+# vor einer Ziffer beginnt - und zwar VOR jeder Stichwortpruefung. Damit wurde
+# "PA-2026-001-Preisanfrage" zur Projektarbeit, "M-2026-0042" (Mahnung) zur
+# Masterarbeit und "D-2026-..." ebenfalls zur Masterarbeit.
+#
+# Der Hochschulbestand schreibt die Kennung immer gleich: Buchstaben,
+# ZWEIstelliges Jahr, laufende Nummer - DS-24-005, S-23-001, PA-24-002
+# (belegt in bestand.py:765-767 und doku/entwicklung/BUGS_UND_FIXES.md:541).
+# Eine Geschaeftsnummer traegt die Jahreszahl vierstellig und faellt damit
+# heraus. Das zweite Trennzeichen ist Pflicht: ohne es wuerde "PA-2026-001"
+# wieder als "PA" + "20" gelesen.
+#
+# ⚠ Eine Kennung OHNE Trennzeichen ("DS24005") gilt damit nicht mehr. Im
+#   Bestand kommt diese Schreibweise nicht vor; taucht sie doch auf, gehoert
+#   sie hier ergaenzt - und nicht das Muster wieder aufgeweicht.
+_KENNUNG_MUSTER = re.compile(r"([A-Za-z]{1,3})[-_ ]?(\d{2})[-_ ]\d")
 
 # Wonach jemand fragt -> Kategorie
 _FRAGEWORTE = {
@@ -56,6 +127,22 @@ _FRAGEWORTE = {
     "Masterarbeit": ["masterarbeit", "masterarbeiten"],
     "Bachelorarbeit": ["bachelorarbeit", "bachelorarbeiten"],
     "Projektarbeit": ["projektarbeit", "projektarbeiten", "studienarbeit", "studienarbeiten"],
+    # ⛔ Ohne diese Zeilen bekommt "Zeig mir alle Angebote" KEINEN
+    #   Kategoriefilter: gefragte() gibt (None, None) zurueck, und die
+    #   Bestandsauskunft faellt auf die allgemeine Liste ueber ALLES
+    #   zurueck. Gefragt ist aber nach einer Art von Unterlage.
+    "Rechnung": ["rechnung", "rechnungen", "gutschrift", "gutschriften"],
+    "Mahnung": ["mahnung", "mahnungen", "zahlungserinnerung", "zahlungserinnerungen"],
+    "Angebot": ["angebot", "angebote", "kostenvoranschlag", "kostenvoranschläge", "kostenvoranschlaege"],
+    "Preisanfrage": ["preisanfrage", "preisanfragen", "angebotsanfrage", "angebotsanfragen"],
+    "Bestellung": ["bestellung", "bestellungen"],
+    "Auftragsbestätigung": ["auftragsbestätigung", "auftragsbestätigungen", "auftragsbestaetigung", "auftragsbestaetigungen"],
+    "Lieferschein": ["lieferschein", "lieferscheine"],
+    "Anschreiben": ["anschreiben", "begleitschreiben"],
+    "Reisekostenabrechnung": ["reisekostenabrechnung", "reisekostenabrechnungen", "reisekosten", "spesenabrechnung", "spesenabrechnungen"],
+    "Laufzettel": ["laufzettel"],
+    "Vertrag/Vereinbarung": ["vertrag", "verträge", "vertraege", "vereinbarung", "vereinbarungen", "werkvertrag", "werkverträge", "rahmenvertrag", "rahmenverträge"],
+    "Geheimhaltungsvereinbarung": ["geheimhaltungsvereinbarung", "geheimhaltungsvereinbarungen", "verschwiegenheitserklärung", "verschwiegenheitserklärungen", "nda"],
 }
 _FRAGE_MUSTER = re.compile(r"\b(%s)\b" % "|".join(sorted({w for ws in _FRAGEWORTE.values() for w in ws}, key=len, reverse=True)), re.I)
 
@@ -75,8 +162,23 @@ def liste(wurzel=None):
                     woerter = [w.strip().lower() for w in rest.split(",") if w.strip()]
                     aus.append((name.strip(), woerter))
                 if aus:
-                    if not any(n == "Sonstiges" for n, _ in aus):
-                        aus.append(("Sonstiges", []))
+                    # ⛔ Eine kategorien.txt, die vor dieser Aenderung
+                    # geschrieben wurde, kennt keine Geschaeftsunterlagen -
+                    # in ihrem Bereich waere die Liste weiterhin GESCHLOSSEN,
+                    # ohne dass es jemandem auffiele. Was im Standard steht
+                    # und in der Datei FEHLT, kommt deshalb dazu.
+                    #
+                    # ⚠ Eine Kategorie, die die Datei selbst fuehrt, wird NICHT
+                    #   angefasst - der Bereich behaelt seine Stichwoerter.
+                    #   Die Reihenfolge entscheidet ohnehin nichts: unten
+                    #   gewinnt das laengste passende Stichwort, nicht das
+                    #   erste. Angehaengt wird nur, damit "Sonstiges" hinten
+                    #   bleibt, wo es hingehoert.
+                    vorhanden = {n for n, _ in aus}
+                    aus = [(n, w) for n, w in aus if n != "Sonstiges"]
+                    aus += [(n, w) for n, w in STANDARD
+                            if n not in vorhanden and n != "Sonstiges"]
+                    aus.append(("Sonstiges", []))
                     return aus
         except OSError:
             pass
@@ -86,9 +188,13 @@ def liste(wurzel=None):
 def datei_text():
     """Inhalt fuer eine frische kategorien.txt - der Standard, zum Bearbeiten."""
     zeilen = ["# Kategorien dieses Bereichs - eine je Zeile: Name: Stichwort, Stichwort, ...",
-              "# Die Anlage ordnet jedes Dokument der ERSTEN Kategorie zu, deren Stichwort im",
-              "# Dokumenttyp, Titel, Dateinamen oder in den Tags der Aufnahme vorkommt.",
-              "# Reihenfolge = Vorrang. Aenderungen wirken beim naechsten Nachtragen (Minuten).",
+              "# Die Anlage sieht der Reihe nach im Dokumenttyp, im Titel und im Dateinamen",
+              "# plus Tags nach. Im selben Stueck Text gewinnt das LAENGSTE passende",
+              "# Stichwort - nicht die oberste Zeile ('werkzeugliste' schlaegt 'dvs ').",
+              "# Die Reihenfolge hier entscheidet also nichts; genauere Stichwoerter schon.",
+              "# Aenderungen wirken beim naechsten Nachtragen (Minuten).",
+              "# Was hier fehlt, aber zum Standard der Anlage gehoert, gilt trotzdem: eine",
+              "# Liste, die einmal geschrieben wurde, soll nicht neue Dokumentarten aussperren.",
               "# Von Hand gesetzte Kategorien (im Chat: 'Kategorie von X ist Y') bleiben bestehen.", ""]
     for name, woerter in STANDARD:
         zeilen.append("%s: %s" % (name, ", ".join(woerter)))
@@ -137,24 +243,37 @@ def zuordnen(kopf, dateiname="", titel="", kennung="", ist_katalog=False, wurzel
         return g or v[:40]
     if ist_katalog:
         return "Prüfungskatalog"
-    m = re.match(r"([A-Za-z]{1,3})[-_ ]?\d", str(kennung or dateiname or "").strip())
-    if m and m.group(1).upper() in KENNUNG_ZU_KATEGORIE:
-        return KENNUNG_ZU_KATEGORIE[m.group(1).upper()]
     k = kopf or {}
     kats = liste(wurzel)
     # Vorrang: was die Aufnahme als Dokumenttyp erkannt hat ("Practical Guide /
     # Manual") vor Titel vor Dateiname+Tags - sonst macht "DVS" im Dateinamen
     # aus jedem Leitfaden eine Norm.
-    for stoff in (str(k.get("dokumenttyp") or ""), str(titel or ""),
+    typ_kategorie = _stichwort_treffer(str(k.get("dokumenttyp") or ""), kats)
+    # Die Kennung darf nicht mehr blind gewinnen: sie gilt nur in der Form des
+    # Hochschulbestands (siehe _KENNUNG_MUSTER) und nur, solange die Aufnahme
+    # nicht ausdruecklich eine Geschaeftsunterlage gemeldet hat.
+    m = _KENNUNG_MUSTER.match(str(kennung or dateiname or "").strip())
+    if (m and m.group(1).upper() in KENNUNG_ZU_KATEGORIE
+            and typ_kategorie not in GESCHAEFTLICH):
+        return KENNUNG_ZU_KATEGORIE[m.group(1).upper()]
+    if typ_kategorie:
+        return typ_kategorie
+    for stoff in (str(titel or ""),
                   str(dateiname or "") + " " + " ".join(k.get("tags") or [])):
-        stoff = " " + re.sub(r"[_\-./]+", " ", stoff.lower()) + " "
-        if not stoff.strip():
-            continue
-        # das laengste passende Stichwort gewinnt ("werkzeugliste" vor "dvs ")
-        beste = max(((len(w), name) for name, woerter in kats for w in woerter if w and w in stoff), default=None)
-        if beste:
-            return beste[1]
+        treffer = _stichwort_treffer(stoff, kats)
+        if treffer:
+            return treffer
     return "Sonstiges"
+
+
+def _stichwort_treffer(stoff, kats):
+    """Welche Kategorie steckt in diesem Stueck Text? Sonst None."""
+    stoff = " " + re.sub(r"[_\-./]+", " ", str(stoff or "").lower()) + " "
+    if not stoff.strip():
+        return None
+    # das laengste passende Stichwort gewinnt ("werkzeugliste" vor "dvs ")
+    beste = max(((len(w), name) for name, woerter in kats for w in woerter if w and w in stoff), default=None)
+    return beste[1] if beste else None
 
 
 def themen(kopf, hoechstens=6):
