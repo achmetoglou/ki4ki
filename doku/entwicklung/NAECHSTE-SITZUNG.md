@@ -239,6 +239,100 @@ und gleicht ab, was n8n **wirklich geladen** hat. Aufruf auf dem Host:
 2. **`LESBAR_BYTE`** (siehe oben), gehört zu Teil 3.
 3. **Die Protokoll-Wiederholung** bei jedem Minutentakt (§3, Punkt 2).
 
+## 6 - ⛔⛔ DIE ANLAGE IST FUER HOCHSCHULSCHRIFTEN GEBAUT, DER BESTAND SIND GESCHAEFTSUNTERLAGEN
+
+Am 24.09. wurden zwei Fehler gefunden, die wie Einzelfaelle aussahen:
+der Katalog hielt den Kunden fuer den Verfasser einer Rechnung, und die
+Schwelle "3 gemeinsame Fachwoerter" trennte zwei fast gleiche Rechnungen
+nicht. Ein Sucher hat danach den ganzen Quelltext durchgesehen.
+
+⭐⭐ Es sind keine zwei Fehler. Es sind zwei Instanzen von DREI WURZELN,
+aus denen ueber zwanzig Fundstellen folgen.
+
+### Wurzel 1: eine GESCHLOSSENE Liste von Dokumentarten
+
+Wo die Liste geschlossen ist, wird eine Rechnung zu etwas anderem
+gemacht, statt unbekannt zu bleiben.
+
+| Stelle | was dort steht |
+|---|---|
+| Ablaufplan 1, Knoten "HTTP Request1" | `document_type` MUSS eine von 16 Marken sein - Dissertation, Master thesis, Standard, Exam catalogue ... Keine Belegart. Eine Rechnung wird "Other" oder, schlimmer, "Datasheet" |
+| `kategorie.py:21-39` | 15 Kategorien, keine einzige Geschaeftsunterlage; `KENNUNG_ZU_KATEGORIE` macht aus `PA-...` eine "Projektarbeit" und aus `M-...` eine "Masterarbeit", VOR jeder Stichwortpruefung |
+| `gespraech.py:175`, `absicht.py:68` | "eine Wissensdatenbank fuer Fachdokumente (Dissertationen eines Instituts)" - steht im Prompt JEDES Aufrufs |
+| `assistent.py:1693` `_UNSPEZIFISCH` | kennt `dissertation, masterarbeit, studie` - nicht `rechnung, angebot, beleg`. "Und die Rechnung?" wird deshalb NICHT auf das Faden-Dokument bezogen |
+
+⛔ Der `document_type` aus Ablaufplan 1 ist die **erste und hoechstrangige**
+Stoffquelle fuer die Kategorie. Ein falscher Wert dort verdirbt Kategorie,
+Themen und Bestandsliste - fuer JEDES aufgenommene Dokument.
+
+### Wurzel 2: "ein Dokument ist lang, einmalig und unterscheidet sich"
+
+Daraus folgen alle Zahlen im Haus:
+
+```
+3 gemeinsame Fachwoerter     Woerter > 6 Zeichen        25 Zeichen Mindestzitat
+4 Woerter fuer die Suche     80 Zeichen Mindestseite    20 Dok Haeufigkeitsgrenze
+80 Dok Wortverzeichnis       1.200 Zeichen Zusammenfassung
+```
+
+⛔ Eine Aussage ueber eine Rechnung besteht aus Zahlen und kurzen
+Woertern: "Betrag" (6 - faellt raus), "Netto" (5), "Summe" (5), "274821"
+(Ziffern - faellt raus). Es bleiben null bis zwei Fachwoerter. Folge:
+`_aussage_gedeckt` liefert "unpruefbar", und der Nutzer bekommt zu einem
+RICHTIG belegten Satz den Hinweis "bitte selbst pruefen".
+
+⛔ `fadenfrage.suchwoerter()` wirft Ziffern weg. "Was steht in Rechnung
+274821?" verliert genau das eine unterscheidende Zeichen der Frage.
+
+⛔ Und die Boilerplate eines Geschaeftsbriefs ("Zahlbar innerhalb von 30
+Tagen") steht wortgleich in ALLEN Rechnungen - jedes Zitat daraus wird
+"mehrfach" und verliert seinen eindeutigen Beleg.
+
+### ⛔⛔ Wurzel 3: "ein Dokument hat Deckblatt, Verzeichnis und Fliesstext"
+
+**Die groesste Reichweite, und bisher unbemerkt** - weil sie die Antwort
+nicht verfaelscht, sondern das BELEGEN stillschweigend abschaltet.
+
+Eine einseitige Rechnung hat keine dieser drei Schichten. Sie ist ganz
+Deckblatt und ganz Tabelle - und wird deshalb an VIER Stellen
+gleichzeitig als inhaltsleer behandelt:
+
+| Stelle | Regel | Folge bei einer Rechnung |
+|---|---|---|
+| `veredeln.py:183` `_ist_verzeichnis` | 3 kurze Zeilen mit Zahl am Ende = Verzeichnis | die Positionstabelle gilt als belegfrei |
+| `pruef_proxy.py:4940` `_seite_glaubhaft` | "Seite 1 ist das Deckblatt" | die EINZIGE Seite wird verworfen |
+| `vorspann_finden.py:29` `verzeichnisse_putzen` | Punktfuehrung + Zahl = Navigation, wird GELOESCHT | "Laborleistung .... 1.234,56" verschwindet vor dem Einbetten |
+| `systemprompt.txt:19` Regel 13 | "Deckblaetter enthalten keine Aussage" | das Modell zitiert die Rechnung nicht |
+
+### ⭐ Warum nie etwas rot wurde
+
+Der Sucher hat es beilaeufig mitgeliefert, und es ist die unbequemste
+Zeile des Berichts:
+
+> Die Testreihe fragt nur die Welt ab, fuer die gebaut wurde.
+
+`dialogtest.py:133` baut Pruefstuecke aus "Deckblatt" und
+"Inhaltsverzeichnis", `gespraechtest.py:309` zitiert "(DS-24-005, S. 12)".
+Und `selbstcheck.py` - der Waechter, der melden soll, dass die Anlage
+nicht mehr richtig arbeitet - traegt dieselbe Kalibrierung in einer
+zweiten Kopie (`:60` `len(w) > 6`, `:152` `< 3`, `:178` prueft auf die
+Kopfzeile des Hochschul-Katalogs). Er bleibt gruen.
+
+### ⛔ ENTSCHEIDUNG, die vor dem grossen Lauf faellt
+
+Das ist keine Fehlerliste, das ist eine Produktfrage. Drei Wege:
+
+| Weg | was er heisst |
+|---|---|
+| **A - Bestand trennen** | Hochschulschriften und Geschaeftsunterlagen in getrennte Bereiche, je eigene Schwellen und Listen. Sauber, aber zwei Anlagen zu pflegen |
+| **B - Listen oeffnen** | Wurzel 1 aufloesen: Dokumentarten erweitern statt erzwingen, "unbekannt" zulassen. Billig, loest Wurzel 2 und 3 nicht |
+| **C - Schwellen dokumentabhaengig** | Kurze einseitige Belege bekommen eigene Zahlen. Am meisten Arbeit, trifft aber Wurzel 2 und 3 |
+
+⛔ **Bevor das entschieden ist, darf der grosse Lauf nicht starten.**
+6.395 Dokumente durchlaufen sonst eine Anlage, die sie falsch einordnet
+und deren Inhalt sie anschliessend als nicht zitierfaehig behandelt -
+67 Stunden fuer einen Bestand, der nachher nochmal muss.
+
 ## 5d - ⚠ OFFENE ENTSCHEIDUNG mit Verfallsdatum: IBM Granite als Einbetter?
 
 Emrach am 23.09.: *"ich dachte wegen der einbettung... und des rag
