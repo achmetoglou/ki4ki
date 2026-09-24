@@ -1716,6 +1716,32 @@ def szenario_27_wegabgleich_und_bildarten():
            "Gegenprobe: ein Tor ohne Melder wird gemeldet")
     _quelle_pp = open(os.path.join(HIER, "pruef_proxy.py"), encoding="utf-8").read()
 
+    # ⛔ Die Loesch-Wache muss UNTERORDNER sehen. Hier stand eine flache
+    #   Schleife (os.listdir + isfile) - Kundenordner fielen durch. Das ist
+    #   kein Randfall: Der Schluessel eines Dokuments wird aus dem Pfad
+    #   UNTERHALB des ersten Ordners gerechnet, "loeschen/Kunde/x.pdf" ergibt
+    #   denselben wie "archiv/Kunde/x.pdf" - flach hingelegt einen anderen.
+    #   Und die Anlage legt dort SELBST Unterordner an, wenn sie eine neue
+    #   Fassung erkennt: Sie protokollierte "alte Fassung wird entfernt" und
+    #   entfernte nichts.
+    # ⭐ Das erklaert "loeschen 5" bei 39 neu eingespielten Dokumenten
+    #   (23.09.) und warum der Bestand dabei von 84 auf 120 stieg statt
+    #   gleich zu bleiben.
+    # ⚠ Geprueft am Quelltext, weil die Wache eine Endlosschleife mit
+    #   sleep(60) ist. Schwaecher als ein Lauf - haelt aber genau die Zeile
+    #   fest, die gefehlt hat.
+    pruefe("for _w, _u, _dateien in os.walk(lo)" in _quelle_pp,
+           "die Loesch-Wache geht mit os.walk durch loeschen/")
+    pruefe("for f in sorted(os.listdir(lo))" not in _quelle_pp,
+           "die alte flache Schleife ist weg")
+    # Gegenprobe: mit der alten Zeile wird die erste Pruefung rot.
+    _flach = _quelle_pp.replace("for _w, _u, _dateien in os.walk(lo):",
+                                "for f in sorted(os.listdir(lo)):", 1)
+    pruefe(_flach != _quelle_pp, "Gegenprobe vorbereitet")
+    pruefe("for _w, _u, _dateien in os.walk(lo)" not in _flach,
+           "Gegenprobe: die flache Fassung wuerde gemeldet")
+
+
     def _rufe(quelltext):
         return [(k.lineno, len(k.args) + len(k.keywords))
                 for k in _ast2.walk(_ast2.parse(quelltext))

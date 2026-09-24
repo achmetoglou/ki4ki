@@ -1261,12 +1261,43 @@ def _loesch_wache():
                         continue
                 if not os.path.isdir(lo):
                     continue
-                for f in sorted(os.listdir(lo)):
-                    if not f.startswith(".") and f != "loeschen.log" and os.path.isfile(os.path.join(lo, f)):
+                # \u26d4 os.walk, NICHT listdir. Hier stand eine flache
+                #   Schleife mit os.path.isfile - Unterordner fielen durch.
+                #   Das ist kein Randfall: Der Schluessel eines Dokuments wird
+                #   aus dem Pfad UNTERHALB des ersten Ordners gerechnet
+                #   (_schluessel_der_datei). "loeschen/Kunde/Rechnung.pdf"
+                #   ergibt denselben Schluessel wie
+                #   "archiv/Kunde/Rechnung.pdf" - flach hingelegt ergaebe es
+                #   einen anderen und traefe gar nichts.
+                #
+                # \u26d4 Und die Anlage legt selbst Unterordner an: Erkennt die
+                #   Aufnahme eine neue Fassung, verschiebt sie die alte nach
+                #   loeschen/<unterordner>/ und protokolliert "alte Fassung
+                #   wird entfernt". Entfernt wurde sie nie - eine Seite
+                #   schrieb Unterordner, die andere las sie nicht.
+                #
+                # \u2b50 Damit erklaert sich die Zahl vom 23.09.: 39 Dokumente
+                #   neu eingespielt, "loeschen 5". Nur die fuenf im obersten
+                #   Ordner wurden verarbeitet; die anderen lagen in
+                #   Kundenordnern. Deshalb stieg der Bestand von 84 auf 120,
+                #   statt gleich zu bleiben - die alten Fassungen blieben drin.
+                for _w, _u, _dateien in os.walk(lo):
+                    for f in sorted(_dateien):
+                        if f.startswith(".") or f == "loeschen.log":
+                            continue
                         try:
-                            _dokument_loeschen(os.path.join(lo, f))
+                            _dokument_loeschen(os.path.join(_w, f))
                         except Exception:
                             traceback.print_exc(file=sys.stderr)
+                # Leergeraeumte Unterordner mitnehmen - sonst waechst unter
+                # loeschen/ ein Skelett aus leeren Kundenordnern, und niemand
+                # sieht mehr, ob dort noch etwas liegt.
+                for _w, _u, _d in os.walk(lo, topdown=False):
+                    if _w != lo and not os.listdir(_w):
+                        try:
+                            os.rmdir(_w)
+                        except OSError:
+                            pass
         except Exception:
             traceback.print_exc(file=sys.stderr)
         time.sleep(60)
