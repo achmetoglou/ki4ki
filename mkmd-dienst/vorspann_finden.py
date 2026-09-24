@@ -24,8 +24,32 @@ import sys
 QUELLE = os.path.expanduser("~/ki4ki/reextract/md_fertig")
 
 # Eine Verzeichniszeile: irgendwo eine Punktfuehrung (vier Punkte oder mehr),
-# danach - evtl. ueber Tabellenzellen hinweg - eine Seitenzahl.
-_NAVI = re.compile(r"\.{4,}\s*\|?\s*\d{1,4}\b")
+# danach - evtl. ueber Tabellenzellen hinweg - eine SEITENZAHL, und dann ist
+# die Zeile ZU ENDE.
+#
+# \u26d4 GEMESSEN 25.09.: Die alte Fassung endete auf "\\d{1,4}\\b" ohne
+#   Zeilenende. Damit traf sie JEDE Zeile mit Punktfuehrung und einer Zahl -
+#   also auch jede Positionszeile eines Angebots oder einer Rechnung:
+#     "Laborleistung gem. Angebot 274821 ....... 1.234,56"
+#     "Zwischensumme ............................ 5.890,00"
+#     "| Reisekosten | ...... | 412,80 |"
+#   Gemessen an fuenf realistischen Belegzeilen: FUENF von fuenf wurden
+#   geloescht. Und zwar VOR dem Einbetten - die Position war danach weder
+#   auffindbar noch belegbar, und niemand erfuhr davon.
+#
+# \u2b50 Der Unterschied ist die ZAHL SELBST, nicht ihr Umfeld: Eine
+#   Seitenzahl ist eine ganze Zahl und steht am Zeilenende. Ein Betrag hat
+#   Nachkommastellen, einen Tausenderpunkt oder eine Waehrung dahinter.
+#   Deshalb: Anker auf das Zeilenende, und ein ausdruecklicher Riegel gegen
+#   alles, was nach Geld aussieht.
+#
+# \u26a0 Das "Sicherheitsnetz" darunter (len(ohne) < 200) war keines - fast
+#   jede Zeile hat weniger als 200 Zeichen ohne Punkte und Ziffern. Es hat
+#   nie etwas gerettet und den Fehler verdeckt, weil es nach Vorsicht aussah.
+_NAVI = re.compile(r"\.{4,}\s*\|?\s*\d{1,4}\s*\|?\s*$")
+# Sieht die Zahl nach Geld aus, ist es keine Seitenzahl. Nachkommastellen
+# (1.234,56 / 1,234.56), ein Waehrungszeichen oder eine Waehrungsabkuerzung.
+_GELD = re.compile(r"\d[.,]\d{2}\b|[\u20ac$\u00a3]|\b(?:EUR|USD|CHF|GBP)\b", re.I)
 # Ueberschriften der Verzeichnisse selbst
 _UEBERSCHRIFT = re.compile(
     r"^#{0,4}\s*(?:[IVX0-9]+\.?\s*)?(Inhaltsverzeichnis|Abbildungsverzeichnis"
@@ -38,6 +62,8 @@ def navigationszeile(zeile):
     """Ist das eine reine Verzeichniszeile?"""
     if _UEBERSCHRIFT.match(zeile.strip()):
         return True
+    if _GELD.search(zeile):
+        return False        # Betrag, keine Seitenzahl - niemals loeschen
     if not _NAVI.search(zeile):
         return False
     # Sicherheitsnetz: eine echte Textzeile bleibt auch ohne die Punkte lesbar.
