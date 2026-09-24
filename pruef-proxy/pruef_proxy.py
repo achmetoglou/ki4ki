@@ -4607,6 +4607,20 @@ def mit_verweisen(text, pruefungen=None, quellen=None, im_bereich=None):
         elif name and not _dok_hat_aussage(name, _ktx):
             _beleg_weg("Aussage nicht gedeckt", name)
             name = None   # Dok deckt die Aussage nicht -> Modell halluziniert
+        # \u26d4 DER VIERTE, STILLE WEG. Gemessen 24.09.: Das Modell schrieb
+        #   "(cu86lj1edg, S. 1)", der Werkzeugaufruf fand das Dokument - und
+        #   im Protokoll stand KEINE einzige Zeile. Grund: Die drei Tore
+        #   darueber pruefen alle "if name and ...". Wurde ueberhaupt kein
+        #   Dokument aufgeloest, laufen sie samt Melder ins Leere und der
+        #   Beleg faellt lautlos durch dieses continue.
+        # \u26a0 Genau die Sorte Luecke, die ich heute schon zweimal gebaut
+        #   habe: Melder an die drei sichtbaren Tore, das unsichtbare
+        #   uebersehen. Hier ist der Abdruck des GESCHRIEBENEN Wortes die
+        #   entscheidende Angabe - kennt ihn das PDF-Verzeichnis nicht, ist
+        #   das Dokument gar nicht im Index, und die Suche geht dorthin.
+        if not name:
+            _wort = wort.group(1) if wort else ""
+            _beleg_weg("kein Dokument aufgeloest", _wort)
         if not name or m.start() - spanne < bis:
             continue
         geschrieben = text[m.start() - spanne:m.start()]
