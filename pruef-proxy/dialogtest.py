@@ -1608,6 +1608,31 @@ def szenario_27_wegabgleich_und_bildarten():
     pruefe("Lanxess" in _f2.getvalue(),
            "Gegenprobe: ein Melder MIT Namen wuerde auffallen")
 
+    # \u26d4 Ein Beleg auf ein NICHT GELESENES Dokument darf nicht
+    #   stillschweigend verschwinden - dann bleibt die Behauptung stehen
+    #   und sieht aus wie eine Tatsache (gemessen 24.09. an Angebot 274666,
+    #   gelesen war 274821). Er wird MARKIERT.
+    _vorher = dict(pruef_proxy.PDFS), dict(pruef_proxy.PDFS_ABDRUCK)
+    try:
+        pruef_proxy.PDFS.clear(); pruef_proxy.PDFS_ABDRUCK.clear()
+        pruef_proxy.PDFS["kap-Angebot-274666--h211x42jrj"] = "/dev/null"
+        pruef_proxy.PDFS_ABDRUCK["h211x42jrj"] = "kap-Angebot-274666--h211x42jrj"
+        _satz = "Die Rechnung erfolgt in zwei Teilschritten (kap-Angebot-274666--h211x42jrj, S. 4)."
+        # quellen = etwas ANDERES: das genannte Dokument wurde nie gelesen
+        _aus = pruef_proxy.mit_verweisen(_satz, None, ["kap-Angebot-274821--zzzzzzzzzz"])
+        pruefe("nicht gelesen" in _aus,
+               "Beleg auf ein ungelesenes Dokument wird markiert")
+        pruefe("(/stelle?" not in _aus, "und NICHT verlinkt")
+        # Gegenprobe: steht es unter den Quellen, gibt es einen Link und
+        # KEINE Markierung. Ohne diese Zeile koennte die Pruefung auch dann
+        # gruen sein, wenn ausnahmslos jeder Beleg markiert wuerde.
+        _aus2 = pruef_proxy.mit_verweisen(_satz, None, ["kap-Angebot-274666--h211x42jrj"])
+        pruefe("nicht gelesen" not in _aus2,
+               "Gegenprobe: gelesenes Dokument wird NICHT markiert")
+    finally:
+        pruef_proxy.PDFS.clear(); pruef_proxy.PDFS.update(_vorher[0])
+        pruef_proxy.PDFS_ABDRUCK.clear(); pruef_proxy.PDFS_ABDRUCK.update(_vorher[1])
+
     t = "[Seite 3]\n<!-- image -->\n\nLine chart\n\nBild 6.17: Erreichter Druck\n\n<!-- image -->\n\nLogo\n\nText\n\nBild 6.18: Spannungen\n\n<!-- image -->\n\nPhotograph\n\nBild 5.6: Probekörper"
     pruefe(fadenfrage.bildarten_aus_text(t) == {"6.17": "Diagramm", "5.6": "Foto"}, "Bildarten aus der Docling-Klassifikation (Logo zaehlt nicht)")
     import kategorie as kat

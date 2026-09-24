@@ -4499,13 +4499,36 @@ def mit_verweisen(text, pruefungen=None, quellen=None):
         #   Schluessel, die Quellen tragen den Titel aus AnythingLLM.
         #   Unveraendert waere die Bedingung IMMER wahr und jeder Beleg
         #   fiele weg - lautlos.
+        ungelesen = False
         if name and quellen is not None:
             erlaubte = {_pdf_schluessel(q) for q in quellen}
             if name not in erlaubte:
-                name = None   # genannt, aber nicht unter den Quellen
+                # \u26d4 GEMESSEN 24.09.: Hier stand nur "name = None" - der
+                #   Link verschwand, die BEHAUPTUNG blieb stehen. In einer
+                #   echten Antwort zitierte das Modell aus Angebot 274666
+                #   ("in zwei Teilschritten", 30.000 EUR, S. 4), gelesen
+                #   hatte es Angebot 274821. Die Anlage hat das erkannt und
+                #   fuer sich behalten: Der Satz stand da wie eine Tatsache,
+                #   nur ohne Link. Ein aufmerksamer Leser haette hoechstens
+                #   gemerkt, dass er ihn nicht anklicken kann.
+                # \u2b50 Die Schwester-Sperre in fadenfrage.py:257 macht es
+                #   richtig - sie schreibt "\u2014 nicht woertlich gefunden"
+                #   in den Text. Zwei Sperren, dieselbe Aufgabe, nur eine
+                #   redet: genau die Sorte Unterschied, die niemand bemerkt,
+                #   bis sie schadet.
+                # \u26d4 "Was die Anlage ANZEIGT, muss sie auch LIEFERN
+                #   koennen" gilt auch fuer Saetze. Ein Beleg, den sie nicht
+                #   stuetzt, wird MARKIERT, nicht versteckt.
+                name = None
+                ungelesen = True
         if name and not _dok_hat_aussage(
                 name, text[max(0, m.start() - 260):m.start()]):
             name = None   # Dok deckt die Aussage nicht -> Modell halluziniert
+        if ungelesen and m.start() - spanne >= bis:
+            ergebnis.append(text[bis:m.end()])
+            ergebnis.append(" \u2014 dieses Dokument wurde nicht gelesen")
+            bis = m.end()
+            continue
         if not name or m.start() - spanne < bis:
             continue
         geschrieben = text[m.start() - spanne:m.start()]
