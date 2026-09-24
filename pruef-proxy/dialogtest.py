@@ -1730,6 +1730,31 @@ def szenario_27_wegabgleich_und_bildarten():
     # ⚠ Geprueft am Quelltext, weil die Wache eine Endlosschleife mit
     #   sleep(60) ist. Schwaecher als ein Lauf - haelt aber genau die Zeile
     #   fest, die gefehlt hat.
+    # \u26d4 Die Aufnahmekette und der Proxy fuehren BEIDE eine Liste der
+    #   eigenen Buchhaltungsdateien - in verschiedenen Sprachen, an
+    #   verschiedenen Orten. Am 25.09. hatten sie NULL Ueberschneidung: Der
+    #   Proxy wusste, dass bilder-nachholen.txt Buchhaltung ist, die
+    #   Aufnahme nahm sie als Dokument auf. Im Arbeitsbereich stand
+    #   "kap-bilder-nachholen--kh26rcuhlk.md".
+    # \u2b50 Diese Pruefung haelt sie zusammen. Sie kann nicht erzwingen,
+    #   dass jemand beide pflegt - aber sie meldet den Tag, an dem es
+    #   wieder auseinanderlaeuft.
+    import laufstand as _lst
+    import json as _js
+    _wf = _js.load(open(os.path.join(os.path.dirname(HIER), "n8n-workflows",
+                                     "1_KI4KI-Masse-Ingest.json"),
+                        encoding="utf-8"))
+    _code = "".join((k.get("parameters") or {}).get("jsCode") or ""
+                    for k in _wf["nodes"])
+    _fehlt = sorted(n for n in _lst.STEUER if "'%s'" % n not in _code)
+    pruefe(not _fehlt,
+           "die Aufnahmekette kennt jede Buchhaltungsdatei des Proxys "
+           "(fehlen: %s)" % (_fehlt or "keine"))
+    # Gegenprobe: ein erfundener Name darf NICHT gefunden werden - sonst
+    # waere die Zeile auch dann gruen, wenn sie gar nichts vergleicht.
+    pruefe("'zz-gibt-es-nicht.txt'" not in _code,
+           "Gegenprobe: die Suche findet nicht einfach alles")
+
     pruefe("for _w, _u, _dateien in os.walk(lo)" in _quelle_pp,
            "die Loesch-Wache geht mit os.walk durch loeschen/")
     # \u26d4 Und die zweite Haelfte derselben Reparatur: Wer Unterordner
