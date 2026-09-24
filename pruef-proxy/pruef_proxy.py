@@ -4529,15 +4529,24 @@ def mit_verweisen(text, pruefungen=None, quellen=None):
         #   unlesbar. Also: geschrieben steht nur noch in der Adresse, der
         #   MENSCH sieht den Titel. Fuer alte, kurze Kennungen bleibt alles
         #   wie es war - dort ist das Geschriebene schon lesbar.
+        # \u26d4 GEMESSEN 24.09., erster Versuch nach der Umstellung: Die
+        #   Links entstanden wieder, aber der Linktext blieb der
+        #   137-Zeichen-Schluessel. Grund: Diese Kuerzung haing daran, dass
+        #   das MODELL das Kuerzel schreibt. Es befolgte "nicht abkuerzen"
+        #   und schrieb den vollen Namen - also griff die Kuerzung nie.
+        # \u2b50 Die Lehre: Was der Mensch LIEST, darf nicht davon abhaengen,
+        #   wie ein Modell etwas schreibt. `name` ist der aufgeloeste
+        #   Schluessel - daraus steht der lesbare Titel fest, egal was im
+        #   Text stand. Alte kurze Kennungen liefern denselben Text zurueck
+        #   und bleiben dadurch unveraendert.
         beschriftung = geschrieben
-        if len(geschrieben) <= schluessel.ABDRUCK_LAENGE + 2:
-            try:
-                import bestand as _bst      # wie an den drei anderen Stellen
-                _lesbar = _bst._anzeige(name)
-            except Exception:
-                _lesbar = None
-            if _lesbar and _lesbar != name:
-                beschriftung = _lesbar
+        try:
+            import bestand as _bst          # wie an den drei anderen Stellen
+            _lesbar = _bst._anzeige(name)
+        except Exception:
+            _lesbar = None
+        if _lesbar and _lesbar != name:
+            beschriftung = _lesbar
         sichtbar = (beschriftung + m.group(0)).replace("[", "\\[").replace("]", "\\]")
         ergebnis.append("[%s](%s)" % (sichtbar, ziel))
         bis = m.end()
