@@ -284,6 +284,39 @@ def test_das_fenster_ist_nie_zu_klein():
                % (zeichen, gebraucht, fenster))
 
 
+
+def waechter_kennt_das_kuerzel():
+    """\u26d4 Der Halluzinationswaechter war am 24.09. einen Tag lang TOT.
+
+    Seit der Umstellung schreibt das Modell das zehnstellige Kuerzel,
+    waehrend `kennungen` die vollen Namen fuehrt. Kein Beleg stand mehr in
+    `bekannt`, _KENNUNG trifft nur die alte Form - die Liste wurde leer und
+    waechter_belege kehrte mit None zurueck. Niemand pruefte mehr, ob eine
+    zitierte Seite ueberhaupt von einem Werkzeug kam.
+
+    \u26a0 Aufgefallen ist es NICHT, weil ein stiller Waechter genauso
+      aussieht wie ein zufriedener. Deshalb steht hier fuer beide
+      Zitierformen eine Zeile - und eine Gegenprobe, dass er nicht einfach
+      alles anmeckert.
+    """
+    print("\n[W] Halluzinationswaechter kennt beide Zitierformen")
+    voll = "kap-Lanxess-Rechnung-274821--cu86lj1edg"
+    pruefe(gespraech.waechter_belege(
+        "Die Einspannung erhoeht die Lebensdauer (cu86lj1edg, S. 12).",
+        aufrufe=[], kennungen=[voll]) is not None,
+        "erfundener Beleg in der KUERZEL-Form wird bemerkt")
+    pruefe(gespraech.waechter_belege(
+        "Aussage (DS-24-005, S. 12).",
+        aufrufe=[], kennungen=["DS-24-005.md"]) is not None,
+        "erfundener Beleg in der ALTEN Form weiterhin")
+    # Gegenprobe: ohne sie waere die Reihe auch dann gruen, wenn der
+    # Waechter ausnahmslos jeden Klammerausdruck anmeckerte.
+    pruefe(gespraech.waechter_belege(
+        "Ein Satz (Stand: 2024, S. 3).",
+        aufrufe=[], kennungen=[voll]) is None,
+        "Gegenprobe: Fliesstext in Klammern loest ihn NICHT aus")
+
+
 if __name__ == "__main__":
     test_abschnitt_wird_erkannt()
     test_hinweis_wird_angehaengt()
@@ -295,5 +328,6 @@ if __name__ == "__main__":
     test_das_lebenszeichen_macht_keine_leeren_nachrichten()
     test_kontextfenster_passt_sich_an()
     test_das_fenster_ist_nie_zu_klein()
+    waechter_kennt_das_kuerzel()
     print("\n%d Fehler" % len(FEHLER))
     sys.exit(1 if FEHLER else 0)

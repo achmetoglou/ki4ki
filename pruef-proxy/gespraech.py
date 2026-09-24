@@ -24,6 +24,7 @@ Alles hier ist ohne Netz testbar: `fuehren()` bekommt `rufen` (Modell) und
 import json
 import os
 import re
+import schluessel
 import sys
 import ollamaruf
 import threading
@@ -440,8 +441,26 @@ def waechter_belege(text, aufrufe, faden_dok=None, frage="", tool_texte=None, ve
     if kennungen:
         # Nur Belege auf Dokumente des Bereichs pruefen - alles andere ist Text in Klammern.
         bekannt = {re.sub(r"\.(?:md|pdf)$", "", k.lower()) for k in kennungen if k}
+        # \u26d4 AM 24.09. WAR DIESER WAECHTER EINEN TAG LANG TOT. Seit der
+        #   Umstellung schreibt das Modell das zehnstellige KUERZEL, waehrend
+        #   `kennungen` die vollen Namen enthaelt. Kein Beleg stand mehr in
+        #   `bekannt`, _KENNUNG trifft nur die alte Form (DS-24-005) - die
+        #   Liste wurde leer und die Funktion kehrte mit None zurueck.
+        #   Gemessen: "(DS-24-005, S. 12)" loeste den Waechter aus,
+        #   "(cu86lj1edg, S. 12)" nicht. Niemand pruefte mehr, ob eine
+        #   zitierte Seite ueberhaupt von einem Werkzeug kam.
+        # \u26a0 Das ist nicht "ein Link fehlt", sondern eine abgeschaltete
+        #   Sicherung - und sie fiel niemandem auf, weil ein stiller
+        #   Waechter genauso aussieht wie ein zufriedener.
+        abdruecke = set()
+        for k in kennungen:
+            kand = schluessel.abdruck_kandidaten(k or "")
+            if kand:
+                abdruecke.add(kand[0])
         belege = [(re.sub(r"\.(?:md|pdf)$", "", k.strip(), flags=re.I), s) for k, s in belege]
-        belege = [(k, s) for k, s in belege if k.lower() in bekannt or _KENNUNG.fullmatch(k)]
+        belege = [(k, s) for k, s in belege
+                  if k.lower() in bekannt or k.lower() in abdruecke
+                  or _KENNUNG.fullmatch(k)]
         if not belege:
             return None
     gelesen = set(n for n, _, _ in (aufrufe or []))
