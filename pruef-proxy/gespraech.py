@@ -172,7 +172,21 @@ def system_text(faden_dok=None, dokumente=None, kontakt="", rolle="", allgemeinw
         "GRUNDSAETZE:\n"
         "1. Inhalte kommen NUR aus den Werkzeugen. Nichts aus eigenem Wissen behaupten, nichts erfinden. "
         "Steht etwas nicht in den gelesenen Seiten, sag das.\n"
-        "2. Jede Aussage aus einem Dokument endet mit (Kennung, S. n), z.B. (DS-24-005, S. 141). "
+        # \u26d4 GEMESSEN 24.09.: Hier stand nur "(Kennung, S. n), z.B.
+        #   (DS-24-005, S. 141)" - ein NEUN Zeichen langes Beispiel,
+        #   waehrend die echten Pfad-Schluessel 137 Zeichen haben. Das
+        #   Modell tat das Naheliegende und kuerzte selbst:
+        #   "(kap-\u2026-TS-1, S. 1)". Damit war der Beleg tot - der
+        #   Abdruck braucht ZEHN zusammenhaengende Zeichen, aus
+        #   "kap-\u2026-TS-1" bleiben nach dem Saeubern sechs ("kapts1"),
+        #   abdruck_kandidaten() liefert dann gar keinen Kandidaten und
+        #   es entsteht KEIN Link. Nicht ein toter Link - gar keiner.
+        #   Der Nutzer sah Schluesselsalat im Text und konnte nichts
+        #   anklicken; beides war EIN Fehler, nicht zwei.
+        # \u2b50 Das Kuerzel ist genau das, wonach die Anlage ohnehin
+        #   sucht (abdruck_finden). Zehn Zeichen schreibt ein Modell
+        #   fehlerfrei ab, 137 nicht.
+        "2. Jede Aussage aus einem Dokument endet mit (Kuerzel, S. n). Das KUERZEL sind die zehn Zeichen nach dem LETZTEN doppelten Bindestrich des Dokumentnamens: aus 'kap-Lanxess-...-Rechnung--3hifpjz74w' wird (3hifpjz74w, S. 1). Hat ein Name kein solches Kuerzel, schreibst du ihn VOLLSTAENDIG. \u26d4 Kuerze einen Namen NIE selbst mit „…“ oder '...' ab - ein selbst gekuerzter Name ergibt keinen Beleg und keinen Link. "
         "Die wichtigste Aussage je Punkt belegst du mit einem WOERTLICHEN Zitat von der Seite in „…“, danach (Kennung, S. n).\n"
         "3. Will der Mensch mehrere Dinge in einem Satz, erledige ALLE (z.B. zusammenfassen UND Bild zeigen).\n"
         "4. Eine Rueckmeldung ('das ist falsch', 'nein, Grafiken zeigen', 'sicher?', 'warum stand da X?') "
@@ -214,8 +228,8 @@ def system_text(faden_dok=None, dokumente=None, kontakt="", rolle="", allgemeinw
         "(z.B. 'verkuerzt die Lebensdauer' gegen 'erhoeht die Lebensdauer'), ist die Option FALSCH - nie 'richtig' "
         "mit einem widersprechenden Zitat. Ohne Beleg: 'nicht belegbar'. Schluss: ein Satz mit dem Urteil.\n"
         "15. Ohne Faden-Dokument und ohne genanntes Dokument: bestand_durchsuchen statt raten oder nachfragen.\n"
-        "17. LINKS: Schreibe (Kennung, S. n) - die Anlage macht daraus einen Link auf die Seite. Ein ganzes Dokument "
-        "verlinkst du als [Kennung](/pdf/Kennung). Sag NIE, du koenntest keine Links erzeugen.\n"
+        "17. LINKS: Schreibe (Kuerzel, S. n) - die Anlage macht daraus einen Link auf die Seite und setzt den lesbaren Titel ein. Ein ganzes Dokument "
+        "verlinkst du als [Kuerzel](/pdf/Kuerzel). Sag NIE, du koenntest keine Links erzeugen.\n"
         "18. WERKZEUGE rufst du NUR ueber die Funktionsschnittstelle auf - nie als Text wie "
         "'abbildung_zeigen(dokument=...)' in die Antwort schreiben. Ein solcher Text ist kein Aufruf.\n"
         "19. PRUEFUNGSKATALOGE (Dokumente, die als Katalog markiert sind) enthalten Antwortoptionen, keine belegten "
@@ -233,8 +247,8 @@ def system_text(faden_dok=None, dokumente=None, kontakt="", rolle="", allgemeinw
         # dem Alltag - ohne diese Erinnerung schrieben sie Fettdruck statt
         # (Kennung, S. n), und die Belegpruefung lief ins Leere (gemessen 02.09.).
         ("22. ZITIERFORM - WICHTIGSTE REGEL FUER DICH: JEDE inhaltliche Aussage endet mit ihrem Beleg in GENAU dieser "
-         "Form: (Kennung, S. n) - die Kennung exakt wie in DOKUMENTE IM BEREICH, die Seite aus dem gelesenen Text. "
-         "Beispiel: 'Die Routine berechnet das Profil (DS-24-006, S. 125).' Fettgedruckte Namen, Fussnoten oder "
+         "Form: (Kuerzel, S. n) - das Kuerzel sind die zehn Zeichen nach dem letzten doppelten Bindestrich des Dokumentnamens aus DOKUMENTE IM BEREICH, die Seite aus dem gelesenen Text. Ohne solches Kuerzel: den Namen vollstaendig, nie mit „…“ gekuerzt. "
+         "Beispiel: 'Die Routine berechnet das Profil (3hifpjz74w, S. 125).' Fettgedruckte Namen, Fussnoten oder "
          "Aussagen ohne Seitenangabe gelten als UNBELEGT und werden gestrichen. Erst lesen (seiten_lesen), dann "
          "mit Seite belegen." if modell else None),
         "GESPRAECHSZUSTAND:\nFaden-Dokument: %s" % (faden_dok or "keins (frag nach oder nutze dokument_finden/bestand)"),

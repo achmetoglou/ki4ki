@@ -4522,7 +4522,23 @@ def mit_verweisen(text, pruefungen=None, quellen=None):
         # zerlegt der Markdown-Darsteller "[[Ehr06] ...](...)" an der
         # inneren Klammer und es bleibt kein Link uebrig. Genau solche
         # Namen kommen aus der Fachliteratur.
-        sichtbar = (geschrieben + m.group(0)).replace("[", "\\[").replace("]", "\\]")
+        # \u2b50 Das Modell schreibt ab dem 24.09. das KUERZEL (zehn Zeichen)
+        #   statt des 137-Zeichen-Schluessels - sonst kuerzte es selbst mit
+        #   "\u2026" und der Beleg starb lautlos (siehe Regel 2 in
+        #   gespraech.py). Als Linktext waere "3hifpjz74w, S. 1" aber
+        #   unlesbar. Also: geschrieben steht nur noch in der Adresse, der
+        #   MENSCH sieht den Titel. Fuer alte, kurze Kennungen bleibt alles
+        #   wie es war - dort ist das Geschriebene schon lesbar.
+        beschriftung = geschrieben
+        if len(geschrieben) <= schluessel.ABDRUCK_LAENGE + 2:
+            try:
+                import bestand as _bst      # wie an den drei anderen Stellen
+                _lesbar = _bst._anzeige(name)
+            except Exception:
+                _lesbar = None
+            if _lesbar and _lesbar != name:
+                beschriftung = _lesbar
+        sichtbar = (beschriftung + m.group(0)).replace("[", "\\[").replace("]", "\\]")
         ergebnis.append("[%s](%s)" % (sichtbar, ziel))
         bis = m.end()
     ergebnis.append(text[bis:])
