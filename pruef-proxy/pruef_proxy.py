@@ -4433,6 +4433,28 @@ def _werkzeugmarken_entfernen(text):
     return re.sub(r"\n{3,}", "\n\n", _WERKZEUGMARKE.sub("", text)).strip()
 
 
+def _beleg_weg(grund, name):
+    """Warum ist aus diesem Beleg KEIN Link geworden?
+
+    \u26d4 Gemessen 24.09.: Das Modell schrieb das Kuerzel richtig
+      ("(cu86lj1edg, S. 1)"), der Werkzeugaufruf fand das Dokument - und
+      trotzdem entstand kein Link. Von aussen sieht das genauso aus wie
+      "das Modell hat Unsinn geschrieben". DREI Tore koennen einen Beleg
+      wegwerfen, und keines sagte etwas. Dieselbe Blindheit wie bei den
+      vier wortgleichen 404 (_beleg_tor) - nur auf der anderen Seite der
+      Kette.
+
+    \u26d4 Gibt KEINEN Dokumentnamen aus, nur Laenge und Ja/Nein.
+    """
+    try:
+        print("[Beleg-weg] %s (Name %d Zeichen, Abdruck bekannt: %s)"
+              % (grund, len(name or ""),
+                 "ja" if schluessel.abdruck_finden(name or "", PDFS_ABDRUCK)
+                 else "nein"), file=sys.stderr, flush=True)
+    except Exception:
+        pass
+
+
 def mit_verweisen(text, pruefungen=None, quellen=None, im_bereich=None):
     """Fundstellen in anklickbare Verweise auf die Fundstellen-Ansicht.
 
@@ -4514,6 +4536,7 @@ def mit_verweisen(text, pruefungen=None, quellen=None, im_bereich=None):
         #   Aufrufstellen geben ein Set mit), aber eine Sperre, die von einem
         #   ANDEREN Wert abhaengt als dem, den sie prueft, ist keine Sperre.
         if name and im_bereich is not None and not im_bereich(name):
+            _beleg_weg("fremder Bereich", name)
             name = None
         _ungelesen = False
         if name and quellen is not None:
@@ -4536,6 +4559,7 @@ def mit_verweisen(text, pruefungen=None, quellen=None, im_bereich=None):
         # Verhalten: nicht unter den Quellen heisst kein Beleg. Nachlesen
         # gibt es nur, wo sich der Bereich feststellen laesst.
         if name and _ungelesen and im_bereich is None:
+            _beleg_weg("kein Bereichswaechter", name)
             name = None
             _ungelesen = False
         if name and _ungelesen:
@@ -4581,6 +4605,7 @@ def mit_verweisen(text, pruefungen=None, quellen=None, im_bereich=None):
                   "Dokument laesst sich das nicht nachschlagen: bitte "
                   "selbst pruefen")
         elif name and not _dok_hat_aussage(name, _ktx):
+            _beleg_weg("Aussage nicht gedeckt", name)
             name = None   # Dok deckt die Aussage nicht -> Modell halluziniert
         if not name or m.start() - spanne < bis:
             continue
