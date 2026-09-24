@@ -657,6 +657,26 @@ def _dokument_loeschen(pdf):
                 _loesch_protokoll(wurzel, "%s: aus Bereich '%s' nicht ausgetragen (%s)" % (name, slug, str(e)[:80]))
         try:
             _api("DELETE", "/api/v1/system/remove-documents", {"names": docpaths})
+            # \u26d4 NACHSEHEN, nicht glauben. Hier stand die Erfolgsmeldung
+            #   direkt hinter dem Aufruf: "entfernt", sobald _api nicht wirft.
+            #   AnythingLLM kann ein Loeschen aber ABLEHNEN, ohne zu werfen -
+            #   das weiss dieses Modul laengst, zwanzig Zeilen weiter oben:
+            #   _nach_ui_loeschung ueberspringt einen docpath ausdruecklich,
+            #   "sonst hat AnythingLLM abgelehnt" (Fund 01.09.). Eine Stelle
+            #   wusste es, die andere nicht - und aus der Ablehnung wurde
+            #   eine lautlose Waise samt Protokollzeile, die das Gegenteil
+            #   behauptet.
+            # \u26a0 Darauf haben wir uns am 25.09. beim Leeren eines ganzen
+            #   Bereichs viermal verlassen. Eine Quittung, die nicht
+            #   nachsieht, ist keine Quittung.
+            _geblieben = [d for d in docpaths
+                          if os.path.exists(os.path.join(BESTAND_ORDNER, d))]
+            if _geblieben:
+                _loesch_protokoll(
+                    wurzel, "%s: AnythingLLM hat %d von %d Textfassungen NICHT "
+                    "entfernt - naechster Versuch in einer Minute"
+                    % (name, len(_geblieben), len(docpaths)))
+                return False
             _loesch_protokoll(wurzel, "%s: Textfassung + Vektoren entfernt (%s)" % (name, ", ".join(docpaths)))
         except Exception as e:
             _loesch_protokoll(wurzel, "%s: Textfassung nicht entfernt (%s) - naechster Versuch in einer Minute" % (name, str(e)[:80]))

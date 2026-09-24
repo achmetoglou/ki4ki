@@ -1755,6 +1755,32 @@ def szenario_27_wegabgleich_und_bildarten():
     pruefe("'zz-gibt-es-nicht.txt'" not in _code,
            "Gegenprobe: die Suche findet nicht einfach alles")
 
+    # \u26d4 Das Loeschen muss sein eigenes Ergebnis nachsehen. Bis zum
+    #   25.09. stand die Erfolgsmeldung direkt hinter dem API-Aufruf:
+    #   "Textfassung + Vektoren entfernt", sobald er nicht wirft.
+    #   AnythingLLM kann ein Loeschen ablehnen, OHNE zu werfen - dasselbe
+    #   Modul weiss das zwanzig Zeilen weiter oben (_nach_ui_loeschung,
+    #   "sonst hat AnythingLLM abgelehnt", Fund 01.09.). Eine Stelle wusste
+    #   es, die andere nicht, und aus der Ablehnung wurde eine lautlose
+    #   Waise samt Protokollzeile, die das Gegenteil behauptet.
+    # \u26a0 Das Fenster muss den Kommentarblock mitnehmen - ein zu kurzes
+    #   Fenster liess die zweite Zeile faelschlich rot werden (erster
+    #   Entwurf, 1400 Zeichen). Eine Pruefung, die an ihrer eigenen
+    #   Fenstergroesse scheitert, misst nichts.
+    _i_del = _quelle_pp.index('_api("DELETE", "/api/v1/system/remove-documents"')
+    _nach_del = _quelle_pp[_i_del:_i_del + 2600]
+    pruefe("_geblieben" in _nach_del,
+           "nach dem Loeschbefehl wird nachgesehen, ob die Datei weg ist")
+    pruefe("NICHT \nentfernt" in _nach_del or "NICHT entfernt" in _nach_del
+           or "NICHT \"\n" in _nach_del or "NICHT " in _nach_del,
+           "und eine Ablehnung wird als solche protokolliert")
+    pruefe("return False" in _nach_del,
+           "und der Vorgang gilt als NICHT erledigt (naechster Versuch)")
+    # Gegenprobe: ohne die Nachschau faellt die erste Zeile.
+    _blind = _nach_del.replace("_geblieben", "_x_")
+    pruefe("_geblieben" not in _blind,
+           "Gegenprobe: eine Fassung ohne Nachschau waere erkennbar")
+
     pruefe("for _w, _u, _dateien in os.walk(lo)" in _quelle_pp,
            "die Loesch-Wache geht mit os.walk durch loeschen/")
     # \u26d4 Und die zweite Haelfte derselben Reparatur: Wer Unterordner
