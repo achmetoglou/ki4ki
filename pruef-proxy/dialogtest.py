@@ -1608,27 +1608,42 @@ def szenario_27_wegabgleich_und_bildarten():
     pruefe("Lanxess" in _f2.getvalue(),
            "Gegenprobe: ein Melder MIT Namen wuerde auffallen")
 
-    # \u26d4 Ein Beleg auf ein NICHT GELESENES Dokument darf nicht
-    #   stillschweigend verschwinden - dann bleibt die Behauptung stehen
-    #   und sieht aus wie eine Tatsache (gemessen 24.09. an Angebot 274666,
-    #   gelesen war 274821). Er wird MARKIERT.
+    # ⛔ Ein Beleg auf ein NICHT GELESENES Dokument wird NACHGESCHLAGEN,
+    #   nicht gesperrt (Emrach, 24.09.: "wenn die Anlage das Dokument nicht
+    #   LIEST, weckt das kein Vertrauen"). Was sie nicht bestaetigen kann,
+    #   sagt sie - sie versteckt es nicht.
     _vorher = dict(pruef_proxy.PDFS), dict(pruef_proxy.PDFS_ABDRUCK)
     try:
         pruef_proxy.PDFS.clear(); pruef_proxy.PDFS_ABDRUCK.clear()
         pruef_proxy.PDFS["kap-Angebot-274666--h211x42jrj"] = "/dev/null"
         pruef_proxy.PDFS_ABDRUCK["h211x42jrj"] = "kap-Angebot-274666--h211x42jrj"
-        _satz = "Die Rechnung erfolgt in zwei Teilschritten (kap-Angebot-274666--h211x42jrj, S. 4)."
-        # quellen = etwas ANDERES: das genannte Dokument wurde nie gelesen
-        _aus = pruef_proxy.mit_verweisen(_satz, None, ["kap-Angebot-274821--zzzzzzzzzz"])
-        pruefe("nicht gelesen" in _aus,
-               "Beleg auf ein ungelesenes Dokument wird markiert")
-        pruefe("(/stelle?" not in _aus, "und NICHT verlinkt")
-        # Gegenprobe: steht es unter den Quellen, gibt es einen Link und
-        # KEINE Markierung. Ohne diese Zeile koennte die Pruefung auch dann
-        # gruen sein, wenn ausnahmslos jeder Beleg markiert wuerde.
-        _aus2 = pruef_proxy.mit_verweisen(_satz, None, ["kap-Angebot-274666--h211x42jrj"])
-        pruefe("nicht gelesen" not in _aus2,
-               "Gegenprobe: gelesenes Dokument wird NICHT markiert")
+        _satz = ("Die Rechnung erfolgt in zwei Teilschritten "
+                 "(kap-Angebot-274666--h211x42jrj, S. 4).")
+        # /dev/null hat keine Seitentexte -> "unpruefbar". Genau der Fall,
+        # der bis zum 24.09. als "in Ordnung" durchging.
+        _aus = pruef_proxy.mit_verweisen(_satz, None,
+                                         ["kap-Angebot-274821--zzzzzzzzzz"])
+        pruefe("bitte selbst pruefen" in _aus,
+               "ungelesenes Dokument: der Hinweis steht IM TEXT")
+        pruefe("(/stelle?" in _aus,
+               "ungelesenes Dokument: der Link BLEIBT - nachpruefbar statt "
+               "stillschweigend geloescht")
+        pruefe("nachgeschlagen" not in _aus,
+               "⛔ unpruefbar zaehlt NICHT als bestaetigt")
+        # Gegenprobe 1: steht es unter den Quellen, kein Hinweis. Ohne sie
+        # waere die Pruefung auch dann gruen, wenn ausnahmslos JEDER Beleg
+        # markiert wuerde.
+        _aus2 = pruef_proxy.mit_verweisen(_satz, None,
+                                          ["kap-Angebot-274666--h211x42jrj"])
+        pruefe("bitte selbst pruefen" not in _aus2 and "(/stelle?" in _aus2,
+               "Gegenprobe: gelesenes Dokument wird nicht markiert")
+        # ⛔ Gegenprobe 2: ohne Quellenliste darf NICHTS markiert werden.
+        #   Beim Umbau war genau diese Verzweigung einmal falsch - ein
+        #   "elif" legte die Halluzinations-Pruefung fuer gelesene Dokumente
+        #   still, und nichts waere rot geworden. Diese Zeile haelt das fest.
+        _aus3 = pruef_proxy.mit_verweisen(_satz, None, None)
+        pruefe("bitte selbst pruefen" not in _aus3,
+               "Gegenprobe: ohne Quellenliste keine Markierung")
     finally:
         pruef_proxy.PDFS.clear(); pruef_proxy.PDFS.update(_vorher[0])
         pruef_proxy.PDFS_ABDRUCK.clear(); pruef_proxy.PDFS_ABDRUCK.update(_vorher[1])
