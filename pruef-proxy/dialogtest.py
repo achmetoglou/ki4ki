@@ -1724,8 +1724,17 @@ def szenario_27_wegabgleich_und_bildarten():
                  "(kap-Angebot-274666--h211x42jrj, S. 4).")
         # /dev/null hat keine Seitentexte -> "unpruefbar". Genau der Fall,
         # der bis zum 24.09. als "in Ordnung" durchging.
+        # \u26d4 Der vierte Wert ist der Bereichswaechter. Er FEHLTE hier,
+        #   und die Bereichsgrenze aus einem spaeteren Commit hat diese
+        #   Pruefung dadurch mitgerissen: ohne Waechter wird gesperrt, also
+        #   entstand weder Link noch Hinweis - und die Commit-Botschaft
+        #   "die roten Pruefungen sind gruen" war schlicht falsch.
+        #   Hier liegt das Dokument IM Bereich, es war nur nicht unter den
+        #   gelieferten Quellen. Genau dafuer ist das Nachlesen da.
+        _im_bereich = lambda _n: True
         _aus = pruef_proxy.mit_verweisen(_satz, None,
-                                         ["kap-Angebot-274821--zzzzzzzzzz"])
+                                         ["kap-Angebot-274821--zzzzzzzzzz"],
+                                         _im_bereich)
         pruefe("bitte selbst pruefen" in _aus,
                "ungelesenes Dokument: der Hinweis steht IM TEXT")
         pruefe("(/stelle?" in _aus,
@@ -1737,16 +1746,33 @@ def szenario_27_wegabgleich_und_bildarten():
         # waere die Pruefung auch dann gruen, wenn ausnahmslos JEDER Beleg
         # markiert wuerde.
         _aus2 = pruef_proxy.mit_verweisen(_satz, None,
-                                          ["kap-Angebot-274666--h211x42jrj"])
+                                          ["kap-Angebot-274666--h211x42jrj"],
+                                          _im_bereich)
         pruefe("bitte selbst pruefen" not in _aus2 and "(/stelle?" in _aus2,
                "Gegenprobe: gelesenes Dokument wird nicht markiert")
         # ⛔ Gegenprobe 2: ohne Quellenliste darf NICHTS markiert werden.
         #   Beim Umbau war genau diese Verzweigung einmal falsch - ein
         #   "elif" legte die Halluzinations-Pruefung fuer gelesene Dokumente
         #   still, und nichts waere rot geworden. Diese Zeile haelt das fest.
-        _aus3 = pruef_proxy.mit_verweisen(_satz, None, None)
+        _aus3 = pruef_proxy.mit_verweisen(_satz, None, None, _im_bereich)
         pruefe("bitte selbst pruefen" not in _aus3,
                "Gegenprobe: ohne Quellenliste keine Markierung")
+        # \u26d4 DIE GEGENPROBE ZUR BEREICHSGRENZE - sie fehlte bisher ganz.
+        #   Liegt das Dokument in einem FREMDEN Bereich, darf weder ein Link
+        #   noch sein lesbarer Titel entstehen. Der Klick waere zwar ohnehin
+        #   gesperrt, der NAME stuende aber im Antworttext: "sonst belegt die
+        #   Anlage eine Aussage mit der Akte eines fremden Kunden".
+        _fremd = pruef_proxy.mit_verweisen(
+            _satz, None, ["kap-Angebot-274821--zzzzzzzzzz"], lambda _n: False)
+        pruefe("/stelle?" not in _fremd,
+               "fremder Bereich: kein Link")
+        pruefe("Angebot" not in _fremd.replace("kap-Angebot-274666--h211x42jrj", ""),
+               "fremder Bereich: auch kein lesbarer Titel im Text")
+        # Und ohne Waechter bleibt es beim strengen Verhalten.
+        _ohne = pruef_proxy.mit_verweisen(
+            _satz, None, ["kap-Angebot-274821--zzzzzzzzzz"], None)
+        pruefe("/stelle?" not in _ohne,
+               "ohne Waechter wird gesperrt, nicht durchgelassen")
     finally:
         pruef_proxy.PDFS.clear(); pruef_proxy.PDFS.update(_vorher[0])
         pruef_proxy.PDFS_ABDRUCK.clear(); pruef_proxy.PDFS_ABDRUCK.update(_vorher[1])

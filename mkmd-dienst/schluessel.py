@@ -96,6 +96,15 @@ def ohne_uuid(name):
     return _UUID.sub("", n)
 
 
+# Typografische Zeichen, die ein Modell fuer einen Buchstaben einsetzt.
+# \u26a0 NUR Zeichen, die eindeutig EINEN Buchstaben meinen - alles andere
+#   wuerde zwei verschiedene Abdruecke zusammenfallen lassen.
+_SCHOENSCHRIFT = (
+    ("\u00d7", "x"),   # Malzeichen (gemessen 24.09.)
+    ("\u2212", "-"),   # echtes Minus
+)
+
+
 def abdruck_kandidaten(name):
     """Alle Abdruck-Kandidaten eines geschriebenen Namens, von RECHTS.
 
@@ -112,6 +121,14 @@ def abdruck_kandidaten(name):
        Mitgliedschaft in einem Verzeichnis entscheidet. Deshalb ist
        abdruck_finden() die Funktion, die benutzt wird, und nicht diese.
     """
+    # \u26d4 GEMESSEN 24.09.: Das Modell schrieb "h211\u00d742jrj" - mit dem
+    #   MALZEICHEN statt einem kleinen x. Das ist kein Vertipper, sondern
+    #   Schoenschrift: Modelle setzen im Fliesstext gern typografische
+    #   Zeichen. Die Saeuberung unten wirft alles Nicht-Alphanumerische weg,
+    #   aus zehn Zeichen wurden damit neun - und der Beleg starb lautlos.
+    #   Solche Zeichen werden also ERSETZT, nicht geloescht.
+    for _falsch, _richtig in _SCHOENSCHRIFT:
+        name = (name or "").replace(_falsch, _richtig)
     nur = re.sub(r"[^A-Za-z0-9]", "", ohne_uuid(name)).lower()
     return tuple(nur[i:i + ABDRUCK_LAENGE]
                  for i in range(len(nur) - ABDRUCK_LAENGE, -1, -1))

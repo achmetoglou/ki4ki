@@ -4505,6 +4505,16 @@ def mit_verweisen(text, pruefungen=None, quellen=None, im_bereich=None):
         #   Bedingung haette die Halluzinations-Pruefung fuer GELESENE
         #   Dokumente stillgelegt - der haeufigste Fall waere ungeprueft
         #   durchgelaufen, ohne dass irgendetwas rot geworden waere.
+        # \u26d4 ZUERST die Bereichsgrenze, UNABHAENGIG von `quellen`.
+        #   Erster Entwurf haengte sie an `_ungelesen`, und das wurde nur
+        #   gesetzt, wenn `quellen is not None`. Ein Aufruf ohne Quellenliste
+        #   umging die Grenze damit vollstaendig - der Kommentar daneben
+        #   behauptete "wird GESPERRT", und fuer den Standardaufruf stimmte
+        #   das nicht. Produktiv war es nicht erreichbar (alle drei
+        #   Aufrufstellen geben ein Set mit), aber eine Sperre, die von einem
+        #   ANDEREN Wert abhaengt als dem, den sie prueft, ist keine Sperre.
+        if name and im_bereich is not None and not im_bereich(name):
+            name = None
         _ungelesen = False
         if name and quellen is not None:
             _ungelesen = name not in {_pdf_schluessel(q) for q in quellen}
@@ -4522,7 +4532,10 @@ def mit_verweisen(text, pruefungen=None, quellen=None, im_bereich=None):
         # \u26d4 Ohne Waechter (im_bereich None) wird GESPERRT, nicht
         #   durchgelassen: Laesst sich der Bereich nicht feststellen, ist
         #   Zurueckhaltung die einzige Antwort, die nicht schaden kann.
-        if name and _ungelesen and not (im_bereich and im_bereich(name)):
+        # Ohne Waechter (im_bereich None) bleibt es beim alten, strengen
+        # Verhalten: nicht unter den Quellen heisst kein Beleg. Nachlesen
+        # gibt es nur, wo sich der Bereich feststellen laesst.
+        if name and _ungelesen and im_bereich is None:
             name = None
             _ungelesen = False
         if name and _ungelesen:
@@ -6212,6 +6225,12 @@ class Griff(BaseHTTPRequestHandler):
         #
         # ⚠ Nur bei SELTENEN Woertern. Ein Wort aus 68 Arbeiten
         #   unterscheidet nichts - dort loest die Suche nichts aus.
+        # \u26d4 VOR dem try. Wirft die erste Anweisung darin, ist
+        #   _pruef nie gebunden; der UnboundLocalError faellt dann in
+        #   das except weiter unten ("im Zweifel die Rohantwort") und
+        #   die UNGEPRUEFTE Modellantwort geht raus - ohne
+        #   Belegpruefung, ohne Verweise, ohne Bereichsgrenze.
+        _pruef = None
         try:
             _d = json.loads(koerper or b"{}") or {}
             # A3: nur in erlaubten Arbeiten woertlich suchen. Kein
@@ -9818,7 +9837,7 @@ class Griff(BaseHTTPRequestHandler):
         _geschrieben = stamm
         stamm = _pdf_schluessel(stamm)
         if not stamm:
-            _beleg_tor("/seitenbild", "nicht im PDF-Index", _geschrieben)
+            _beleg_tor("/abbildung", "nicht im PDF-Index", _geschrieben)
             self._fehler(404, "unbekanntes Dokument")
             return
         # ⚠ dokument_erlaubt ist eine Funktion des MODULS mit zwei
@@ -9827,7 +9846,7 @@ class Griff(BaseHTTPRequestHandler):
         #   Aufruf ab, und im Chat blieb das Bild leer. Genauso wie
         #   _seitenbild es macht:
         if not dokument_erlaubt(stamm, self.headers):
-            _beleg_tor("/seitenbild", "kein Recht", stamm)
+            _beleg_tor("/abbildung", "kein Recht", stamm)
             self._fehler(404, "unbekanntes Dokument")
             return
         try:
@@ -9865,7 +9884,7 @@ class Griff(BaseHTTPRequestHandler):
         _geschrieben = stamm
         stamm = _pdf_schluessel(stamm)
         if not stamm:
-            _beleg_tor("/abbildung", "nicht im PDF-Index", _geschrieben)
+            _beleg_tor("/seitenbild", "nicht im PDF-Index", _geschrieben)
             self._fehler(404, "unbekanntes Dokument")
             return
         # KI4KI-TOR-DATEI: Angemeldet zu sein genuegt nicht - das
@@ -9873,7 +9892,7 @@ class Griff(BaseHTTPRequestHandler):
         # Mit 404 abweisen, nicht mit 403: ein 403 verraet, dass es
         # das Dokument gibt.
         if not dokument_erlaubt(stamm, self.headers):
-            _beleg_tor("/abbildung", "kein Recht", stamm)
+            _beleg_tor("/seitenbild", "kein Recht", stamm)
             self._fehler(404, "unbekanntes Dokument")
             return
         try:
