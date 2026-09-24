@@ -1608,6 +1608,41 @@ def szenario_27_wegabgleich_und_bildarten():
     pruefe("Lanxess" in _f2.getvalue(),
            "Gegenprobe: ein Melder MIT Namen wuerde auffallen")
 
+    # ⛔ JEDE Aufrufstelle von mit_verweisen() muss den Bereichswaechter
+    #   mitgeben. Ohne ihn darf die Anlage in einem Dokument nachschlagen,
+    #   das in einem FREMDEN Bereich liegt - der Klick bliebe gesperrt, der
+    #   NAME stuende aber im Antworttext.
+    # ⭐ Diese Pruefung sieht ALLE Aufrufstellen an, nicht eine. Das
+    #   Gegenteil hat zweimal geschadet: "13 Stellen, 3 gefunden" (04.08.)
+    #   und Ablaufplan 2 repariert, Plan 3 uebersehen (23.09., 36 von 40
+    #   Dokumenten verloren). Kommt morgen eine vierte Aufrufstelle dazu,
+    #   faellt sie hier auf und nicht beim Kunden.
+    import ast as _ast2
+    _quelle_pp = open(os.path.join(HIER, "pruef_proxy.py"), encoding="utf-8").read()
+
+    def _rufe(quelltext):
+        return [(k.lineno, len(k.args) + len(k.keywords))
+                for k in _ast2.walk(_ast2.parse(quelltext))
+                if isinstance(k, _ast2.Call)
+                and getattr(k.func, "id", "") == "mit_verweisen"]
+
+    _alle = _rufe(_quelle_pp)
+    _ohne = [n for n, anz in _alle if anz < 4]
+    pruefe(len(_alle) >= 3,
+           "Vorbedingung: mehrere mit_verweisen-Aufrufstellen (%d)" % len(_alle))
+    pruefe(not _ohne,
+           "jede mit_verweisen()-Aufrufstelle gibt den Bereichswaechter mit "
+           "(ohne: %s)" % (_ohne or "keine"))
+    # Gegenprobe: WOMIT wird sie rot? Mit einem Aufruf ohne vierten Wert.
+    # Ohne diese Zeile waere sie auch dann gruen, wenn sie gar keinen
+    # Aufruf mehr findet - etwa nach einer Umbenennung.
+    _kaputt = _quelle_pp.replace(
+        "mit_verweisen(geprueft, pruefungen, quellstaemme, pruef)",
+        "mit_verweisen(geprueft, pruefungen, quellstaemme)", 1)
+    pruefe(_kaputt != _quelle_pp, "Gegenprobe vorbereitet")
+    pruefe(any(anz < 4 for _n, anz in _rufe(_kaputt)),
+           "Gegenprobe: ein Aufruf ohne Waechter wuerde gemeldet")
+
     # ⛔ Ein Beleg auf ein NICHT GELESENES Dokument wird NACHGESCHLAGEN,
     #   nicht gesperrt (Emrach, 24.09.: "wenn die Anlage das Dokument nicht
     #   LIEST, weckt das kein Vertrauen"). Was sie nicht bestaetigen kann,

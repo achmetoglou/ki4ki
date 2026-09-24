@@ -4433,7 +4433,7 @@ def _werkzeugmarken_entfernen(text):
     return re.sub(r"\n{3,}", "\n\n", _WERKZEUGMARKE.sub("", text)).strip()
 
 
-def mit_verweisen(text, pruefungen=None, quellen=None):
+def mit_verweisen(text, pruefungen=None, quellen=None, im_bereich=None):
     """Fundstellen in anklickbare Verweise auf die Fundstellen-Ansicht.
 
     AnythingLLM stellt Markdown dar. Der Verweis fuehrt nicht auf das nackte
@@ -4508,6 +4508,23 @@ def mit_verweisen(text, pruefungen=None, quellen=None):
         _ungelesen = False
         if name and quellen is not None:
             _ungelesen = name not in {_pdf_schluessel(q) for q in quellen}
+        # \u26d4 DIE BEREICHSGRENZE. Nachlesen darf die Anlage nur in
+        #   Dokumenten DIESES Arbeitsbereichs. `name` kommt aus
+        #   PDFS_ABDRUCK, und das ist der Index ueber ALLE Bereiche - ein
+        #   Kuerzel, dessen Dokument hier gar nicht liegt, wuerde sonst
+        #   einen Beleg samt lesbarem Titel erzeugen. Der Klick bliebe
+        #   zwar gesperrt (dokument_erlaubt), der NAME stuende aber im
+        #   Text: "sonst belegt die Anlage eine Aussage mit der Akte eines
+        #   fremden Kunden" (_belegverzeichnis, gleiche Sorge).
+        # \u2b50 Geprueft wird mit bereichs_pruefer() - demselben Waechter,
+        #   der am 01.09. aus genau diesem Anlass gebaut wurde. Kein
+        #   zweiter Weg fuer dieselbe Frage.
+        # \u26d4 Ohne Waechter (im_bereich None) wird GESPERRT, nicht
+        #   durchgelassen: Laesst sich der Bereich nicht feststellen, ist
+        #   Zurueckhaltung die einzige Antwort, die nicht schaden kann.
+        if name and _ungelesen and not (im_bereich and im_bereich(name)):
+            name = None
+            _ungelesen = False
         if name and _ungelesen:
             # \u26d4 GEMESSEN 24.09. an einer echten Antwort: Das Modell
             #   zitierte aus Angebot 274666 ("in zwei Teilschritten",
@@ -4528,10 +4545,28 @@ def mit_verweisen(text, pruefungen=None, quellen=None):
             #   _aussage_gedeckt() liest die Seitentexte selbst. Und
             #   "unpruefbar" zaehlt hier NICHT als bestaetigt: Wer den
             #   Zweifel als Zustimmung verbucht, hat keine Pruefung mehr.
+            # \u26d4 DREI Urteile, also DREI Saetze. Hier standen zwei:
+            #   "nein" und "unpruefbar" bekamen beide "im Dokument nicht
+            #   wiedergefunden". Bei "unpruefbar" wurde aber gar nicht
+            #   nachgesehen - kein Schluessel, keine Seitentexte oder zu
+            #   wenige Fachwoerter. Ein gescanntes PDF, eine Excel-Tabelle
+            #   oder eine Textdatei hat keine Seiten; die Anlage haette dem
+            #   Nutzer gesagt, es stehe nicht drin.
+            # \u26a0 Genau diese Fehlersorte ist am 22.09. schon einmal
+            #   aufgetreten: "Bei der Excel-Tabelle stand dreimal 'nicht
+            #   belegt', obwohl die Zahl woertlich darin steht."
+            #   Der Docstring von _aussage_gedeckt verbietet, den Zweifel
+            #   als Zustimmung zu verbuchen - als WIDERLEGUNG ist er
+            #   genauso falsch.
             _urteil = _aussage_gedeckt(name, _ktx)
-            hinweis = (" \u2014 nachgeschlagen" if _urteil == "ja" else
-                       " \u2014 nicht unter den gelesenen Quellen und im "
-                       "Dokument nicht wiedergefunden: bitte selbst pruefen")
+            hinweis = {
+                "ja": " \u2014 nachgeschlagen",
+                "nein": " \u2014 nicht unter den gelesenen Quellen und im "
+                        "Dokument nicht wiedergefunden: bitte selbst pruefen",
+            }.get(_urteil,
+                  " \u2014 nicht unter den gelesenen Quellen; in diesem "
+                  "Dokument laesst sich das nicht nachschlagen: bitte "
+                  "selbst pruefen")
         elif name and not _dok_hat_aussage(name, _ktx):
             name = None   # Dok deckt die Aussage nicht -> Modell halluziniert
         if not name or m.start() - spanne < bis:
@@ -6328,7 +6363,8 @@ class Griff(BaseHTTPRequestHandler):
                 BESTAND.aktualisiere()
                 geprueft, pruefungen = veredeln.veredele(roh, namen, BESTAND, belege_unten=True)
             geprueft = _themenfremde_nennungen_tilgen(geprueft)
-            geprueft = mit_verweisen(geprueft, pruefungen, _quellstaemme)
+            geprueft = mit_verweisen(geprueft, pruefungen, _quellstaemme,
+                                     bereichs_pruefer(self.path, self.headers))
             geprueft = marken_verlinken(geprueft, pruefungen)
             # Was nur genannt und nicht belegt ist, wird kursiv zum Original
             # verlinkt - erreichbar, aber sichtbar anders als ein Beleg.
@@ -7021,7 +7057,8 @@ class Griff(BaseHTTPRequestHandler):
                 BESTAND.aktualisiere()
                 geprueft, pruefungen = veredeln.veredele(roh, namen, BESTAND, belege_unten=True)
             geprueft = _themenfremde_nennungen_tilgen(geprueft)
-            _g = marken_verlinken(mit_verweisen(geprueft, pruefungen, _quellstaemme),
+            _g = marken_verlinken(mit_verweisen(geprueft, pruefungen,
+                                                _quellstaemme, _pruef),
                                   pruefungen)
             # Wie im Browser-Weg: genannte Dokumente verifiziert verlinken.
             _schnitt = _g.find("**Belege**")
@@ -9465,7 +9502,7 @@ class Griff(BaseHTTPRequestHandler):
             with PRUEFSPERRE:
                 geprueft, pruefungen = veredeln.veredele(
                     roh, namen, BESTAND, belege_unten=True)
-            geprueft = mit_verweisen(geprueft, pruefungen, quellstaemme)
+            geprueft = mit_verweisen(geprueft, pruefungen, quellstaemme, pruef)
             geprueft = marken_verlinken(geprueft, pruefungen)
             schnitt = geprueft.find("**Belege**")
             kopf = geprueft[:schnitt] if schnitt > 0 else geprueft
