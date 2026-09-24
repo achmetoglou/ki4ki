@@ -4499,36 +4499,41 @@ def mit_verweisen(text, pruefungen=None, quellen=None):
         #   Schluessel, die Quellen tragen den Titel aus AnythingLLM.
         #   Unveraendert waere die Bedingung IMMER wahr und jeder Beleg
         #   fiele weg - lautlos.
-        ungelesen = False
+        hinweis = ""
+        _ktx = text[max(0, m.start() - 260):m.start()]
+        # \u26d4 Erst FESTSTELLEN, dann urteilen. Ein 'elif' direkt an dieser
+        #   Bedingung haette die Halluzinations-Pruefung fuer GELESENE
+        #   Dokumente stillgelegt - der haeufigste Fall waere ungeprueft
+        #   durchgelaufen, ohne dass irgendetwas rot geworden waere.
+        _ungelesen = False
         if name and quellen is not None:
-            erlaubte = {_pdf_schluessel(q) for q in quellen}
-            if name not in erlaubte:
-                # \u26d4 GEMESSEN 24.09.: Hier stand nur "name = None" - der
-                #   Link verschwand, die BEHAUPTUNG blieb stehen. In einer
-                #   echten Antwort zitierte das Modell aus Angebot 274666
-                #   ("in zwei Teilschritten", 30.000 EUR, S. 4), gelesen
-                #   hatte es Angebot 274821. Die Anlage hat das erkannt und
-                #   fuer sich behalten: Der Satz stand da wie eine Tatsache,
-                #   nur ohne Link. Ein aufmerksamer Leser haette hoechstens
-                #   gemerkt, dass er ihn nicht anklicken kann.
-                # \u2b50 Die Schwester-Sperre in fadenfrage.py:257 macht es
-                #   richtig - sie schreibt "\u2014 nicht woertlich gefunden"
-                #   in den Text. Zwei Sperren, dieselbe Aufgabe, nur eine
-                #   redet: genau die Sorte Unterschied, die niemand bemerkt,
-                #   bis sie schadet.
-                # \u26d4 "Was die Anlage ANZEIGT, muss sie auch LIEFERN
-                #   koennen" gilt auch fuer Saetze. Ein Beleg, den sie nicht
-                #   stuetzt, wird MARKIERT, nicht versteckt.
-                name = None
-                ungelesen = True
-        if name and not _dok_hat_aussage(
-                name, text[max(0, m.start() - 260):m.start()]):
+            _ungelesen = name not in {_pdf_schluessel(q) for q in quellen}
+        if name and _ungelesen:
+            # \u26d4 GEMESSEN 24.09. an einer echten Antwort: Das Modell
+            #   zitierte aus Angebot 274666 ("in zwei Teilschritten",
+            #   30.000 EUR, S. 4) - gelesen hatte es Angebot 274821. Hier
+            #   stand frueher nur "name = None": Der Link verschwand, die
+            #   BEHAUPTUNG blieb stehen und sah aus wie eine Tatsache.
+            # \u2b50 Emrach dazu: "wenn die Anlage das Dokument nicht LIEST,
+            #   weckt das kein Vertrauen zu der Aussage und dem Output -
+            #   lieber liest er das und weist drauf hin, dass die
+            #   Halluzination abgefangen wurde, und bittet, den Link selber
+            #   zu pruefen."
+            # \u26d4 Der Einwand trifft die Sperre im Kern: Sie fragte nie,
+            #   ob die AUSSAGE stimmt - nur, ob der Sucher das Dokument
+            #   zufaellig mitgeliefert hat. Zwei voellig verschiedene Fragen.
+            #   Ein richtig belegter Satz verlor seinen Link allein deshalb,
+            #   weil sein Dokument nicht unter die ersten Treffer kam.
+            # \u2b50 Also NACHLESEN statt sperren - die Maschinerie ist da,
+            #   _aussage_gedeckt() liest die Seitentexte selbst. Und
+            #   "unpruefbar" zaehlt hier NICHT als bestaetigt: Wer den
+            #   Zweifel als Zustimmung verbucht, hat keine Pruefung mehr.
+            _urteil = _aussage_gedeckt(name, _ktx)
+            hinweis = (" \u2014 nachgeschlagen" if _urteil == "ja" else
+                       " \u2014 nicht unter den gelesenen Quellen und im "
+                       "Dokument nicht wiedergefunden: bitte selbst pruefen")
+        elif name and not _dok_hat_aussage(name, _ktx):
             name = None   # Dok deckt die Aussage nicht -> Modell halluziniert
-        if ungelesen and m.start() - spanne >= bis:
-            ergebnis.append(text[bis:m.end()])
-            ergebnis.append(" \u2014 dieses Dokument wurde nicht gelesen")
-            bis = m.end()
-            continue
         if not name or m.start() - spanne < bis:
             continue
         geschrieben = text[m.start() - spanne:m.start()]
@@ -4572,6 +4577,8 @@ def mit_verweisen(text, pruefungen=None, quellen=None):
             beschriftung = _lesbar
         sichtbar = (beschriftung + m.group(0)).replace("[", "\\[").replace("]", "\\]")
         ergebnis.append("[%s](%s)" % (sichtbar, ziel))
+        if hinweis:
+            ergebnis.append(hinweis)
         bis = m.end()
     ergebnis.append(text[bis:])
     return "".join(ergebnis)
@@ -5084,29 +5091,50 @@ def _fachwoerter(text, ab=6, ohne_fuell=True):
             if len(w) > ab and not (ohne_fuell and w in _FUELL_FLACH)}
 
 
-def _dok_hat_aussage(name, kontext):
-    """True, wenn das Dokument die Aussage plausibel enthaelt - zum Sperren
-    halluzinierter Inline-Zitate. Grundlage (gemessen): FACHWOERTER
-    (>6 Z.) trennen das richtige Dokument (>=3 Treffer je Seite) sauber vom
-    falschen (<=2). Unpruefbar (keine Seitentexte, z.B. Literatur; oder zu
-    wenig Fachwoerter in der Aussage) -> True, also NICHT sperren."""
-    schluessel = _pdf_schluessel(name)
-    if not schluessel:
-        return True
+def _aussage_gedeckt(name, kontext):
+    """'ja' | 'nein' | 'unpruefbar' - deckt das Dokument die Aussage?
+
+    Grundlage (gemessen): FACHWOERTER (>6 Z.) trennen das richtige Dokument
+    (>=3 Treffer je Seite) vom falschen (<=2).
+
+    \u26d4 WARUM DREIWERTIG. Bis zum 24.09. gab es nur Ja/Nein, und
+      "unpruefbar" wurde zu "ja" gerundet - richtig, solange das Urteil nur
+      SPERREN durfte: Im Zweifel nicht sperren. Sobald daraus ein
+      ZUGESICHERTES "nachgeschlagen und bestaetigt" wird, ist dieselbe
+      Rundung ein Etikettenschwindel. Ein gescanntes PDF ohne Textebene
+      bekaeme ein Haekchen, obwohl niemand etwas nachgesehen hat.
+      Wer den Zweifel als Zustimmung verbucht, hat keine Pruefung mehr.
+
+    \u26a0 Die Schwelle 3 ist an DISSERTATIONEN gemessen - Dokumente, die
+      sich stark unterscheiden. Bei zwei fast gleichen Rechnungen trennt
+      sie nicht zuverlaessig (gemessen 24.09. an 274821 TS-1/TS-2). Das ist
+      offen und steht in NAECHSTE-SITZUNG.
+    """
+    _sch = _pdf_schluessel(name)
+    if not _sch:
+        return "unpruefbar"
     try:
-        seiten = _seitentexte_pdf(schluessel) or []
+        seiten = _seitentexte_pdf(_sch) or []
     except Exception:
-        return True
+        return "unpruefbar"
     if not seiten:
-        return True
+        return "unpruefbar"
     ziel6 = _fachwoerter(kontext)
     if len(ziel6) < 3:
-        return True
+        return "unpruefbar"
     for txt in seiten:
-        sw6 = _fachwoerter(txt)
-        if len(ziel6 & sw6) >= 3:
-            return True
-    return False
+        if len(ziel6 & _fachwoerter(txt)) >= 3:
+            return "ja"
+    return "nein"
+
+
+def _dok_hat_aussage(name, kontext):
+    """Nur sperren, wenn das Dokument die Aussage nachweislich NICHT deckt.
+
+    Im Zweifel durchlassen - hier darf das Urteil ausschliesslich sperren,
+    nie etwas zusichern.
+    """
+    return _aussage_gedeckt(name, kontext) != "nein"
 
 
 def _verifizierte_seite(name, kontext, bevorzugt=None):
