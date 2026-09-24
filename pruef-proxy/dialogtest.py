@@ -1626,6 +1626,23 @@ def szenario_27_wegabgleich_und_bildarten():
                "Deckblatt-Anweisung nennt '%s'" % _wort)
     pruefe("lieber leer als falsch" in _anw,
            "im Zweifel bleibt der Verfasser LEER statt falsch")
+    # \u26d4 Emrach, 24.09.: "IKV Briefboegen haben meistens kein Logo, weil
+    #   der Briefbogen bereits bedruckt vorliegt - deswegen ist da meistens
+    #   nur der Text drauf."
+    # \u2b50 Das bricht die erste Fassung dieser Anweisung: Sie sagte "den
+    #   Absender erkennst du am Briefkopf". Den gibt es in der Datei gar
+    #   nicht - Briefkopf und Fusszeile sind Teil des PAPIERS. Das Modell
+    #   sucht, findet nichts und nimmt wieder den einzigen Namen, den es
+    #   sieht: den im Anschriftenfeld.
+    # \u26d4 Die eigentliche Regel ist deshalb die UMKEHRUNG: Ist nur EINE
+    #   Firma im Text und steht die im Anschriftenfeld, ist sie der
+    #   EMPFAENGER - genau andersherum, als ein Modell natuerlich raet.
+    for _wort in ("vorgedrucktem Briefbogen", "NIRGENDWO", "EINZIGE Firma",
+                  "Sachbearbeiter"):
+        pruefe(_wort in _anw,
+               "Anweisung rechnet mit fehlendem Briefkopf: '%s'" % _wort)
+    pruefe("NIE die Firma aus dem Anschriftenfeld" in _anw,
+           "ausdrueckliches Verbot, das Anschriftenfeld zu nehmen")
     # Gegenprobe: Ohne den Brief-Teil faellt die Reihe auf die Nase.
     _ohne = _anw.replace("ABSENDER", "Organisation")
     pruefe("ABSENDER" not in _ohne,
