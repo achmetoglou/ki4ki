@@ -162,22 +162,23 @@ def liste(wurzel=None):
                     woerter = [w.strip().lower() for w in rest.split(",") if w.strip()]
                     aus.append((name.strip(), woerter))
                 if aus:
-                    # ⛔ Eine kategorien.txt, die vor dieser Aenderung
-                    # geschrieben wurde, kennt keine Geschaeftsunterlagen -
-                    # in ihrem Bereich waere die Liste weiterhin GESCHLOSSEN,
-                    # ohne dass es jemandem auffiele. Was im Standard steht
-                    # und in der Datei FEHLT, kommt deshalb dazu.
+                    # ⛔ HIER STAND EIN UEBERSCHREIBEN, und es war falsch.
+                    #   Es hat die Standardkategorien in eine bereichseigene
+                    #   Liste nachgetragen - gut gemeint (sonst bliebe die
+                    #   Liste in so einem Bereich geschlossen), aber es nimmt
+                    #   dem Betreiber die Entscheidung aus der Hand. Eine
+                    #   eigene kategorien.txt ERSETZT den Standard; genau das
+                    #   haelt die Pruefung "eigene Liste je Bereich gilt" fest,
+                    #   und sie ist deshalb rot geworden (25.09.).
                     #
-                    # ⚠ Eine Kategorie, die die Datei selbst fuehrt, wird NICHT
-                    #   angefasst - der Bereich behaelt seine Stichwoerter.
-                    #   Die Reihenfolge entscheidet ohnehin nichts: unten
-                    #   gewinnt das laengste passende Stichwort, nicht das
-                    #   erste. Angehaengt wird nur, damit "Sonstiges" hinten
-                    #   bleibt, wo es hingehoert.
-                    vorhanden = {n for n, _ in aus}
+                    # ⭐ Der richtige Weg ist kein stilles Nachtragen: Wer
+                    #   eine eigene Liste fuehrt und Geschaeftsunterlagen
+                    #   aufnimmt, traegt die Kategorien dort ein - oder
+                    #   loescht die Datei und faellt auf den Standard zurueck.
+                    #   Eine Anlage, die die Wahl des Betreibers stillschweigend
+                    #   erweitert, ist schlimmer als eine, die zu wenig kennt:
+                    #   Die eine faellt auf, die andere nicht.
                     aus = [(n, w) for n, w in aus if n != "Sonstiges"]
-                    aus += [(n, w) for n, w in STANDARD
-                            if n not in vorhanden and n != "Sonstiges"]
                     aus.append(("Sonstiges", []))
                     return aus
         except OSError:

@@ -160,24 +160,38 @@ def p_geschaeftswort_erkannt_ohne_kennungsfilter():
 
 
 def p_alte_kategorienliste_sperrt_nicht_aus():
-    """Eine kategorien.txt von gestern darf die neuen Arten nicht aussperren.
+    """Eine eigene kategorien.txt ERSETZT den Standard - und das bleibt so.
 
-    Jeder Bereich kann eine eigene kategorien.txt fuehren. Die vorhandenen
-    wurden geschrieben, als es die Geschaeftsarten noch nicht gab - ohne
-    diesen Nachtrag waere die Liste dort weiterhin geschlossen.
+    \u26d4 Hier stand am 25.09. die umgekehrte Erwartung: Die Anlage sollte
+      Standardkategorien in eine bereichseigene Liste nachtragen, damit die
+      neuen Geschaeftsarten auch dort ankommen. Gut gemeint - aber es nimmt
+      dem Betreiber die Entscheidung aus der Hand, und dialogtest.py hat es
+      sofort gemeldet ("eigene Liste je Bereich gilt und ergaenzt
+      Sonstiges"). Die Absicht ist aelter und sie ist richtig.
+
+    \u26a0 DIE FOLGE, die jemand wissen muss: In einem Bereich MIT eigener
+      kategorien.txt bleibt die Liste geschlossen. Eine Rechnung landet dort
+      auf "Sonstiges", bis der Betreiber die Kategorien eintraegt oder die
+      Datei loescht. Diese Pruefung haelt genau das fest - sie ist kein
+      Mangel, sondern die Abmachung.
     """
     with tempfile.TemporaryDirectory() as ordner:
         with open(os.path.join(ordner, kategorie.DATEI), "w", encoding="utf-8") as fh:
-            fh.write("# Stand von gestern - nur Hochschulschriften\n")
+            fh.write("# Nur Hochschulschriften\n")
             fh.write("Dissertation: dissertation, doktorarbeit\n")
             fh.write("Norm/Richtlinie: norm, richtlinie\n")
             fh.write("Sonstiges:\n")
         namen = kategorie.namen(ordner)
-        ist = kategorie.zuordnen(_kopf("Invoice"), dateiname="Rechnung_274821.pdf",
+        mit = kategorie.zuordnen(_kopf("Invoice"), dateiname="Rechnung_274821.pdf",
                                  titel="", kennung="Rechnung_274821.pdf", wurzel=ordner)
-        eigene_zuerst = namen[0] == "Dissertation"
-    return ist == "Rechnung" and eigene_zuerst, \
-        "Bereichsliste mit 3 Zeilen -> %d Kategorien, Rechnung -> %s" % (len(namen), ist)
+        # Und ohne eigene Liste greift der Standard sehr wohl - sonst wuerde
+        # diese Zeile auch dann gruen, wenn die Reparatur gar nicht wirkt.
+        ohne = kategorie.zuordnen(_kopf("Invoice"), dateiname="Rechnung_274821.pdf",
+                                  titel="", kennung="Rechnung_274821.pdf")
+    ersetzt = namen == ["Dissertation", "Norm/Richtlinie", "Sonstiges"]
+    return ersetzt and mit == "Sonstiges" and ohne == "Rechnung", \
+        "eigene Liste ersetzt (%d Kategorien), darin Rechnung -> %s, " \
+        "ohne eigene Liste -> %s" % (len(namen), mit, ohne)
 
 
 def p_workflow_typen_haben_eine_kategorie():
