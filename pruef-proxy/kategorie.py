@@ -241,7 +241,26 @@ def zuordnen(kopf, dateiname="", titel="", kennung="", ist_katalog=False, wurzel
             if name.lower() == v.lower() or name.lower().split("/")[0] == v.lower():
                 return name
         g, _w = gefragte(v)            # "Normen" -> Norm/Richtlinie, "Handbücher" -> Handbuch/Anleitung
-        return g or v[:40]
+        if g:
+            return g
+        # ⛔ HIER STAND "return v[:40]" - der Ordnername WOERTLICH als
+        #   Kategorie. Gemessen 25.09. an einem echten Bestand: Die Ordner
+        #   heissen dort nach KUNDEN, nicht nach Kategorien. 44 von 56
+        #   Dokumenten trugen deshalb die Kategorie
+        #   "Lanxess Deutschland GmbH, Chempark Dorma" - der Kundenname,
+        #   auf 40 Zeichen abgeschnitten. Die Frage "Welche Rechnungen
+        #   haben wir?" fand NICHTS, obwohl die Rechnungen da waren und
+        #   die Kategorie "Rechnung" am selben Tag eingefuehrt wurde.
+        #
+        # \u2b50 Die Absicht war richtig: Ein Ordner "Normen" soll die
+        #   Kategorie setzen. Das tut er weiter - ueber namen() und
+        #   gefragte(). Nur wird ein Name, den NIEMAND als Kategorie kennt,
+        #   nicht mehr zu einer gemacht. Eine erfundene Kategorie sieht aus
+        #   wie eine echte und ist deshalb schlimmer als keine.
+        #
+        # \u26a0 Die Angabe geht nicht verloren: Sie steht als Thema in der
+        #   Aufnahme und bleibt durchsuchbar. Verloren geht nur der
+        #   faelschliche Anspruch, eine Kategorie zu sein.
     if ist_katalog:
         return "Prüfungskatalog"
     k = kopf or {}

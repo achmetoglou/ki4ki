@@ -1896,8 +1896,27 @@ def szenario_27_wegabgleich_und_bildarten():
     t = "[Seite 3]\n<!-- image -->\n\nLine chart\n\nBild 6.17: Erreichter Druck\n\n<!-- image -->\n\nLogo\n\nText\n\nBild 6.18: Spannungen\n\n<!-- image -->\n\nPhotograph\n\nBild 5.6: Probekörper"
     pruefe(fadenfrage.bildarten_aus_text(t) == {"6.17": "Diagramm", "5.6": "Foto"}, "Bildarten aus der Docling-Klassifikation (Logo zaehlt nicht)")
     import kategorie as kat
-    pruefe(kat.zuordnen(kat.aus_kopf("Kategorie (Vorgabe): Normen\nDokumenttyp: Manual\n## Inhalt"), dateiname="x.pdf") == "Norm/Richtlinie"
-           and kat.zuordnen(kat.aus_kopf("Kategorie (Vorgabe): Sicherheitsunterlagen\n## Inhalt"), dateiname="x.pdf") == "Sicherheitsunterlagen", "Unterordner-Vorgabe schlaegt Dokumenttyp; unbekannte Namen gelten woertlich")
+    # \u26d4 UMGEDREHT 25.09. Hier stand: "unbekannte Namen gelten
+    #   woertlich" - ein Unterordner, den niemand als Kategorie kennt,
+    #   WURDE zur Kategorie. Gemessen an einem echten Bestand: Die Ordner
+    #   heissen dort nach KUNDEN. 44 von 56 Dokumenten trugen deshalb
+    #   "Lanxess Deutschland GmbH, Chempark Dorma" als Kategorie - den
+    #   Kundennamen, auf 40 Zeichen abgeschnitten. Die Frage "Welche
+    #   Rechnungen haben wir?" fand NICHTS, obwohl die Rechnungen da waren.
+    # \u2b50 Die Absicht bleibt: Ein Ordner "Normen" setzt die Kategorie -
+    #   ueber die Kategorienliste oder ueber gefragte(). Nur ein Name, den
+    #   NIEMAND kennt, wird nicht mehr zu einer Kategorie gemacht. Eine
+    #   erfundene Kategorie sieht aus wie eine echte und ist deshalb
+    #   schlimmer als keine.
+    pruefe(kat.zuordnen(kat.aus_kopf("Kategorie (Vorgabe): Normen\nDokumenttyp: Manual\n## Inhalt"), dateiname="x.pdf") == "Norm/Richtlinie",
+           "bekannter Unterordner-Name setzt die Kategorie weiterhin")
+    _kunde = kat.zuordnen(kat.aus_kopf("Kategorie (Vorgabe): Lanxess Deutschland GmbH, Chempark Dormagen\nDokumenttyp: Invoice\n## Inhalt"),
+                          dateiname="Rechnung_274821.pdf", kennung="Rechnung_274821.pdf")
+    pruefe(_kunde == "Rechnung",
+           "ein KUNDENORDNER kapert die Kategorie nicht mehr (ist: %s)" % _kunde)
+    # Gegenprobe: Ohne die Reparatur waere genau dieser Fall der Kundenname.
+    pruefe("Lanxess" not in _kunde,
+           "Gegenprobe: der Kundenname steht nicht in der Kategorie")
 
 
 if __name__ == "__main__":
