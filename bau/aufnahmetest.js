@@ -45,19 +45,56 @@ const datei = (dir, name, json) => ({ json: json || {}, binary: { data: { direct
 //   Elementen am Eingang mindestens eines ausgibt (alle auf diesem Weg tragen
 //   onError "continueRegularOutput"). Fuer die Frage "bleibt die Sperre
 //   liegen?" ist genau das die richtige Rechnung.
+// ⛔ UND DIE SCHLEIFE IST EIN ZWEITES TOR (Pruefung 05.10.). Eine Schleife
+//   (splitInBatches ab Fassung 3) hat zwei Ausgaenge: 1 ist der Koerper, 0 ist
+//   "fertig". Ausgang 0 feuert ERST, wenn die Schleife ein zweites Mal
+//   aufgerufen wird - und das passiert nur, wenn der Koerper auch wirklich zu
+//   ihr zurueckkommt. Reisst er irgendwo ab (ein Baustein ohne Weiterleitung),
+//   dreht sich die Schleife nie zu Ende, "fertig" feuert nie und alles
+//   dahinter - also auch "Sperre freigeben" - laeuft nie.
+//   Gemessen: Vorher lief diese Funktion ueber Ausgang 0, als feuere er immer.
+//   Kappt man den Schleifenkoerper, blieben 10l/10o/11e gruen (Mutant 11g).
+function schleifeSchliesstSich(name, verbindungen) {
+  const anfang = (((verbindungen[name] || {}).main || [])[1] || []).map(z => z.node);
+  if (anfang.length === 0) return false;
+  const gesehen = new Set();
+  const warte = anfang.slice();
+  let zurueck = false;
+  while (warte.length) {
+    const k = warte.shift();
+    if (k === name) { zurueck = true; continue; }   // zurueck an der Schleife
+    if (gesehen.has(k)) continue;
+    gesehen.add(k);
+    let weiter = 0;
+    for (const zweig of ((verbindungen[k] || {}).main || [])) {
+      for (const z of (zweig || [])) { weiter++; warte.push(z.node); }
+    }
+    // Eine Sackgasse im Koerper heisst: dieser Zweig kommt nie zurueck.
+    if (weiter === 0) return false;
+  }
+  return zurueck;
+}
 const WF_KNOTEN = {};
 for (const n of wf.nodes) WF_KNOTEN[n.name] = n;
-function eingeplant(startName, stueck, ohne) {
+function eingeplant(startName, stueck, ohne, plan) {
+  const p = plan || wf;
+  const knoten = {};
+  for (const n of p.nodes) knoten[n.name] = n;
   const erreicht = new Set();
   const warte = [[startName, stueck]];
   while (warte.length) {
     const [name, menge] = warte.shift();
-    const k = WF_KNOTEN[name] || {};
+    const k = knoten[name] || {};
     // Genau die Regel aus workflow-execute.js: nichts drin -> nicht eingeplant.
     if (menge === 0 && k.alwaysOutputData !== true) continue;
     const raus = Math.max(menge, 1);
-    for (const zweig of ((wf.connections[name] || {}).main || [])) {
-      for (const z of (zweig || [])) {
+    const schleife = String(k.type || '').endsWith('.splitInBatches')
+                     && (k.typeVersion || 0) >= 3;
+    const zweige = ((p.connections[name] || {}).main || []);
+    for (let i = 0; i < zweige.length; i++) {
+      // Ausgang 0 einer Schleife nur, wenn der Koerper zurueckfuehrt.
+      if (schleife && i === 0 && !schleifeSchliesstSich(name, p.connections)) continue;
+      for (const z of (zweige[i] || [])) {
         if (z.node === ohne) continue;
         const marke = z.node + '|' + raus;
         if (erreicht.has(marke)) continue;
@@ -560,6 +597,36 @@ const codeUmgebung = (vomFilter, roh, quellen) => ({
   pruefe(eingeplant('Nur Dokumente hochladen', hoch11.length).has('Sperre freigeben'),
          '11e ⛔ und die Sperre wird trotzdem freigegeben - ohne das steht die '
          + 'Aufnahme nach dieser Charge fuer 120 Minuten');
+
+  // ⛔ UND JETZT DIE PRUEFUNG DER PRUEFUNG. 10l, 10o und 11e sichern zu,
+  //   dass "Sperre freigeben" erreicht wird. Eine Zusicherung, die nie rot
+  //   werden kann, sichert nichts zu - also wird die Kette hier an SPAETEREN
+  //   Stellen mutiert, und eingeplant() muss es merken. Mutiert wird eine
+  //   Kopie des Plans; die Probe selbst rechnet weiter am echten.
+  const kopie = () => JSON.parse(JSON.stringify(wf));
+  const mutLoop = kopie();
+  mutLoop.connections['LLM Taggs mit Ursprungsdatei verknüpfen'].main[0] = [];
+  pruefe(!eingeplant('Nur Dokumente hochladen', 0, undefined, mutLoop)
+            .has('Sperre freigeben'),
+         '11f MUTANT: reisst der Schleifenkoerper ab, wird "Sperre freigeben" '
+         + 'NICHT mehr eingeplant - die Schleife wird nie fertig');
+  const mutEnde = kopie();
+  mutEnde.connections['Ablegen'].main[0] = [];
+  pruefe(!eingeplant('Nur Dokumente hochladen', 0, undefined, mutEnde)
+            .has('Sperre freigeben'),
+         '11g MUTANT: und auch ein gekappter letzter Schritt faellt auf');
+  const mutAod = kopie();
+  for (const n of mutAod.nodes) {
+    if (n.name === 'Nur Dokumente hochladen') delete n.alwaysOutputData;
+  }
+  pruefe(!eingeplant('Nur Dokumente hochladen', 0, undefined, mutAod)
+            .has('Sperre freigeben'),
+         '11h MUTANT: ohne alwaysOutputData am Filter ebenso');
+  // GEGENPROBE zu den drei Mutanten: am UNVERAENDERTEN Plan muss derselbe
+  // Aufruf gruen sein - sonst waere oben nur die Mechanik kaputt.
+  pruefe(eingeplant('Nur Dokumente hochladen', 0, undefined, kopie())
+            .has('Sperre freigeben'),
+         '11i GEGENPROBE: am unveraenderten Plan wird sie erreicht');
 
   console.log('\n' + fehler + ' Fehler');
   process.exit(fehler ? 1 : 0);
