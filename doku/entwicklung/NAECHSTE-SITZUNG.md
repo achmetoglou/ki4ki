@@ -239,6 +239,87 @@ und gleicht ab, was n8n **wirklich geladen** hat. Aufruf auf dem Host:
 2. **`LESBAR_BYTE`** (siehe oben), gehört zu Teil 3.
 3. **Die Protokoll-Wiederholung** bei jedem Minutentakt (§3, Punkt 2).
 
+## 7 - ⭐ STAND 05.10.: Testlauf abgenommen, der grosse Lauf wartet auf EINE Entscheidung
+
+### ⭐ Was der Testlauf bewiesen hat (53 Dateien, Bereich kap)
+
+```
+Grundstand        85
+nach dem Lauf    116
+neu              +31      ⭐ erwartet waren ~27, NICHT 53
+```
+
+⭐ **Die Dubletten-Reparatur traegt.** Vor dem 24.09. ergaben 53 Dateien
+53 Dokumente - Word-Original und gewandelte PDF bekamen je einen eigenen
+Abdruck. Jetzt zaehlen sie als EINES. 16 mitgelieferte PDFs wurden
+aussortiert, jede mit Begruendung im Protokoll:
+
+> „mitgelieferte PDF neben dem Office-Original ... am Ablageort liegt
+> bereits die aus dem Original gewandelte PDF, und aus IHR stammen Text
+> und Seitenzahlen im Katalog. Kein eigenes Dokument, kein eigener
+> Eintrag"
+
+⭐ `nur_altweg` steht bei 69 und ist ueber elf Tage stabil geblieben -
+keine neuen Waisen.
+
+### ⛔ Ein Fehler, den der Lauf sichtbar gemacht hat
+
+Vier `bilder-nachholen.txt` lagen ELF TAGE im Eingang. Die Kette lief alle
+fuenf Minuten an, erkannte sie korrekt als Nicht-Dokument - und liess sie
+liegen. Rund 3.000 Leerlaeufe.
+
+```js
+const art = NICHTDOKUMENT(nameVon(item));
+if (art) { kein_dokument++; continue; }   // ⛔ nie weitergereicht
+```
+
+⭐ Die BELEGQUELLE macht es im selben Baustein richtig: Sie wird
+weitergereicht und landet in aussortiert/ mit Begruendung. Der
+Nicht-Dokument-Weg bekommt dasselbe Verhalten (in Arbeit).
+
+### ⚠ Vier Abnahmepunkte sind noch OFFEN
+
+Im Arbeitsbereich kap nachsehen ("Was habt ihr im Bestand?"):
+
+| # | Pruefung | erwartet |
+|---|---|---|
+| 4 | kein Name doppelt in der Liste | keiner |
+| 5 | Kategorie einer Rechnung | **Rechnung** (nicht der Kundenordner) |
+| 6 | Verfasser einer Rechnung | leer / IKV / KAP - ⛔ nicht Lanxess |
+| 7 | `bilder-nachholen` im Bestand | **0** |
+
+### ⛔ DIE ENTSCHEIDUNG vor dem grossen Lauf: Bilder
+
+```
+ohne Bilder:  38 s/Dokument  ->  6.395 Dokumente = 67 Stunden
+mit Bildern:  ???            ->  UNGEMESSEN
+```
+
+⛔ Die Zahl fehlt. Sie steht in n8n unter Executions, Lauf vom 24.09.
+(Start ca. 15:10). Start minus Ende durch 53 ergibt die Sekunden je
+Dokument - und damit, ob ein Lauf mit Bildern Tage oder Wochen dauert.
+
+⭐ Und ein Weg, der OHNE neuen Code auskommt: `KI4KI_MASSENLAUF_AB`
+zaehlt, wie viele Dateien gerade im Eingang liegen. Wer in Portionen
+unter 100 einspielt, bekommt Bilder; wer alles auf einmal einwirft, nicht.
+Die Portionsgroesse IST der Schalter.
+
+⛔ **`KI4KI_MASSENLAUF_AB=100` steht noch in der .env.** Fuer den
+grossen Lauf muss der Wert raus - sonst beschreibt die Anlage 6.395
+Dokumente lang jedes Bild einzeln.
+
+⛔ Und die Nachholliste `bilder-nachholen.txt` hat bis heute KEINEN
+Leser. Was im Massenlauf uebersprungen wird, bleibt uebersprungen.
+
+### Danach erst
+
+- Die drei Einzeiler im Proxy, die bei der FRAGE wirken und keinen neuen
+  Lauf brauchen: Ziffern nicht aus der Suchfrage werfen
+  (`fadenfrage.suchwoerter`), die 3-Fachwoerter-Schwelle, und
+  "Seite 1 ist Deckblatt" bei einseitigen Dokumenten.
+- Die drei Wurzeln aus §6 - die Anlage ist fuer Hochschulschriften
+  gebaut, der Bestand sind Geschaeftsunterlagen.
+
 ## 6 - ⛔⛔ DIE ANLAGE IST FUER HOCHSCHULSCHRIFTEN GEBAUT, DER BESTAND SIND GESCHAEFTSUNTERLAGEN
 
 Am 24.09. wurden zwei Fehler gefunden, die wie Einzelfaelle aussahen:
