@@ -1945,7 +1945,193 @@ def szenario_27_wegabgleich_und_bildarten():
            "Gegenprobe: der Kundenname steht nicht in der Kategorie")
 
 
+def _probe_ordner(dateien):
+    """Ein eigener Bestandsordner mit aufbereiteten Texten. Gibt den Pfad."""
+    import tempfile
+    ordner = tempfile.mkdtemp(prefix="ki4ki-deckblatt-")
+    os.makedirs(os.path.join(ordner, "auw"))
+    for name, text in dateien.items():
+        with open(os.path.join(ordner, "auw", name + ".md-1.json"), "w", encoding="utf-8") as fh:
+            json.dump({"pageContent": text}, fh)
+    return ordner
+
+
+def _probe_katalog(zusatz):
+    """Den Probe-Eintrag in den Katalog setzen und den Zwischenspeicher leeren."""
+    import bestand
+    d = dict(KATALOG)
+    d.update(zusatz or {})
+    with open(os.environ["KI4KI_BESTANDSINDEX"], "w", encoding="utf-8") as fh:
+        json.dump(d, fh, ensure_ascii=False)
+    bestand._GELADEN = None
+
+
+def szenario_45_deckblatt_fassung():
+    print("\n[45] Verdorbene Deckblatt-Eintraege: GENAU EINMAL neu lesen, danach nie wieder")
+    import bestand
+    import shutil
+    KOPF = ("Dokumenttyp: Invoice\nSprache: German\n\n## Keywords\n\n- Schweissnaht\n\n"
+            "## Inhalt\n\nRechnung ueber eine Durchstrahlungspruefung.")
+    ordner = _probe_ordner({"Rechnung-9001": KOPF})
+    alt_ordner, alt_lesen = bestand._BESTAND_ORDNER, bestand._deckblatt_lesen
+    bestand._BESTAND_ORDNER = ordner
+    rufe = []
+
+    def _geruestet(text):
+        rufe.append(text)
+        return {"titel": "Rechnung Nr. 9001 Durchstrahlungspruefung",
+                "verfasser": "Herr Standfuss-Holthausen", "jahr": "2026"}
+
+    # Gegen HEAD laeuft diese Datei auch - dort gibt es die Fassung noch nicht.
+    fassung = getattr(bestand, "DECKBLATT_FASSUNG", 1)
+    try:
+        bestand._deckblatt_lesen = _geruestet
+        # --- A2: ein vor dem 05.10. geschriebener Eintrag, ohne Fassung ----
+        #     Er traegt den EMPFAENGER als Verfasser - genau der Schaden,
+        #     den gemma4:e2b angerichtet hat.
+        _probe_katalog({"Rechnung-9001": {
+            "titel": "Rechnung Nr. 9001", "verfasser": "Nordwerk Polymere AG",
+            "jahr": "2026", "kategorie": "Sonstiges", "quelle": "modell"}})
+        del rufe[:]
+        bestand.nachtragen(["Rechnung-9001"], hoechstens=10)
+        pruefe(len(rufe) == 1,
+               "A2 Eintrag ohne deckblatt_fassung wird neu gelesen (Modellaufrufe: %d, erwartet 1)" % len(rufe))
+        jetzt = bestand.angaben("Rechnung-9001") or {}
+        pruefe(int(jetzt.get("deckblatt_fassung") or 0) == fassung,
+               "A2 danach traegt der Eintrag die Fassung %r (ist: %r)" % (fassung, jetzt.get("deckblatt_fassung")))
+        pruefe("Nordwerk" not in (jetzt.get("verfasser") or ""),
+               "A2 der Empfaenger ist als Verfasser verschwunden (ist: %r)" % (jetzt.get("verfasser"),))
+        # --- GENAU einmal: der zweite Lauf darf nicht noch einmal fragen ---
+        del rufe[:]
+        bestand.nachtragen(["Rechnung-9001"], hoechstens=10)
+        pruefe(len(rufe) == 0,
+               "A2 der zweite Lauf fragt das Modell NICHT erneut (Aufrufe: %d)" % len(rufe))
+        # --- A3 GEGENPROBE: steht die Fassung drin, null Modellaufrufe -----
+        #     Ohne sie loest jede Bestandsfrage tausende Aufrufe aus.
+        _probe_katalog({"Rechnung-9001": {
+            "titel": "Rechnung Nr. 9001 Durchstrahlungspruefung",
+            "verfasser": "Herr Standfuss-Holthausen", "jahr": "2026",
+            "kategorie": "Sonstiges", "quelle": "modell",
+            "deckblatt_fassung": fassung}})
+        del rufe[:]
+        getan = bestand.nachtragen(["Rechnung-9001"], hoechstens=10)
+        pruefe(len(rufe) == 0,
+               "A3 GEGENPROBE: Fassung schon da -> KEIN Modellaufruf (Aufrufe: %d)" % len(rufe))
+        # ⚠ Zwei Schloesser, zwei Pruefungen: der Modellaufruf haengt an
+        #   `veraltet` in _einen_nachtragen, die Auswahl an der Bedingung in
+        #   nachtragen(). Ein Fehler in der Auswahl allein kostet kein
+        #   Modell, aber je Bestandsfrage eine Datei und einen Katalog-
+        #   Schreibvorgang pro Dokument - deshalb hier eigens gezaehlt.
+        pruefe(getan == 0,
+               "A3 GEGENPROBE: der fertige Eintrag wird gar nicht erst angefasst (nachtragen: %d)" % getan)
+        # ... und dasselbe eine Ebene tiefer, am Schloss selbst: wer
+        # _einen_nachtragen() direkt aufruft (Aufnahme, Heilung), darf bei
+        # aktueller Fassung ebenfalls kein Modell kosten.
+        del rufe[:]
+        bestand._einen_nachtragen("Rechnung-9001")
+        pruefe(len(rufe) == 0,
+               "A3 GEGENPROBE: auch _einen_nachtragen fragt bei aktueller Fassung nicht (Aufrufe: %d)" % len(rufe))
+        # --- A3 zweite Haelfte: ein von Hand gesetzter Eintrag bleibt in Ruhe
+        _probe_katalog({"Rechnung-9001": {
+            "titel": "Von Hand gepflegte Rechnung 9001", "verfasser": "Frau Petra Kappler",
+            "jahr": "2026", "kategorie": "Sonstiges", "quelle": "katalog"}})
+        del rufe[:]
+        bestand.nachtragen(["Rechnung-9001"], hoechstens=10)
+        pruefe(len(rufe) == 0,
+               "A3 GEGENPROBE: ein Eintrag aus dem Katalog wird nicht ueberschrieben (Aufrufe: %d)" % len(rufe))
+    finally:
+        bestand._BESTAND_ORDNER, bestand._deckblatt_lesen = alt_ordner, alt_lesen
+        _probe_katalog({})
+        shutil.rmtree(ordner, ignore_errors=True)
+
+
+# --------------------------------------------- Schicht 2: braucht das Modell
+#
+# A1 laeuft NICHT im Standardlauf. dialogtest.py ist sonst deterministisch
+# und ohne Server - hier aber ist genau das der Pruefgegenstand: ob das
+# eingestellte Modell der Anweisung FOLGT. Darum ein eigener Weg:
+#
+#   docker exec ki4ki-pruef-proxy python3 /app/dialogtest.py --deckblatt
+#
+# Rot vorfuehren (beides gemessen 05.10., je 6 von 6 falsch):
+#   docker exec -e KI4KI_DECKBLATT_MODELL=gemma4:e2b ki4ki-pruef-proxy \
+#       python3 /app/dialogtest.py --deckblatt
+#   und: den Absatz "ACHTUNG BEI GESCHAEFTSBRIEFEN ... Anschriftenfeld als
+#   Verfasser ein." aus _DECKBLATT_ANWEISUNG streichen.
+#
+# Die zwei Briefe sind NACHGEBAUT nach DIN 5008, kein Kundendokument. Sie
+# tragen die drei Eigenschaften, an denen e2b scheitert: der Briefkopf
+# fehlt (vorgedrucktes Papier), der Empfaenger ist die EINZIGE Firma im
+# Text, und den Absender verraten nur "Unsere Auftragsnummer" / "Unser
+# Zeichen" und die Sachbearbeiter-Zeile.
+
+GESCHAEFTSBRIEFE = [
+    ("Rechnung", "Nordwerk", "Standfuss-Holthausen",
+     "Nordwerk Polymere AG\nFrau Dr. Ines Brandt\nIndustriestrasse 40\n41540 Dormagen\n\n"
+     "Ihre Bestellnummer: 4500 998 221\nUnsere Auftragsnummer: 274821\n"
+     "Sachbearbeiter: Herr Standfuss-Holthausen\nTelefon: 0241 8023-114\nDatum: 12.09.2026\n\n"
+     "Rechnung Nr. 274821\n\nSehr geehrte Frau Dr. Brandt,\n\n"
+     "fuer die in Ihrem Auftrag durchgefuehrten Pruefungen berechnen wir:\n\n"
+     "Pos. 1  Durchstrahlungspruefung von 12 Schweissnaehten      1.240,00 EUR\n"
+     "Pos. 2  Ultraschallpruefung Rohrleitung DN 200                680,00 EUR\n"
+     "Pos. 3  Pruefbericht in zweifacher Ausfertigung                95,00 EUR\n\n"
+     "Nettobetrag                                                 2.015,00 EUR\n"
+     "zzgl. 19 % Umsatzsteuer                                       382,85 EUR\n"
+     "Rechnungsbetrag                                             2.397,85 EUR\n\n"
+     "Zahlbar ohne Abzug innerhalb von 30 Tagen nach Rechnungsdatum.\n"),
+    ("Angebot", "Sueddeutsche", "Kappler",
+     "Sueddeutsche Armaturenwerke GmbH\nHerrn Klaus Oberlaender\nAm Gewerbepark 7\n89231 Neu-Ulm\n\n"
+     "Ihr Zeichen: OB/kl\nUnser Zeichen: KAP/mu\nSachbearbeiterin: Frau Petra Kappler\n"
+     "Telefon: 0241 8023-207\nDatum: 03.07.2026\n\n"
+     "Angebot Nr. 274666 - Schulung Kunststoffschweissen\n\n"
+     "Sehr geehrter Herr Oberlaender,\n\nvielen Dank fuer Ihre Anfrage. Gern bieten wir Ihnen an:\n\n"
+     "Pos. 1  Lehrgang Kunststoffschweissen nach DVS 2212-1,\n"
+     "        5 Tage, bis 8 Teilnehmer                          4.800,00 EUR\n"
+     "Pos. 2  Pruefungsgebuehr je Teilnehmer                       180,00 EUR\n\n"
+     "Das Angebot ist freibleibend und gilt bis zum 30.09.2026.\n"),
+]
+
+
+def deckblatt_am_modell(runden=3):
+    """A1 am echten Modell. 0 = gruen, 1 = rot, 2 = gar nicht gelaufen."""
+    import bestand
+    import urllib.request
+    modell = getattr(bestand, "_DECKBLATT_MODELL", bestand._NETZ_MODELL)
+    print("\n[A1] Verfasser eines Geschaeftsbriefs ist der ABSENDER, nicht der Empfaenger")
+    print("     Modell: %s   Netz: %s" % (modell, bestand._NETZ_URL))
+    # ⛔ Ein nicht erreichbares Modell darf NIE wie "gruen" aussehen:
+    #   _deckblatt_lesen schluckt jede Ausnahme und gibt None zurueck.
+    #   Darum vorher fragen - und mit eigenem Rueckgabewert 2 abbrechen.
+    try:
+        tags = bestand._NETZ_URL.rsplit("/api/", 1)[0] + "/api/tags"
+        with urllib.request.urlopen(tags, timeout=20) as r:
+            da = [m.get("name") for m in (json.loads(r.read()).get("models") or [])]
+    except Exception as e:
+        print("     NICHT GELAUFEN: %s ist nicht erreichbar (%s)" % (bestand._NETZ_URL, e))
+        print("     Diese Pruefung gehoert in den Container - sie ist KEIN Gruen.")
+        return 2
+    if modell not in da:
+        print("     NICHT GELAUFEN: %r kennt das Netz nicht. Da: %s" % (modell, da))
+        return 2
+    for kennung, empfaenger, absender, text in GESCHAEFTSBRIEFE:
+        for runde in range(1, runden + 1):
+            t0 = time.time()
+            a = bestand._deckblatt_lesen(text) or {}
+            v = str(a.get("verfasser") or "")
+            pruefe(empfaenger.lower() not in v.lower(),
+                   "%s L%d: der Empfaenger (%s) steht NICHT im Verfasser - ist: %r [%.1fs]"
+                   % (kennung, runde, empfaenger, v, time.time() - t0))
+            pruefe(absender.lower() in v.lower(),
+                   "%s L%d: der Absender (%s) steht im Verfasser - ist: %r"
+                   % (kennung, runde, absender, v))
+    print("\n%d Pruefungen, %d Fehler" % (ZAEHLER[0], len(FEHLER)))
+    for f in FEHLER:
+        print("  - " + f)
+    return 1 if FEHLER else 0
+
 if __name__ == "__main__":
+    if "--deckblatt" in sys.argv:          # Schicht 2, braucht das Modell
+        sys.exit(deckblatt_am_modell())
     for s in (szenario_1_verfasser_und_folgefragen, szenario_2_beschwerde_reparatur,
               szenario_3_themenwechsel, szenario_4_rueckkehr, szenario_5_nicht_im_dokument,
               szenario_6_zitate_pruefen, szenario_7_fachwort_vs_alltag, szenario_8_bestand_tippfehler,
@@ -1972,7 +2158,8 @@ if __name__ == "__main__":
               szenario_41_nie_ohne_nachsehen,
               szenario_42_rolle_ueberlebt_update,
               szenario_43_hochladen_nur_mit_rolle,
-              szenario_44_ablage_wird_angelegt):
+              szenario_44_ablage_wird_angelegt,
+              szenario_45_deckblatt_fassung):
         try:
             s()
         except Exception as e:

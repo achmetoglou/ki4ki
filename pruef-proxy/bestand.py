@@ -308,9 +308,43 @@ def nach_art(namen, kennzeichen):
 
 _BESTAND_ORDNER = os.environ.get("KI4KI_BESTAND") or "/daten/bestand/documents"
 _NETZ_MODELL = os.environ.get("KI4KI_NETZ_MODELL") or "gemma4:e2b"
+# ⛔ GEMESSEN 05.10.: Die am 24.09. nachgebesserte Anweisung unten ist
+#   richtig - gemma4:e2b kann ihr nur nicht folgen. Gegen die Rechnungen
+#   274821 TS-1 und TS-2 antwortete e2b 6 von 6 Mal mit der Firma aus dem
+#   ANSCHRIFTENFELD, also dem Empfaenger, obwohl genau das dort verboten
+#   steht. gemma4:12b traf mit derselben, unveraenderten Anweisung 6 von 6
+#   richtig, ueber vier Dokumentarten (Rechnung -> Sachbearbeiter, Angebot
+#   -> KAP, Norm -> SKZ-KFE gGmbH, Dissertation -> Autor).
+#
+# ⭐ Am Nachbau (dialogtest.py --deckblatt, zwei DIN-5008-Briefe ohne
+#   Briefkopf) wiederholt sich das Bild: e2b 6 von 6 Empfaenger, 12b 6 von
+#   6 Absender. Es liegt also an der Groesse des Modells, nicht am Text.
+#
+# ⚠ Zwei billigere Wege wurden gemessen und verworfen: die Anweisung zu
+#   kuerzen (TS-1 blieb falsch, die Titel wurden schlechter) und eine
+#   feste Anschriftenfeld-Sperre (1 Fehltreffer von 4 - bei DIN 5008 steht
+#   die Ruecksendeangabe des ABSENDERS direkt ueber dem Anschriftenfeld).
+#
+# Das Deckblatt ist der einzige Ort, an dem Titel, Verfasser und Jahr
+# entstehen; ein Fehler hier steht dauerhaft im Katalog. Deshalb hier das
+# groessere Modell - und nur hier, nicht fuer die Schlagwort-Uebersetzung,
+# die billig bleiben darf. 12b ist ohnehin schon Produktionsmodell fuer
+# Chat, Absicht und Gespraech und per keep_alive dauerhaft geladen.
+# Kosten gemessen: 1,3 s statt 0,5 s je Dokument.
+_DECKBLATT_MODELL = os.environ.get("KI4KI_DECKBLATT_MODELL") or "gemma4:12b"
 _NETZ_URL = os.environ.get("KI4KI_NETZ_URL") or "http://nothink-proxy:11435/api/chat"
 _NACHTRAG_SPERRE = threading.Lock()
 _NACHTRAG_LAEUFT = set()
+
+# Fassung des Deckblatt-Lesens. Wird sie erhoeht, sehen bestehende
+# Modell-Eintraege GENAU EINMAL neu nach - sonst bliebe jeder vor dem
+# 05.10. von e2b geschriebene Verfasser fuer immer stehen: nachtragen()
+# sortiert einen Eintrag mit Titel und Kategorie als fertig aus, und
+# _einen_nachtragen() reicht ihn dann nur noch weiter.
+# ⛔ Das Feld muss bei JEDEM Durchgang geschrieben werden, auch wenn das
+#   Modell nichts hergab - sonst wird dasselbe Dokument bei jeder
+#   Bestandsfrage erneut befragt (Gegenprobe A3 in dialogtest.py).
+DECKBLATT_FASSUNG = 1
 
 # \u26d4 GEMESSEN 24.09.: Im Katalog stand bei den Rechnungen des Instituts
 #   der KUNDE als Verfasser. Die Anweisung zaehlte auf, was ein Dokument
@@ -574,11 +608,11 @@ def band_aus_text(text, zeichen=9000):
 
 
 def _deckblatt_lesen(text):
-    """Fragt das kleine Modell. Gibt dict oder None - wirft NIE."""
+    """Fragt das Deckblatt-Modell. Gibt dict oder None - wirft NIE."""
     try:
         from urllib.request import Request, urlopen
         leib = json.dumps({
-            "model": _NETZ_MODELL,
+            "model": _DECKBLATT_MODELL,
             "messages": [{"role": "user",
                           "content": _DECKBLATT_ANWEISUNG + "\n\n" + text}],
             "think": False, "stream": False,
@@ -696,7 +730,12 @@ def _einen_nachtragen(name):
         alt = angaben(name) or {}
         stamm = str(name)[:-3] if str(name).lower().endswith(".md") else str(name)
         titel_ist_dateiname = _grund(alt.get("titel") or "") == _grund(stamm)
-        if alt.get("titel") and not titel_ist_dateiname:
+        # Ein Eintrag aus einer aelteren Deckblatt-Fassung wird EINMAL neu
+        # gelesen. Nur die vom Modell geschriebenen: was aus dem Katalog
+        # kommt oder von Hand gesetzt wurde, bleibt unangetastet.
+        veraltet = (int(alt.get("deckblatt_fassung") or 0) < DECKBLATT_FASSUNG
+                    and (alt.get("quelle") or "modell") == "modell")
+        if alt.get("titel") and not titel_ist_dateiname and not veraltet:
             angabe = {k: alt.get(k) for k in ("titel", "verfasser", "jahr") if alt.get(k)}
             quelle = alt.get("quelle") or "modell"
         else:
@@ -708,6 +747,9 @@ def _einen_nachtragen(name):
                 else:
                     return False
             quelle = "modell"
+        # Auch wenn das Modell nichts hergab: die Fassung vermerken, sonst
+        # wuerde dasselbe Dokument bei jeder Bestandsfrage erneut befragt.
+        angabe["deckblatt_fassung"] = DECKBLATT_FASSUNG
         try:
             import pruefungskatalog as _pk
             ist_katalog = _pk.ist_katalog(text if len(text) >= 6000 else _volltext_anfang(name, zeichen=60000))
@@ -808,9 +850,11 @@ def nachtragen(namen, hoechstens=5):
         a = angaben(n)
         if a and a.get("titel") and a.get("kategorie") and not (
                 a.get("themen") and str(a.get("sprache") or "").lower().startswith(("german", "deutsch", "de"))
-                and a.get("themen_quelle") != "uebersetzt" and _englisch(a.get("themen") or [])):
+                and a.get("themen_quelle") != "uebersetzt" and _englisch(a.get("themen") or [])) and (
+                int(a.get("deckblatt_fassung") or 0) >= DECKBLATT_FASSUNG
+                or (a.get("quelle") or "modell") != "modell"):
             continue
-        offen.append(n)          # ohne Titel (Modell) ODER ohne Kategorie ODER englische Themen (nur Kopf lesen)
+        offen.append(n)          # ohne Titel (Modell) ODER ohne Kategorie ODER englische Themen ODER alte Deckblatt-Fassung
     if not offen:
         return 0
     sofort, spaeter = offen[:hoechstens], offen[hoechstens:]
