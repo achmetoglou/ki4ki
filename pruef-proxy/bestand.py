@@ -29,6 +29,7 @@ ganzen Bestand ab; fehlt zu einer Arbeit ein Eintrag, erscheint sie ohne Titel.
 import json
 import os
 import re
+import sys
 import threading
 
 VERZEICHNIS = os.environ.get("KI4KI_BESTANDSINDEX") or os.path.join(
@@ -267,6 +268,9 @@ def angaben(name):
     #   Stelle mitgezogen werden - sonst bekommt die Stichwortsuche immer
     #   eine leere Liste und findet 0 Treffer ueber Schlagworte, obwohl z.B.
     #   15 Arbeiten "Innenmischer" als Schlagwort tragen.
+    # ⭐ Das andere Ende derselben Kette ist eintragen(): Es ERGAENZT den
+    #   bestehenden Eintrag, statt ihn zu ersetzen - sonst warf ein neuer
+    #   Deckblatt-Lauf genau die Felder weg, die hier durchgereicht werden.
     angabe = dict(e)
     angabe["titel"] = e.get("titel") or ""
     angabe["verfasser"] = e.get("verfasser") or ""
@@ -342,8 +346,13 @@ _NACHTRAG_LAEUFT = set()
 # sortiert einen Eintrag mit Titel und Kategorie als fertig aus, und
 # _einen_nachtragen() reicht ihn dann nur noch weiter.
 # ⛔ Das Feld muss bei JEDEM Durchgang geschrieben werden, auch wenn das
-#   Modell nichts hergab - sonst wird dasselbe Dokument bei jeder
-#   Bestandsfrage erneut befragt (Gegenprobe A3 in dialogtest.py).
+#   Modell GEANTWORTET und nichts hergegeben hat - sonst wird dasselbe
+#   Dokument bei jeder Bestandsfrage erneut befragt (Gegenprobe A3 in
+#   dialogtest.py).
+# ⛔ GENAU EINE AUSNAHME: ein TRANSPORTFEHLER (Zeitablauf, Netz weg, 5xx).
+#   Dann wird ausdruecklich 0 geschrieben, damit der Eintrag offen bleibt -
+#   "nicht erreicht" ist kein Ergebnis. Siehe DeckblattNichtErreicht und
+#   Szenario 47 in dialogtest.py.
 DECKBLATT_FASSUNG = 1
 
 # \u26d4 GEMESSEN 24.09.: Im Katalog stand bei den Rechnungen des Instituts
@@ -627,11 +636,46 @@ def band_aus_text(text, zeichen=9000):
     return ""
 
 
+class DeckblattNichtErreicht(Exception):
+    """Das Deckblatt-Modell war gar nicht erst zu erreichen.
+
+    ⛔ WARUM EIGENS: Bis zum 05.10. fing _deckblatt_lesen JEDE Ausnahme ab und
+      gab None zurueck. Damit sahen "90 s Zeitablauf", "ollama 500" und
+      "Connection refused" genauso aus wie "das Modell hat geantwortet und
+      nichts Brauchbares gesagt" - und _einen_nachtragen schrieb in beiden
+      Faellen quelle="dateiname". Dieses Wort nimmt den Eintrag ENDGUELTIG aus
+      nachtragen() heraus.
+
+      Der Unterschied ist der zwischen voruebergehend und dauerhaft: Antwortet
+      dasselbe Modell auf denselben Text noch einmal, kommt dieselbe Antwort -
+      ein neuer Versuch ist sinnlos. Ein Zeitablauf dagegen ist ein Zustand
+      der Maschine und vergeht wieder.
+
+      Und er trifft nicht einen Einzelfall: docker-compose.yml:81-92 haelt
+      fest, dass das 12b-Modell bei hochgesetzten Docling-Arbeitern halb auf
+      die CPU rutscht - "Antwortzeiten von 160 s und Abbruechen", gegen 90 s
+      Zeitablauf hier unten. Genau dazu raten docker-compose.yml:93 und
+      doku/entwicklung/NAECHSTE-SITZUNG.md fuer einen grossen Aufnahmelauf.
+      Ohne diese Unterscheidung bekaeme in dem Zustand JEDES Dokument des
+      Bestands dauerhaft seinen Dateinamen als Titel - still, ohne zweiten
+      Versuch.
+    """
+
+
 def _deckblatt_lesen(text):
-    """Fragt das Deckblatt-Modell. Gibt dict oder None - wirft NIE."""
+    """Fragt das Deckblatt-Modell.
+
+    dict  = gelesen.
+    None  = das Modell hat GEANTWORTET, aber nichts Brauchbares gesagt.
+    wirft DeckblattNichtErreicht = die Anfrage kam nicht durch (Zeitablauf,
+          Netz weg, 5xx). Der Aufrufer muss das anders behandeln als None.
+    """
+    from urllib.request import Request, urlopen
     try:
-        from urllib.request import Request, urlopen
         leib = json.dumps({
+            # ⛔ _DECKBLATT_MODELL, NICHT _NETZ_MODELL. Das ist der ganze
+            #   Kern von 9cff8e8 (Verfasser eines Geschaeftsbriefs). Beides
+            #   ist durch Szenario 48 in dialogtest.py festgenagelt.
             "model": _DECKBLATT_MODELL,
             "messages": [{"role": "user",
                           "content": _DECKBLATT_ANWEISUNG + "\n\n" + text}],
@@ -640,11 +684,20 @@ def _deckblatt_lesen(text):
         }).encode("utf-8")
         a = Request(_NETZ_URL, data=leib,
                     headers={"Content-Type": "application/json"}, method="POST")
+    except Exception as e:
+        # Die Anfrage liess sich nicht einmal bauen - auch das ist "nicht
+        # erreicht", nicht "nichts Brauchbares".
+        raise DeckblattNichtErreicht("%s: %s" % (type(e).__name__, str(e)[:120]))
+    try:
         with urlopen(a, timeout=90) as r:
-            antwort = json.loads(r.read())
+            roh = r.read()
+    except Exception as e:
+        raise DeckblattNichtErreicht("%s: %s" % (type(e).__name__, str(e)[:120]))
+    try:
+        antwort = json.loads(roh)
         return _json_aus(((antwort.get("message") or {}).get("content") or ""))
     except Exception:
-        return None
+        return None          # geantwortet, aber nicht zu gebrauchen
 
 
 def eintragen(name, angabe, quelle="modell", pfad=VERZEICHNIS):
@@ -656,8 +709,6 @@ def eintragen(name, angabe, quelle="modell", pfad=VERZEICHNIS):
                 d = json.load(f)
         except Exception:
             d = {}
-        eintrag = dict(angabe)
-        eintrag["quelle"] = quelle
         # Immer OHNE Endung ablegen - so entstehen keine neuen unerreichbaren
         # Eintraege. Eine schon vorhandene Altlast mit Endung wird dabei
         # abgeraeumt, sonst stuenden zwei Eintraege fuer dasselbe Dokument da.
@@ -666,7 +717,29 @@ def eintragen(name, angabe, quelle="modell", pfad=VERZEICHNIS):
         # faende der Nachschlag den eben geschriebenen Eintrag nicht - der
         # Katalog fuellte sich, und die Bibliothek bliebe ohne Angaben.
         schluessel = _ohne_endung(_anzeige(name))
-        for k in [x for x in d if x != schluessel and _grund(_ohne_endung(x)) == _grund(schluessel)]:
+        doppelt = [x for x in d if x != schluessel
+                   and _grund(_ohne_endung(x)) == _grund(schluessel)]
+        # ⭐ ERGAENZEN, NICHT ERSETZEN (05.10.). Hier stand `eintrag =
+        #   dict(angabe)` - alles, was der Schreiber nicht kennt, fiel damit
+        #   weg. Durch den Sprung von DECKBLATT_FASSUNG laeuft seit dem 05.10.
+        #   JEDER Eintrag einmal durch diesen Neubau; nachgestellt verloren
+        #   gingen `schlagworte` und `band_gesucht` (letzteres laesst
+        #   _band_nachruesten danach jede Datei erneut oeffnen). angaben()
+        #   warnt am anderen Ende dieser Kette vor genau dieser Verengung:
+        #   wer den Katalog um Autoren, Betreuer oder Schlagworte erweitert,
+        #   darf sie nicht beim naechsten Deckblatt-Lauf wieder verlieren.
+        # ⚠ Erhalten heisst NICHT "das Alte gewinnt": `angabe` sticht jedes
+        #   Feld, das es mitbringt. Die Felder des Modells (titel, verfasser,
+        #   jahr, titel_quelle) werden in _einen_nachtragen deshalb bei JEDEM
+        #   Lesen mitgeschrieben, auch leer - sonst ueberlebte ein falscher
+        #   Verfasser den Fassungssprung (Gegenproben in dialogtest.py 46/49).
+        eintrag = {}
+        for k in doppelt:
+            eintrag.update(d.get(k) or {})
+        eintrag.update(d.get(schluessel) or {})
+        eintrag.update(angabe or {})
+        eintrag["quelle"] = quelle
+        for k in doppelt:
             d.pop(k, None)
         d[schluessel] = eintrag
         try:
@@ -738,7 +811,13 @@ def kategorie_bestimmen(name, text, alt=None, ist_katalog=False):
     return aus
 
 
-def _einen_nachtragen(name):
+def _einen_nachtragen(name, ausfall=None):
+    """Einen Katalogeintrag vom Deckblatt lesen lassen.
+
+    `ausfall` ist eine Liste, in die ein TRANSPORTFEHLER vermerkt wird (das
+    Modell war nicht zu erreichen). Der Aufrufer bricht den Durchgang
+    daraufhin ab - siehe nachtragen().
+    """
     with _NACHTRAG_SPERRE:
         if name in _NACHTRAG_LAEUFT:
             return False
@@ -761,14 +840,28 @@ def _einen_nachtragen(name):
         # kommt oder von Hand gesetzt wurde, bleibt unangetastet.
         veraltet = (int(alt.get("deckblatt_fassung") or 0) < DECKBLATT_FASSUNG
                     and (alt.get("quelle") or "modell") == "modell")
+        nicht_erreicht = ""          # Transportfehler? Dann KEIN Schlussstrich.
         if alt.get("titel") and not titel_ist_dateiname and not veraltet:
             angabe = {k: alt.get(k) for k in ("titel", "verfasser", "jahr") if alt.get(k)}
             quelle = alt.get("quelle") or "modell"
         else:
             # Deckblatt OHNE den Aufnahme-Kopf lesen; erste Seiten ausfuehrlicher
-            angabe = _deckblatt_lesen(_volltext_anfang(name, zeichen=6000, ab_inhalt=True) or text)
+            try:
+                angabe = _deckblatt_lesen(_volltext_anfang(name, zeichen=6000, ab_inhalt=True) or text)
+            except DeckblattNichtErreicht as e:
+                angabe, nicht_erreicht = None, str(e)
+                if ausfall is not None:
+                    ausfall.append(nicht_erreicht)
+                # ⛔ NICHT STILL. Stilles Scheitern ist hier dreimal teuer
+                #   geworden; ein Massenlauf, der jedem Dokument den
+                #   Dateinamen als Titel gibt, muss im Protokoll stehen.
+                print("[Bestand] Deckblatt nicht gelesen, das Modell war nicht "
+                      "zu erreichen (%s): %s. Titel bleibt vorlaeufig der "
+                      "Dateiname, der naechste Durchgang versucht es erneut."
+                      % (nicht_erreicht, str(name)[:120]),
+                      file=sys.stderr, flush=True)
             if not angabe:
-                if alt.get("titel"):
+                if alt.get("titel") and not titel_ist_dateiname:
                     angabe = {k: alt.get(k) for k in ("titel", "verfasser", "jahr") if alt.get(k)}
                     quelle = alt.get("quelle") or "modell"
                 else:
@@ -782,22 +875,41 @@ def _einen_nachtragen(name):
                     #
                     # Ein fehlender Titel kostet jetzt nur noch den Titel.
                     #
-                    # ⚠ OFFEN: quelle="dateiname" nimmt den Eintrag dauerhaft
-                    #   aus nachtragen() heraus - auch beim naechsten Sprung
-                    #   von DECKBLATT_FASSUNG. Das ist heute gewollt (jeder
-                    #   neue Versuch beim selben Modell gaebe dieselbe
-                    #   Antwort), aber wer die Fassung erhoeht, weil ein
-                    #   BESSERES Modell liest, muss die Bedingung dort um
-                    #   "dateiname" erweitern - sonst bleiben ausgerechnet
-                    #   die Dokumente aussen vor, bei denen das Lesen
-                    #   misslungen ist.
+                    # ⛔ quelle="dateiname" ist ein SCHLUSSSTRICH: Es nimmt den
+                    #   Eintrag dauerhaft aus nachtragen() heraus. Gerechtfertigt
+                    #   ist er nur, wenn das Modell GEANTWORTET und nichts
+                    #   hergegeben hat - dann gaebe derselbe Text beim selben
+                    #   Modell dieselbe Antwort. Bei einem Transportfehler ist er
+                    #   falsch: der Eintrag bliebe fuer immer beim Dateinamen
+                    #   stehen, obwohl die naechste Minute ihn lesen koennte.
+                    #   Deshalb dort quelle="modell" und Fassung 0 - der Eintrag
+                    #   bleibt offen und heilt sich beim naechsten Durchgang
+                    #   selbst (so war es vor ef09efb, nur ohne den Ausfall der
+                    #   ganzen Katalogzeile).
+                    #
+                    # ⚠ Wer DECKBLATT_FASSUNG erhoeht, weil ein BESSERES Modell
+                    #   liest, muss die Bedingung in nachtragen() um "dateiname"
+                    #   erweitern - sonst bleiben ausgerechnet die Dokumente
+                    #   aussen vor, bei denen das Lesen misslungen ist.
                     angabe = {"titel": _anzeige(stamm), "titel_quelle": "dateiname"}
-                    quelle = "dateiname"
+                    quelle = "modell" if nicht_erreicht else "dateiname"
             else:
                 quelle = "modell"
+                # ⛔ Die drei vom Modell besetzten Felder werden bei JEDEM Lesen
+                #   neu gesetzt, auch wenn eines diesmal leer bleibt - sonst
+                #   ueberlebte ein falscher Verfasser (der EMPFAENGER, Schaden
+                #   von 9cff8e8) den Fassungssprung, weil eintragen() unbekannte
+                #   Felder erhaelt.
+                angabe = dict(angabe)
+                for _k in ("titel", "verfasser", "jahr"):
+                    angabe[_k] = angabe.get(_k) or ""
+                angabe["titel_quelle"] = ""      # die Ruecklage ist abgeloest
         # Auch wenn das Modell nichts hergab: die Fassung vermerken, sonst
         # wuerde dasselbe Dokument bei jeder Bestandsfrage erneut befragt.
-        angabe["deckblatt_fassung"] = DECKBLATT_FASSUNG
+        # ⛔ Ausser bei einem Transportfehler - dann MUSS der Eintrag offen
+        #   bleiben. Ausdruecklich 0 statt "weglassen": eintragen() erhaelt
+        #   unbekannte Felder, eine alte Fassung stuende sonst weiter da.
+        angabe["deckblatt_fassung"] = 0 if nicht_erreicht else DECKBLATT_FASSUNG
         try:
             import pruefungskatalog as _pk
             ist_katalog = _pk.ist_katalog(text if len(text) >= 6000 else _volltext_anfang(name, zeichen=60000))
@@ -906,10 +1018,30 @@ def nachtragen(namen, hoechstens=5):
     if not offen:
         return 0
     sofort, spaeter = offen[:hoechstens], offen[hoechstens:]
-    getan = sum(1 for n in sofort if _einen_nachtragen(n))
-    if spaeter:
-        threading.Thread(target=lambda: [_einen_nachtragen(n) for n in spaeter],
-                         daemon=True).start()
+    # ⛔ EIN AUSFALL BEENDET DEN DURCHGANG (05.10.). Ist das Deckblatt-Modell
+    #   nicht zu erreichen, kostet jeder weitere Versuch nur den Zeitablauf von
+    #   90 s - und zwar hier, im Faden der Bestandsfrage: 5 Dokumente waeren
+    #   7,5 Minuten Haenger an EINER Frage, und der Faden unten maehlte sich
+    #   durch den Rest des Bestands (1.785 Dokumente x 90 s = 44 Stunden).
+    #   Einmal reicht als Befund; die Eintraege bleiben offen und werden beim
+    #   naechsten Durchgang erneut gelesen, sobald das Modell wieder da ist.
+    #   ⚠ Nicht zu verwechseln mit "das Modell hat geantwortet und nichts
+    #     hergegeben" - das ist kein Ausfall und bricht nichts ab.
+    ausfall = []
+    getan = 0
+    for n in sofort:
+        if _einen_nachtragen(n, ausfall):
+            getan += 1
+        if ausfall:
+            break
+    if spaeter and not ausfall:
+        def _rest():
+            weg = []
+            for n in spaeter:
+                _einen_nachtragen(n, weg)
+                if weg:
+                    break
+        threading.Thread(target=_rest, daemon=True).start()
     return getan
 
 

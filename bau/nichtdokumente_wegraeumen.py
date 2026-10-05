@@ -66,13 +66,22 @@ def _pakete(namen, grenze=60000):
       "Argument list too long". Auf dem Server laeuft node ueber
       `docker exec`, was zusaetzlich kostet; die Grenze liegt also
       bewusst deutlich darunter.
+
+    ⛔ GEZAEHLT WIRD IN BYTE (05.10.). Hier stand `len(json.dumps(...))`,
+      also die ZEICHENzahl - ARG_MAX und MAX_ARG_STRLEN zaehlen aber BYTE.
+      Ein Umlaut ist in UTF-8 zwei Byte, ein CJK-Zeichen drei. Gemessen an
+      6.435 Namen: mit "Pruefbericht_Schweissnaht_..." in der
+      Umlaut-Schreibweise wurde jedes Paket 64.438 Byte gross, mit
+      japanischen Namen 129.948 - also genau der Fehler, den diese
+      Funktion verhindern soll. Dieselbe Verwechslung steckte im Baustein
+      "Nur ein Bereich je Durchgang" (dort b.length, ebenfalls behoben).
     """
     raus, jetzt, laenge = [], [], 2
     for n in namen:
         # +2, nicht +1: json.dumps trennt mit Komma UND Leerzeichen.
         # Der Unterschied sind bei 3.000 Namen genau 3.000 Zeichen - und
         # damit die Pruefung rot (gemessen: 62.979 statt <= 60.000).
-        kosten = len(json.dumps(n, ensure_ascii=False)) + 2
+        kosten = len(json.dumps(n, ensure_ascii=False).encode("utf-8")) + 2
         if jetzt and laenge + kosten > grenze:
             raus.append(jetzt)
             jetzt, laenge = [], 2

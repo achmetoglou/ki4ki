@@ -192,16 +192,36 @@ def test_pakete_bleiben_unter_der_befehlsgrenze():
       egal wo es laeuft.
     """
     print("\nPakete bleiben unter der Befehlsgrenze")
-    namen = ["Bericht_%05d.pdf" % i for i in range(6435)]
-    pakete = w._pakete(namen, grenze=60000)
-    zu_gross = [len(json.dumps(p)) for p in pakete
-                if len(json.dumps(p)) > 60000]
-    pruefe(not zu_gross,
-           "kein Paket ueber 60.000 Zeichen (zu gross: %s)" % zu_gross)
-    wieder = [n for p in pakete for n in p]
-    pruefe(wieder == namen,
-           "und zusammen sind es wieder genau dieselben Namen, "
-           "in derselben Reihenfolge")
+
+    def _byte(paket):
+        # ⛔ GENAU SO geht das Paket hinaus: _gruende baut daraus mit
+        #   ensure_ascii=False den JS-Text, und subprocess reicht ihn als EIN
+        #   Argument weiter. Gezaehlt wird dort in BYTE, nicht in Zeichen.
+        return len(json.dumps(paket, ensure_ascii=False).encode("utf-8"))
+
+    # ⛔ ZWEIMAL, MIT UND OHNE ASCII (05.10.). Mit lauter ASCII-Namen war
+    #   diese Pruefung gruen-falsch: _pakete zaehlte `len(json.dumps(...))`,
+    #   also ZEICHEN. Ein Umlaut ist 2 Byte, ein CJK-Zeichen 3 - bei
+    #   Zulieferer-Unterlagen ("Prüfbericht", "検査報告書") reisst die
+    #   Grenze, obwohl die Zeichenzahl stimmt.
+    ascii_namen = ["Bericht_%05d.pdf" % i for i in range(6435)]
+    cjk_namen = [u"検査報告書_超音波"
+                 u"プルーフベリフィ"
+                 u"ケーション_%05d.pdf" % i
+                 for i in range(6435)]
+    umlaut_namen = [u"Prüfbericht_Schweißnaht_Qualität"
+                    u"sprüfung_%05d.pdf" % i for i in range(6435)]
+    for kennung, namen in (("ASCII", ascii_namen), ("CJK", cjk_namen),
+                           ("Umlaute", umlaut_namen)):
+        pakete = w._pakete(namen, grenze=60000)
+        zu_gross = [_byte(p) for p in pakete if _byte(p) > 60000]
+        pruefe(not zu_gross,
+               "%-8s kein Paket ueber 60.000 BYTE (zu gross: %s)"
+               % (kennung, zu_gross[:3]))
+        wieder = [n for p in pakete for n in p]
+        pruefe(wieder == namen,
+               "%-8s und zusammen sind es wieder genau dieselben Namen, "
+               "in derselben Reihenfolge" % kennung)
     pruefe(w._pakete([], grenze=60000) in ([], [[]]),
            "leere Liste macht keinen Aerger")
 

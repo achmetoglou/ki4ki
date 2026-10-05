@@ -367,6 +367,82 @@ const codeUmgebung = (vomFilter, roh, quellen) => ({
            .indexOf('xlsm') !== -1,
          '9f "Ablage entscheiden" bekommt die Liste weiterhin als Text');
 
+  // ---------------------------------------------------------------- 10
+  // ⛔ DAS FAIL-CLOSED MUSS ZUFALLEN, NICHT AUFFALLEN.
+  //   "Code" traegt onError: "continueRegularOutput". n8n reicht in dem Fall
+  //   die EINGANGSDATEN unveraendert weiter (workflow-execute.js bei
+  //   continuesOnError) - ein `throw` wirkt hier also nicht wie ein Riegel,
+  //   sondern wie ein Durchlass: Die Elemente kaemen ohne jede Marke bei
+  //   "Nur Dokumente hochladen" an, und dessen Filter prueft
+  //   `hochladen !== false` - undefined ist nicht false. Gemessen vor der
+  //   Reparatur: 4 von 4 unmarkierten Elementen gingen in den Upload.
+  //   Deshalb wird der Riegel in die DATEN geschrieben, nicht in den
+  //   Kontrollfluss.
+  // ⛔ onError: "stopWorkflow" waere falsch: "Code" liegt zwischen
+  //   "Sperre setzen" und "Sperre freigeben" - ein echter Abbruch liesse die
+  //   Sperre bis zum 120-Minuten-Notnagel liegen (der Fehler vom 04.08.).
+  console.log('\n10) Positivliste kommt nicht an - der Riegel faellt ZU');
+  const knotenCode = wf.nodes.find(n => n.name === 'Code') || {};
+  pruefe(knotenCode.onError === 'continueRegularOutput',
+         '10a Kontrolle: "Code" laeuft bei Fehler weiter - deshalb darf er nicht werfen'
+         + ' (ist: ' + knotenCode.onError + ')');
+  const quellen10 = ['Messung.tra', 'Post.msg', 'Leer.pdf', 'Beleg.pdf']
+    .map(n => datei(DIR, n));
+  const roh10 = quellen10.map(q => ({ json: {
+    docling_filename: q.binary.data.fileName,
+    data: 'Ein hinreichend langer Text zum Pruefen.' } }));
+  const dienst10 = { helpers: { httpRequest: async (o) => ({
+    schluessel: o.body.dateien.map(x => ({
+      bereich: x.bereich, unterpfad: x.unterpfad,
+      schluessel: 'kap-' + x.unterpfad.replace(/\W+/g, '-'),
+      abdruck: 'ab' + x.unterpfad.replace(/\W+/g, '').toLowerCase().slice(-8),
+      nur_beleg: false, traeger: '' })), fehler: [] }) } };
+  // Der besitzende Baustein hat die Listen NICHT mitgeliefert (leeres json).
+  const ohneListen = Object.assign(
+    codeUmgebung({ json: {} }, roh10, quellen10), dienst10);
+  let r10 = null, geworfen = null;
+  try { r10 = await fahre('Code', ohneListen); } catch (e) { geworfen = e; }
+  pruefe(geworfen === null,
+         '10b "Code" wirft NICHT - ein Wurf wuerde hier zum Durchlass'
+         + (geworfen ? ' (geworfen: ' + geworfen.message.slice(0, 80) + ')' : ''));
+  if (r10) {
+    pruefe(r10.length === quellen10.length,
+           '10c alle Elemente kommen weiter (fuer die Ablage) (' + r10.length + ')');
+    pruefe(r10.every(e => e.json.hochladen === false),
+           '10d KEINES ist zum Hochladen freigegeben');
+    pruefe(r10.every(e => e.json.nicht_vorgesehen === true),
+           '10e jedes traegt nicht_vorgesehen - "Ablage entscheiden" laesst es draussen');
+    pruefe(r10.every(e => e.json.listen_fehlen === true),
+           '10f und den WAHREN Grund, damit das Protokoll nicht "Format nicht vorgesehen" luegt');
+    const hoch10 = await fahre('Nur Dokumente hochladen', { $input: { all: () => r10 } });
+    pruefe(hoch10.length === 0,
+           '10g bis zum Upload gerechnet: NICHTS geht hoch (' + hoch10.length + ' von '
+           + r10.length + ')');
+    // Und das Protokoll muss den WAHREN Grund nennen - eine .pdf ist kein
+    // unvorgesehenes Format, der Fehler steckt eine Stelle frueher.
+    const r10ab = await fahre('Ablage entscheiden', {
+      $input: { all: () => [{ json: { workspace: { documents: [] } } }] },
+      $: (n) => ({ all: () => (n === 'Code' ? r10 : quellen10),
+                   first: () => ({ json: { stdout: 'Normallauf: 4 Dateien' } }) }),
+      $now: { toFormat: () => '2026-10-05 08:00:00' },
+    });
+    const je10 = {}; for (const x of r10ab[0].json.dokumente) je10[x.datei] = x;
+    pruefe(Object.keys(je10).every(k => je10[k].ziel === 'aussortiert'),
+           '10i keines wandert ins Archiv');
+    pruefe(String(r10ab[0].json.befehl || '').indexOf('Positivliste nicht angekommen') !== -1,
+           '10j das aussortiert.log nennt die Positivliste, nicht die Endung');
+    pruefe(String(r10ab[0].json.befehl || '').indexOf('Format nicht vorgesehen (.pdf)') === -1,
+           '10k GEGENPROBE: und behauptet NICHT, eine .pdf sei ein unvorgesehenes Format');
+  }
+  // ⛔ Die Gegenprobe zum Riegel: so sieht es aus, wenn er faellt statt
+  //   zuzufallen - n8n reicht die Eingangsdaten unveraendert weiter.
+  const durchgereicht = await fahre('Nur Dokumente hochladen',
+                                    { $input: { all: () => roh10 } });
+  pruefe(durchgereicht.length === roh10.length,
+         '10h GEGENPROBE: unmarkierte Elemente wuerden ALLE hochgeladen ('
+         + durchgereicht.length + ' von ' + roh10.length + ') - genau deshalb '
+         + 'muss "Code" sie markieren, statt zu werfen');
+
   console.log('\n' + fehler + ' Fehler');
   process.exit(fehler ? 1 : 0);
 })().catch(e => { console.error('ABBRUCH:', e); process.exit(2); });

@@ -2101,6 +2101,247 @@ def szenario_46_ruecklage_ohne_deckblatt():
         shutil.rmtree(ordner, ignore_errors=True)
 
 
+class _Modellantwort(object):
+    """Was urlopen() zurueckgibt - gerade so viel, wie _deckblatt_lesen liest."""
+
+    def __init__(self, inhalt):
+        self._roh = json.dumps({"message": {"content": inhalt}}).encode("utf-8")
+
+    def read(self):
+        return self._roh
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *_):
+        return False
+
+
+def _netz_ruesten(antwort=None, wirft=None):
+    """urlopen untergeschoben. Gibt (leiber, zuruecksetzen).
+
+    ⭐ Nicht _deckblatt_lesen ersetzen, sondern das NETZ darunter: nur so
+      laeuft die Funktion selbst mit - samt Anfrageleib, Zeitablauf und
+      Fehlerbehandlung. Genau daran haengen B1 und B4.
+    """
+    import urllib.request as _ur
+    vorher = _ur.urlopen
+    leiber = []
+
+    def _urlopen(anfrage, timeout=None):
+        leiber.append(json.loads(anfrage.data.decode("utf-8")))
+        if wirft is not None:
+            raise wirft
+        return _Modellantwort(json.dumps(antwort or {}))
+
+    _ur.urlopen = _urlopen
+
+    def _zurueck():
+        _ur.urlopen = vorher
+    return leiber, _zurueck
+
+
+def szenario_47_modell_nicht_erreichbar():
+    print("\n[47] Ein Zeitablauf friert den Dateinamen NICHT fuer immer ein")
+    import bestand
+    import shutil
+    # ⛔ DER FALL: docker-compose.yml:81-92 - bei hochgesetzten Docling-
+    #   Arbeitern rutscht das Deckblatt-Modell halb auf die CPU, 160 s
+    #   Antwortzeit gegen 90 s Zeitablauf. Genau dazu raten
+    #   docker-compose.yml:93 und NAECHSTE-SITZUNG.md fuer den grossen
+    #   Aufnahmelauf. Wird daraufhin quelle="dateiname" geschrieben, nimmt
+    #   nachtragen() den Eintrag ENDGUELTIG heraus - alle 1.785 Dokumente
+    #   truegen dann dauerhaft ihren Dateinamen als Titel.
+    NAME = "Pruefbericht-7788--3c1d9e0a"
+    KOPF = ("Dokumenttyp: Test Report\nSprache: German\n\n## Keywords\n\n- Ultraschall\n\n"
+            "## Inhalt\n\nPruefbericht ueber eine Ultraschallpruefung an einer Rohrleitung.")
+    ordner = _probe_ordner({NAME: KOPF})
+    alt_ordner = bestand._BESTAND_ORDNER
+    bestand._BESTAND_ORDNER = ordner
+    leiber, zurueck = _netz_ruesten(wirft=OSError("timed out"))
+    try:
+        _probe_katalog({})
+        ok = bestand._einen_nachtragen(NAME)
+        e = bestand.angaben(NAME) or {}
+        pruefe(ok, "C1 der Nachtrag gilt als getan - die Katalogzeile faellt nicht aus")
+        pruefe(bool(e.get("kategorie")) and e.get("themen") == ["Ultraschall"],
+               "C1 Kategorie und Themen stehen trotzdem im Katalog (ist: %r / %r)"
+               % (e.get("kategorie"), e.get("themen")))
+        pruefe(e.get("titel_quelle") == "dateiname",
+               "C1 der Titel ist als blosse Ruecklage gekennzeichnet (ist: %r)"
+               % e.get("titel_quelle"))
+        # ⛔ Die beiden Schloesser, die den Eintrag sonst FUER IMMER zumachen.
+        pruefe((e.get("quelle") or "modell") == "modell",
+               "C1 quelle bleibt 'modell' - ein Zeitablauf ist kein Schlussstrich (ist: %r)"
+               % e.get("quelle"))
+        pruefe(int(e.get("deckblatt_fassung") or 0) == 0,
+               "C1 keine Fassung vermerkt - der Eintrag bleibt offen (ist: %r)"
+               % e.get("deckblatt_fassung"))
+        # --- und das Entscheidende: der naechste Durchgang versucht es WIEDER
+        del leiber[:]
+        bestand.nachtragen([NAME], hoechstens=10)
+        pruefe(len(leiber) >= 1,
+               "C1 der naechste Durchgang fragt das Modell erneut (Aufrufe: %d, erwartet >=1)"
+               % len(leiber))
+        # --- ⛔ ABER NICHT EINEN JE DOKUMENT. Ist das Modell weg, kostet jeder
+        #     weitere Versuch im selben Durchgang nur den Zeitablauf: 5 Dokumente
+        #     waeren 5 x 90 s = 7,5 Minuten Haenger an EINER Bestandsfrage, und
+        #     im Hintergrund maehlte sich der Rest des Bestands durch (1.785
+        #     Dokumente x 90 s = 44 Stunden Faden). Einmal reicht als Befund.
+        _probe_katalog({})
+        drei = {"Pruefbericht-7001--a1": KOPF, "Pruefbericht-7002--a2": KOPF,
+                "Pruefbericht-7003--a3": KOPF}
+        for n, t in drei.items():
+            with open(os.path.join(ordner, "auw", n + ".md-1.json"), "w",
+                      encoding="utf-8") as fh:
+                json.dump({"pageContent": t}, fh)
+        del leiber[:]
+        bestand.nachtragen(sorted(drei), hoechstens=3)
+        pruefe(len(leiber) == 1,
+               "C1 ein Ausfall beendet den Durchgang - nicht 3 Zeitablaeufe "
+               "hintereinander (Aufrufe: %d, erwartet 1)" % len(leiber))
+        offen = [n for n in sorted(drei)
+                 if int((bestand.angaben(n) or {}).get("deckblatt_fassung") or 0) == 0]
+        pruefe(len(offen) == 3,
+               "C1 und trotzdem bleiben alle drei offen fuer den naechsten "
+               "Durchgang (offen: %d von 3)" % len(offen))
+        # --- GEGENPROBE: Modell wieder da -> echter Titel, quelle 'modell'
+        zurueck()
+        leiber, zurueck = _netz_ruesten(antwort={
+            "titel": "Pruefbericht Nr. 7788 Ultraschallpruefung Rohrleitung DN 200",
+            "verfasser": "Herr Standfuss-Holthausen", "jahr": "2026"})
+        bestand.nachtragen([NAME], hoechstens=10)
+        e2 = bestand.angaben(NAME) or {}
+        pruefe(e2.get("titel", "").startswith("Pruefbericht Nr. 7788")
+               and not e2.get("titel_quelle"),
+               "C1 GEGENPROBE: ohne Ausfall steht der echte Titel da (ist: %r / %r)"
+               % (e2.get("titel"), e2.get("titel_quelle")))
+        pruefe((e2.get("quelle") or "") == "modell"
+               and int(e2.get("deckblatt_fassung") or 0) == bestand.DECKBLATT_FASSUNG,
+               "C1 GEGENPROBE: jetzt ist der Eintrag fertig und wird nicht wieder gefragt")
+        # --- ERREICHT, aber nichts Brauchbares: DAS ist der Schlussstrich.
+        #     Ein neuer Versuch beim selben Modell gaebe dieselbe Antwort.
+        _probe_katalog({})
+        zurueck()
+        leiber, zurueck = _netz_ruesten(antwort={"titel": "KI4KI", "jahr": "2026"})
+        bestand._einen_nachtragen(NAME)
+        e3 = bestand.angaben(NAME) or {}
+        pruefe((e3.get("quelle") or "") == "dateiname"
+               and int(e3.get("deckblatt_fassung") or 0) == bestand.DECKBLATT_FASSUNG,
+               "C1 GEGENPROBE: antwortet das Modell und gibt nichts her, bleibt es "
+               "beim Schlussstrich (ist: %r / %r)"
+               % (e3.get("quelle"), e3.get("deckblatt_fassung")))
+    finally:
+        zurueck()
+        bestand._BESTAND_ORDNER = alt_ordner
+        _probe_katalog({})
+        shutil.rmtree(ordner, ignore_errors=True)
+
+
+def szenario_48_deckblatt_modell_im_anfrageleib():
+    print("\n[48] Das Deckblatt wird mit dem GROSSEN Modell gelesen - im Standardlauf nachweisbar")
+    import bestand
+    # ⛔ WARUM DIESE PRUEFUNG: Der ganze Commit 9cff8e8 heisst "benutze fuer
+    #   das Deckblatt das groessere Modell". Zwei Einzeiler machen ihn
+    #   rueckgaengig - `_DECKBLATT_MODELL = _NETZ_MODELL` und `"model":
+    #   _NETZ_MODELL` in _deckblatt_lesen - und beide blieben ueber alle
+    #   Pruefungen gruen. --deckblatt faengt es, laeuft aber nur von Hand am
+    #   echten Modell. Hier ohne Modell: nachgesehen wird im ANFRAGELEIB.
+    pruefe(bestand._DECKBLATT_MODELL != bestand._NETZ_MODELL,
+           "D1 Deckblatt- und Netzmodell sind NICHT dasselbe (%r / %r)"
+           % (bestand._DECKBLATT_MODELL, bestand._NETZ_MODELL))
+    leiber, zurueck = _netz_ruesten(antwort={
+        "titel": "Angebot Nr. 274666 Schulung Kunststoffschweissen",
+        "verfasser": "Frau Petra Kappler", "jahr": "2026"})
+    try:
+        erg = bestand._deckblatt_lesen("Angebot Nr. 274666 - Schulung Kunststoffschweissen")
+        pruefe(len(leiber) == 1, "D1 Kontrolle: genau eine Anfrage ging hinaus (%d)" % len(leiber))
+        gefragt = (leiber[0] if leiber else {}).get("model")
+        pruefe(gefragt == bestand._DECKBLATT_MODELL,
+               "D1 im Anfrageleib steht _DECKBLATT_MODELL (ist: %r, erwartet %r)"
+               % (gefragt, bestand._DECKBLATT_MODELL))
+        pruefe(gefragt != bestand._NETZ_MODELL,
+               "D1 und ausdruecklich NICHT das kleine Netzmodell %r" % bestand._NETZ_MODELL)
+        pruefe((erg or {}).get("verfasser") == "Frau Petra Kappler",
+               "D1 Kontrolle: die Antwort wird auch wirklich ausgewertet (ist: %r)"
+               % ((erg or {}).get("verfasser"),))
+        # Gegenprobe: ein nicht erreichbares Modell darf NIE wie None aussehen.
+        zurueck()
+        leiber, zurueck = _netz_ruesten(wirft=OSError("Connection refused"))
+        try:
+            bestand._deckblatt_lesen("egal")
+            geworfen = False
+        except bestand.DeckblattNichtErreicht:
+            geworfen = True
+        pruefe(geworfen,
+               "D1 GEGENPROBE: 'Connection refused' wirft DeckblattNichtErreicht, "
+               "gibt nicht stillschweigend None")
+    finally:
+        zurueck()
+
+
+def szenario_49_eintragen_erhaelt_fremde_felder():
+    print("\n[49] Ein neuer Deckblatt-Lauf wirft nicht weg, was er nicht kennt")
+    import bestand
+    import shutil
+    # ⚠ angaben() (bestand.py) warnt ausdruecklich davor, nur eine
+    #   handverlesene Auswahl durchzureichen - eintragen() tat bis zum 05.10.
+    #   genau das Gegenteilige am anderen Ende: `eintrag = dict(angabe)`,
+    #   also ERSETZEN statt ERGAENZEN. Durch den Fassungssprung laeuft jetzt
+    #   jeder Eintrag einmal durch diesen Neubau.
+    NAME = "Rechnung-9002--7b2e4f10"
+    # Der Katalog fuehrt den ANZEIGEtitel als Schluessel, nicht den
+    # produktiven Namen mit Abdruck - genauso legt eintragen() ihn ab.
+    SCHLUESSEL = "Rechnung-9002"
+    KOPF = ("Dokumenttyp: Invoice\nSprache: German\n\n## Keywords\n\n- Schweissnaht\n\n"
+            "## Inhalt\n\nRechnung ueber eine Durchstrahlungspruefung.")
+    ordner = _probe_ordner({NAME: KOPF})
+    alt_ordner = bestand._BESTAND_ORDNER
+    bestand._BESTAND_ORDNER = ordner
+    leiber, zurueck = _netz_ruesten(antwort={
+        "titel": "Rechnung Nr. 9002 Durchstrahlungspruefung",
+        "verfasser": "Herr Standfuss-Holthausen", "jahr": "2026"})
+    try:
+        _probe_katalog({SCHLUESSEL: {
+            "titel": "Rechnung Nr. 9002", "verfasser": "Nordwerk Polymere AG",
+            "jahr": "2026", "kategorie": "Sonstiges", "quelle": "modell",
+            # Felder, die _einen_nachtragen NICHT kennt:
+            "schlagworte": ["Innenmischer", "Durchstrahlung"],
+            "band_gesucht": 2, "betreuer": "Prof. Dr.-Ing. Musterfrau"}})
+        bestand._einen_nachtragen(NAME)
+        e = bestand.angaben(NAME) or {}
+        pruefe(e.get("titel") == "Rechnung Nr. 9002 Durchstrahlungspruefung",
+               "E1 Kontrolle: das Deckblatt wurde wirklich neu gelesen (ist: %r)" % e.get("titel"))
+        pruefe(e.get("schlagworte") == ["Innenmischer", "Durchstrahlung"],
+               "E1 die Schlagworte ueberleben den Neubau (ist: %r)" % (e.get("schlagworte"),))
+        pruefe(int(e.get("band_gesucht") or 0) == 2,
+               "E1 band_gesucht ueberlebt - sonst oeffnet _band_nachruesten jede "
+               "Datei wieder neu (ist: %r)" % e.get("band_gesucht"))
+        pruefe(e.get("betreuer") == "Prof. Dr.-Ing. Musterfrau",
+               "E1 auch ein Feld, das dieser Schreiber gar nicht kennt, bleibt stehen "
+               "(ist: %r)" % e.get("betreuer"))
+        # --- ⛔ GEGENPROBE: Erhalten heisst NICHT "alles Alte bleibt stehen".
+        #     Die drei Felder, die das Modell besetzt, muessen bei jedem Lesen
+        #     neu geschrieben werden - sonst ueberlebte der EMPFAENGER als
+        #     Verfasser den Fassungssprung, und 9cff8e8 waere umsonst gewesen.
+        _probe_katalog({SCHLUESSEL: {
+            "titel": "Rechnung Nr. 9002", "verfasser": "Nordwerk Polymere AG",
+            "jahr": "2026", "kategorie": "Sonstiges", "quelle": "modell"}})
+        zurueck()
+        leiber, zurueck = _netz_ruesten(antwort={
+            "titel": "Rechnung Nr. 9002 Durchstrahlungspruefung"})   # ohne Verfasser
+        bestand._einen_nachtragen(NAME)
+        e2 = bestand.angaben(NAME) or {}
+        pruefe(not (e2.get("verfasser") or ""),
+               "E1 GEGENPROBE: gibt das Deckblatt keinen Verfasser her, wird der alte "
+               "(falsche) NICHT wiederbelebt (ist: %r)" % e2.get("verfasser"))
+    finally:
+        zurueck()
+        bestand._BESTAND_ORDNER = alt_ordner
+        _probe_katalog({})
+        shutil.rmtree(ordner, ignore_errors=True)
+
+
 # --------------------------------------------- Schicht 2: braucht das Modell
 #
 # A1 laeuft NICHT im Standardlauf. dialogtest.py ist sonst deterministisch
@@ -2216,7 +2457,10 @@ if __name__ == "__main__":
               szenario_43_hochladen_nur_mit_rolle,
               szenario_44_ablage_wird_angelegt,
               szenario_45_deckblatt_fassung,
-              szenario_46_ruecklage_ohne_deckblatt):
+              szenario_46_ruecklage_ohne_deckblatt,
+              szenario_47_modell_nicht_erreichbar,
+              szenario_48_deckblatt_modell_im_anfrageleib,
+              szenario_49_eintragen_erhaelt_fremde_felder):
         try:
             s()
         except Exception as e:

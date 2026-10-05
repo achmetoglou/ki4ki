@@ -261,7 +261,7 @@ sie stehen in der `docker-compose.yml`.)
 | `KI4KI_FORMELN` | `aus` | Formeln als LaTeX erkennen (~6 min je Dissertation). |
 | `KI4KI_MASSENLAUF_AB` | `6` | Ab so vielen Dateien im Eingang läuft die Aufnahme ohne Bildbeschreibung. |
 | `KI4KI_MENGE_JE_LAUF` | `25` | Dateien je Durchgang. |
-| `KI4KI_CLAIM_MINUTEN` | `180` | Nach so vielen Minuten gilt eine Datei in `input/` als von einem gescheiterten Durchgang liegengelassen und wandert nach `aussortiert/`. **Vor einem Massenlauf hochsetzen** — siehe Abschnitt direkt unter der Tabelle. Ein ungültiger Wert (leer, Buchstaben, `0`) wird verworfen, dann gilt wieder 180. |
+| `KI4KI_CLAIM_MINUTEN` | `180` | Nach so vielen Minuten gilt eine Datei in `input/` als von einem gescheiterten Durchgang liegengelassen und wandert nach `aussortiert/`. **Vor einem Massenlauf hochsetzen** — siehe Abschnitt direkt unter der Tabelle. Ein ungültiger Wert (leer, Buchstaben, `0`, negativ oder **mehr als sieben Stellen**) wird verworfen, dann gilt wieder 180; gültig ist 1 bis `9999999`. |
 | `KI4KI_DOCLING_THREADS` | `12` | Prozessorkerne für Docling. |
 | `KI4KI_GID` | `1000` | Gruppe, der die Dokumentordner gehören (für SFTP-Zugang). Eigentümer ist immer Benutzer-Nummer 1000. |
 | `KI4KI_ROLLE_GLAETTEN` | `1` | Das Modell formuliert aus den drei Rollen-Feldern den Rollen-Absatz; `0` = die Vorlage gilt wörtlich. |
@@ -292,6 +292,16 @@ Dateien eines Massen-Einwurfs nahezu denselben `ctime` tragen, wandern die
 
 Nach dem Lauf wieder auf `180` zurücksetzen — sonst bleibt der Riegel gegen
 Endlosschleifen tagelang wirkungslos.
+
+⛔ **Höchstens sieben Stellen: 1 bis `9999999`** (das sind 19 Jahre). Ein Wert
+mit **acht oder mehr Stellen gilt als ungültig und fällt still auf 180 zurück** —
+genau wie leer, `0`, negativ oder Buchstaben. Wer die Claim-Garantie
+„abschalten“ will und `10000000` einträgt, bekommt deshalb **180 Minuten, also
+das Gegenteil**; für „praktisch aus“ gehört `9999999` in die `.env`. Die
+Warnzeile dazu erscheint nur in der n8n-Ausführung (Port 5678), nicht per Mail —
+im Urlaub sieht sie niemand. Der Riegel bleibt bewusst so streng: unquotiert
+wäre der Wert ein Einfallstor (`180 -delete` hinge ein zweites `find`-Argument
+an, `abc` ließe die Claim-Garantie stillschweigend nie mehr greifen).
 
 Weitere Schalter (`AUFFANGNETZ`, `E2B_ANTWORT`, `MODELL_ANZEIGE`, `NENNUNG_TILGEN`,
 `BEREICH_HEILEN`, `LOESCHEN`, `PROTOKOLL_TAGE`) stehen mit Erklärung in `.env.beispiel`.

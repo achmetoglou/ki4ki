@@ -20,6 +20,7 @@ Aufruf:
 import json
 import io
 import os
+import re
 import subprocess
 import sys
 
@@ -598,18 +599,22 @@ def test_aufraeumbefehl_bleibt_unter_der_befehlsgrenze():
       waeren das ueber 150.000 Zeichen - der Baustein kaeme gar nicht mehr
       zum Laufen, und zwar JEDE Minute neu. Allein die 151 versteckten
       Dateien im Bestand reichen dafuer aus.
+
+    ⛔ UND ZWEIMAL, MIT UND OHNE ASCII (05.10.). Diese Pruefung mass zwar
+      schon Byte, fuetterte aber nur ASCII - damit war sie gruen-falsch:
+      Der Baustein zaehlte sein Budget in `b.length`, und das sind
+      UTF-16-ZEICHEN. MAX_ARG_STRLEN zaehlt BYTE. Ein CJK-Zeichen ist
+      3 Byte, ein Umlaut 2. Mit chinesischen Dateinamen gemessen:
+      56.121 Zeichen = 153.681 Byte - E2BIG, genau der Fehler, den der
+      Baustein verhindern soll, eine Tuer weiter.
     """
     print("\nDer Wegraeum-Befehl passt in eine Befehlszeile")
     js = _ingest_js().replace("__STAND__", "pruefstand")
-    eingang = []
-    for i in range(400):
-        eingang.append({"dir": "/files/dokumente/kap/input/Kunde%03d" % i,
-                        "name": "Thumbs.db"})
-        eingang.append({"dir": "/files/dokumente/kap/input/Kunde%03d" % i,
-                        "name": "Bild_%03d.jpg" % i})
-    # Der Baustein wird gefahren wie in bau/aufnahmetest.js: als Funktion mit
-    # untergeschobenem $input/$/$now/console - nicht per Textsuche beurteilt.
-    probe = """
+
+    def _messen(eingang):
+        # Der Baustein wird gefahren wie in bau/aufnahmetest.js: als Funktion
+        # mit untergeschobenem $input/$/$now/console - nicht per Textsuche.
+        probe = """
 const EINGANG = %s;
 const JS = %s;
 const alle = EINGANG.map(e => ({ json: {},
@@ -621,22 +626,64 @@ f({ all: () => alle },
   { toFormat: () => '2026-10-05 08:00:00' },
   { log() {}, error() {} }).then(r => {
     const b = (r[0] && r[0].json && r[0].json.aufraeumen) || '';
+    const teile = b ? b.split(' ; ') : [];
     console.log(JSON.stringify({ laenge: Buffer.byteLength(b, 'utf8'),
-                                 befehle: b ? b.split(' ; ').length : 0 }));
+                                 zeichen: b.length,
+                                 groesster: teile.reduce(
+                                   (m, t) => Math.max(m, Buffer.byteLength(t, 'utf8')), 0),
+                                 befehle: teile.length }));
   });
 """ % (json.dumps(eingang), json.dumps(js))
-    try:
-        erg = json.loads(node_lauf(probe))
-    except NodeFehler as f:
-        pruefe(False, "der Baustein lief nicht: %s" % str(f)[:200])
+        return json.loads(node_lauf(probe))
+
+    # Das Budget steht im Baustein. Es wird hier HERAUSGELESEN, nicht
+    # nachgebaut - sonst prueft dieser Test zwei Zahlen gegeneinander, die
+    # auseinanderlaufen koennen.
+    m = re.search(r"const HOECHSTENS_\w+ = (\d+);", js)
+    if not m:
+        pruefe(False, "das Byte-Budget steht nicht mehr als 'const HOECHSTENS_... = <Zahl>;'"
+                      " im Baustein - diese Pruefung misst dann nichts")
         return
-    pruefe(erg["befehle"] > 0,
-           "Kontrolle: es entsteht ueberhaupt ein Wegraeum-Befehl (%d Befehle)"
-           % erg["befehle"])
-    # 131.072 ist die harte Grenze; der Rest des Bausteins braucht auch Platz.
-    pruefe(erg["laenge"] <= 100000,
-           "800 Dateien ergeben hoechstens 100.000 Byte Befehl (ist: %d)"
-           % erg["laenge"])
+    grenze = int(m.group(1))
+
+    eingang = []
+    for i in range(400):
+        eingang.append({"dir": "/files/dokumente/kap/input/Kunde%03d" % i,
+                        "name": "Thumbs.db"})
+        eingang.append({"dir": "/files/dokumente/kap/input/Kunde%03d" % i,
+                        "name": "Bild_%03d.jpg" % i})
+    # ⛔ Und dieselbe Menge mit Nicht-ASCII-Namen. Im Bestand liegen Dateien
+    #   von Zulieferern; ein Ordner "検査報告書" ist nichts Ausgefallenes.
+    cjk = []
+    for i in range(400):
+        cjk.append({"dir": u"/files/dokumente/kap/input/検査報告"
+                           u"書-プロジェクト%03d" % i,
+                    "name": u"超音波検査報告書"
+                            u"・測定データ%03d.jpg" % i})
+    for kennung, eing in (("ASCII", eingang), ("CJK", cjk)):
+        try:
+            erg = _messen(eing)
+        except NodeFehler as f:
+            pruefe(False, "%s: der Baustein lief nicht: %s" % (kennung, str(f)[:200]))
+            continue
+        pruefe(erg["befehle"] > 0,
+               "%s Kontrolle: es entsteht ueberhaupt ein Wegraeum-Befehl (%d Befehle)"
+               % (kennung, erg["befehle"]))
+        # 131.072 ist die harte Grenze; der Rest des Bausteins braucht auch Platz.
+        pruefe(erg["laenge"] <= 100000,
+               "%s 800 Dateien ergeben hoechstens 100.000 BYTE Befehl "
+               "(ist: %d Byte aus %d Zeichen)"
+               % (kennung, erg["laenge"], erg["zeichen"]))
+        # ⛔ UND DAS BUDGET SELBST IN BYTE. Zaehlt der Baustein Zeichen
+        #   (b.length sind UTF-16-Zeichen), haelt er seine eigene Zusage bei
+        #   Nicht-ASCII nicht ein - und gegen MAX_ARG_STRLEN zaehlen Byte.
+        #   "Mindestens einer geht immer durch" erlaubt genau EINEN
+        #   Ueberhang, deshalb der groesste Einzelbefehl als Zugabe.
+        pruefe(erg["laenge"] <= grenze + erg["groesster"] + 3,
+               "%s das Budget von %d gilt in BYTE (ist: %d Byte, erlaubt %d; "
+               "%d Zeichen)"
+               % (kennung, grenze, erg["laenge"],
+                  grenze + erg["groesster"] + 3, erg["zeichen"]))
 
 
 # --------------------------------------------------------------------------
@@ -769,10 +816,21 @@ def test_claim_schwelle_aus_der_umgebung():
            % (_cmin_werte(hoch["args"])[:1],))
     pruefe(hoch["sperre"] is True, "und die Sperre wird weiterhin gesetzt")
 
+    # ⚠ DIE OBERGRENZE, gemessen statt behauptet. Sieben Stellen gehen
+    #   durch (9.999.999 Minuten = 19 Jahre), ab acht faellt der Wert auf
+    #   180 zurueck - leise, die Warnung steht nur in der n8n-Ausgabe. Wer
+    #   "10000000" tippt, um die Garantie abzuschalten, bekommt also das
+    #   Gegenteil. Deshalb hier beide Seiten der Grenze; die Doku nennt sie
+    #   (test_claim_minuten_ist_durchgereicht prueft das).
+    hoechst = _sperre_fahren(block, eingang, {"KI4KI_CLAIM_MINUTEN": "9999999"})
+    pruefe(_cmin_werte(hoechst["args"])[:1] == ["+9999999"],
+           "sieben Stellen (9999999 = 19 Jahre) kommen bei find an (ist: %r)"
+           % (_cmin_werte(hoechst["args"])[:1],))
+
     # ⛔ Unsinn: leer, Buchstaben, Null, und der Einschleus-Versuch.
     for wert, was in (("", "leer"), ("abc", "Buchstaben"), ("0", "Null"),
                       ("180 -delete", "eingeschleustes Argument"),
-                      ("-5", "negativ")):
+                      ("-5", "negativ"), ("10000000", "acht Stellen")):
         e = _sperre_fahren(block, eingang, {"KI4KI_CLAIM_MINUTEN": wert})
         pruefe(_cmin_werte(e["args"])[:1] == ["+180"],
                "%-24s faellt auf 180 zurueck (ist: %r)"
@@ -836,6 +894,14 @@ def test_claim_minuten_ist_durchgereicht():
         p = os.path.join(wurzel, datei)
         t = io.open(p, encoding="utf-8").read() if os.path.exists(p) else ""
         pruefe("KI4KI_CLAIM_MINUTEN" in t, "%s nennt den Schalter" % was)
+        # ⛔ UND DIE OBERGRENZE. Ein Wert mit acht oder mehr Stellen faellt
+        #   still auf 180 zurueck (die Warnung geht nur in die n8n-Ausgabe,
+        #   die im Urlaub niemand liest). Wer die Garantie abschalten will
+        #   und "10000000" tippt, bekommt das Gegenteil des Gewollten -
+        #   also muss die Zahl dort stehen, wo man sie setzt.
+        pruefe("9999999" in t,
+               "%s nennt den hoechsten gueltigen Wert 9999999 (sieben "
+               "Stellen) - sonst faellt ein groesserer still auf 180" % was)
     doku = io.open(os.path.join(wurzel, "doku", "BETRIEB.md"),
                    encoding="utf-8").read()
     pruefe("Massenlauf" in doku.split("KI4KI_CLAIM_MINUTEN")[1][:2000],
