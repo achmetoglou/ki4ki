@@ -23,6 +23,7 @@ import os
 import re
 import subprocess
 import sys
+import time
 
 def _plaene_finden():
     """Wo liegen die Ablaufplaene?
@@ -697,7 +698,8 @@ def _sperre_block():
                       "Sperre setzen")
 
 
-def _sperre_fahren(block, dateien, umgebung=None, cmin_weg=False):
+def _sperre_fahren(block, dateien, umgebung=None, cmin_weg=False,
+                   sperre_alter=None):
     """Den Block in einem Probebaum fahren - mit echtem find.
 
     ⭐ `find` wird dabei durch einen Mitschreiber ersetzt, der jedes Argument
@@ -705,6 +707,13 @@ def _sperre_fahren(block, dateien, umgebung=None, cmin_weg=False):
       beantworten, WELCHE Schwelle wirklich bei find ankommt - der ctime
       einer Datei laesst sich nicht zurueckdatieren, ein echter 180-Minuten-
       Fall also nicht herstellen.
+
+    ⭐ sperre_alter (Minuten): legt .lauf.sperre VOR dem Lauf an und datiert
+      sie zurueck. Der Notnagel fragt nach -mmin, und mtime laesst sich -
+      anders als ctime - mit utime setzen; ein echter 120-Minuten-Fall ist
+      damit herstellbar.
+    ⭐ Ein Eintrag in `dateien`, der auf "/" endet, wird ein LEERER Ordner.
+      Nur so entsteht ein Eingang, den es gibt und in dem nichts liegt.
     """
     import shutil
     import tempfile
@@ -718,9 +727,18 @@ def _sperre_fahren(block, dateien, umgebung=None, cmin_weg=False):
         os.makedirs(os.path.join(wurzel, "bin"))
         for rel in dateien:
             p = os.path.join(wurzel, "dokumente", rel)
+            if rel.endswith("/"):
+                if not os.path.isdir(p):
+                    os.makedirs(p)
+                continue
             if not os.path.isdir(os.path.dirname(p)):
                 os.makedirs(os.path.dirname(p))
             io.open(p, "w", encoding="utf-8").write(u"x")
+        if sperre_alter is not None:
+            alt = os.path.join(wurzel, "json", ".lauf.sperre")
+            os.makedirs(alt)
+            frueher = time.time() - sperre_alter * 60
+            os.utime(alt, (frueher, frueher))
         mit = os.path.join(wurzel, "find.mitschrift")
         stub = os.path.join(wurzel, "bin", "find")
         io.open(stub, "w", encoding="utf-8").write(u"""#!/usr/bin/env python3
@@ -980,6 +998,89 @@ def test_leerlauf_wache_uebersieht_versteckte():
            and mit_arbeit["sperre"] is True,
            "Gegenprobe: liegt ein echtes Dokument daneben, laeuft der "
            "Durchgang an (ist: %r)" % mit_arbeit["stdout"].strip()[:120])
+
+
+def test_notnagel_greift_auch_bei_leerem_eingang():
+    """Eine haengengebliebene Sperre muss auch dann fallen, wenn nichts ansteht.
+
+    ⛔ Der Notnagel stand HINTER der Leerlauf-Wache. Ist der Eingang leer,
+      bricht die Wache mit exit 0 ab - der Notnagel wurde nie erreicht. Eine
+      Sperre, die ein abgestuerzter Durchgang liegengelassen hat, blieb also
+      genau so lange liegen, wie nichts Neues eintrifft: Der Zeitplan kommt
+      jede Minute, sieht einen leeren Eingang, geht wieder - und raeumt die
+      Sperre nie weg. Kommt dann Arbeit, steht sie vor der alten Sperre und
+      muss selbst erst 120 Minuten warten.
+
+    ⛔ Und unser eigener Commit 2384d25 hat das verschaerft: Vorher sah die
+      Leerlauf-Wache auch versteckte Dateien (151 im Bestand, .DS_Store &
+      Co.) und lief dadurch bis zum Notnagel weiter. Seit die Wache dieselbe
+      Sicht hat wie alle anderen, steigt sie frueher aus - richtig fuer die
+      Wache, aber der Notnagel dahinter fiel damit ganz aus.
+
+    ⭐ Reihenfolge seither: Claim-Garantie, NOTNAGEL, Leerlauf-Wache,
+      mkdir. Das mkdir muss hinter der Wache bleiben, sonst setzt ein
+      Leerlauf wieder eine Sperre, die niemand freigibt.
+    """
+    print("\nDer 120-Minuten-Notnagel greift auch bei leerem Eingang")
+    block = _sperre_block()
+    if block is None:
+        return
+
+    # 1) Leerer Eingang (den Ordner gibt es, er ist leer) + alte Sperre.
+    leer = _sperre_fahren(block, ["kap/input/"], sperre_alter=180)
+    if leer is None:
+        return
+    pruefe("KI4KI-ABBRUCH" in leer["stdout"],
+           "leerer Eingang bleibt ein Abbruch (ist: %r)"
+           % leer["stdout"].strip()[:120])
+    pruefe(leer["sperre"] is False,
+           "⛔ und die 180 Minuten alte Sperre ist trotzdem weg")
+
+    # 2) Derselbe Fall mit nur versteckten Dateien - der Zustand, in dem der
+    #    Bestand nach einem Durchgang tatsaechlich zurueckbleibt.
+    versteckt = _sperre_fahren(block, ["kap/input/.DS_Store",
+                                       "kap/input/Kunde/._Bericht.pdf"],
+                               sperre_alter=180)
+    pruefe(versteckt["sperre"] is False,
+           "⛔ auch wenn nur versteckte Dateien uebrig sind, faellt sie")
+
+    # 3) GEGENPROBE: Eine junge Sperre bleibt. Ohne das waere der Schutz
+    #    gegen zwei gleichzeitige Durchgaenge eingerissen - und eine Fassung,
+    #    die die Sperre IMMER wegraeumt, waere bei 1) und 2) ebenfalls gruen.
+    jung = _sperre_fahren(block, ["kap/input/"], sperre_alter=5)
+    pruefe(jung["sperre"] is True,
+           "GEGENPROBE: eine 5 Minuten junge Sperre bleibt liegen")
+
+    # 4) GEGENPROBE mit Arbeit: Liegt Arbeit an und die Sperre ist jung,
+    #    muss der Durchgang abbrechen statt sie zu uebernehmen.
+    belegt = _sperre_fahren(block, ["kap/input/Bericht.pdf"], sperre_alter=5)
+    pruefe("Es laeuft bereits ein Durchgang" in belegt["stdout"]
+           and belegt["sperre"] is True,
+           "GEGENPROBE: junge Sperre + Arbeit = Abbruch, Sperre bleibt "
+           "(ist: %r)" % belegt["stdout"].strip()[:120])
+
+    # 5) Alte Sperre UND Arbeit: der Durchgang uebernimmt - das ist der
+    #    Fall, den der Notnagel bisher schon konnte, und er muss bleiben.
+    uebernahme = _sperre_fahren(block, ["kap/input/Bericht.pdf"],
+                                sperre_alter=180)
+    pruefe("Sperre gesetzt." in uebernahme["stdout"]
+           and uebernahme["sperre"] is True,
+           "alte Sperre + Arbeit: der Durchgang uebernimmt (ist: %r)"
+           % uebernahme["stdout"].strip()[:120])
+
+    # 6) Und die Reihenfolge im Quelltext selbst - damit niemand das mkdir
+    #    versehentlich mit nach vorn zieht.
+    cmd = knoten("1_KI4KI-Masse-Ingest.json",
+                 "Sperre setzen")["parameters"]["command"]
+    i_not = cmd.find('-mmin +120')
+    i_wache = cmd.find('if [ -z "$(find /files/dokumente/*/input')
+    i_mkdir = cmd.find('mkdir "$L"')
+    pruefe(min(i_not, i_wache, i_mkdir) >= 0,
+           "Kontrolle: alle drei Stellen sind ueberhaupt da (%d/%d/%d)"
+           % (i_not, i_wache, i_mkdir))
+    pruefe(i_not < i_wache < i_mkdir,
+           "Notnagel vor der Leerlauf-Wache, mkdir dahinter (%d < %d < %d)"
+           % (i_not, i_wache, i_mkdir))
 
 
 def _plan_lesen(datei):
@@ -1451,6 +1552,7 @@ if __name__ == "__main__":
         test_claim_minuten_ist_durchgereicht,
         test_claim_garantie_raeumt_wirklich,
         test_leerlauf_wache_uebersieht_versteckte,
+        test_notnagel_greift_auch_bei_leerem_eingang,
         test_unterkette_reisst_nicht_mit,
         test_docling_einstellungen,
         test_bereichserkennung,
