@@ -862,6 +862,17 @@ def _einen_nachtragen(name, ausfall=None):
                       file=sys.stderr, flush=True)
             if not angabe:
                 if alt.get("titel") and not titel_ist_dateiname:
+                    # ⚠ RESTSCHULD, bewusst (05.10.): Hier hat das Modell
+                    #   GEANTWORTET und nichts Brauchbares gesagt, der alte
+                    #   Eintrag hat aber einen echten Titel. Der bleibt stehen -
+                    #   ein brauchbarer alter Titel ist besser als keiner. Damit
+                    #   bleibt aber auch ein falscher alter VERFASSER stehen, und
+                    #   der Eintrag wird mit der neuen Fassung geschlossen: Der
+                    #   Sprung von DECKBLATT_FASSUNG putzt den e2b-Schaden
+                    #   (Empfaenger als Verfasser, 9cff8e8) bei diesen Eintraegen
+                    #   NICHT weg. Wer ihn vollstaendig loswerden will, braucht
+                    #   einen eigenen Lauf, der nur den Verfasser neu liest -
+                    #   nicht diesen Weg. Gegenprobe in dialogtest.py, Szenario 49.
                     angabe = {k: alt.get(k) for k in ("titel", "verfasser", "jahr") if alt.get(k)}
                     quelle = alt.get("quelle") or "modell"
                 else:
@@ -895,11 +906,21 @@ def _einen_nachtragen(name, ausfall=None):
                     quelle = "modell" if nicht_erreicht else "dateiname"
             else:
                 quelle = "modell"
-                # ⛔ Die drei vom Modell besetzten Felder werden bei JEDEM Lesen
-                #   neu gesetzt, auch wenn eines diesmal leer bleibt - sonst
-                #   ueberlebte ein falscher Verfasser (der EMPFAENGER, Schaden
-                #   von 9cff8e8) den Fassungssprung, weil eintragen() unbekannte
-                #   Felder erhaelt.
+                # ⛔ HAT DAS MODELL GELESEN, besetzt es alle drei Felder neu -
+                #   auch die, die es diesmal leer laesst. Sonst ueberlebte ein
+                #   falscher Verfasser (der EMPFAENGER, Schaden von 9cff8e8) den
+                #   Fassungssprung, weil eintragen() unbekannte Felder erhaelt.
+                # ⚠ NUR FUER DIESEN WEG. Gibt das Modell GAR NICHTS Brauchbares
+                #   her und steht oben ein echter alter Titel, bleibt der ganze
+                #   alte Satz stehen, Verfasser inbegriffen - siehe die
+                #   Restschuld dort. Diese Zusage gilt also fuer "gelesen",
+                #   nicht fuer "angesehen".
+                # ⚠ Heute aendert die Schleife nie etwas, weil _json_aus immer
+                #   alle drei Schluessel liefert (Z. 504-506). Sie ist das Netz
+                #   fuer den Tag, an dem jemand _json_aus auf "nur nichtleere
+                #   Felder" umstellt oder ein anderer Aufrufer _deckblatt_lesen
+                #   ersetzt. Beides ist in dialogtest.py Szenario 49 gepruefte
+                #   Zusage, nicht Hoffnung.
                 angabe = dict(angabe)
                 for _k in ("titel", "verfasser", "jahr"):
                     angabe[_k] = angabe.get(_k) or ""

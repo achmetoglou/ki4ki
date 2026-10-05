@@ -224,6 +224,24 @@ def test_pakete_bleiben_unter_der_befehlsgrenze():
                "in derselben Reihenfolge" % kennung)
     pruefe(w._pakete([], grenze=60000) in ([], [[]]),
            "leere Liste macht keinen Aerger")
+    # ⛔ UND DAS GRUNDGERUEST MIT. Die 60.000 sind nur die Namensliste;
+    #   _gruende setzt den Regel-Ausschnitt aus dem Ablaufplan davor und
+    #   node_lauf uebergibt das Ganze als EIN Argument an node. Nur diese
+    #   Summe zaehlt gegen MAX_ARG_STRLEN - ohne sie prueft die Rechnung oben
+    #   die falsche Zahl.
+    geruest = len(w._regel_js().encode("utf-8"))
+    pruefe(geruest > 0, "Kontrolle: der Regel-Ausschnitt ist da (%d Byte)" % geruest)
+    for kennung, namen in (("ASCII", ascii_namen), ("CJK", cjk_namen),
+                           ("Umlaute", umlaut_namen)):
+        schlimmst = max(
+            len((w._regel_js() + "\nconsole.log(JSON.stringify(%s.map("
+                 "n => [n, NICHTDOKUMENT(n)])));"
+                 % json.dumps(p, ensure_ascii=False)).encode("utf-8"))
+            for p in w._pakete(namen, grenze=60000))
+        pruefe(schlimmst <= 100000,
+               "%-8s groesster node-Aufruf samt Grundgeruest bleibt unter "
+               "100.000 Byte von 131.072 (ist: %d, davon %d Geruest)"
+               % (kennung, schlimmst, geruest))
 
 
 def test_zahlen_je_stufe():

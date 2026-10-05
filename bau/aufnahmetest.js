@@ -30,6 +30,45 @@ async function fahre(name, umgebung) {
 }
 
 const datei = (dir, name, json) => ({ json: json || {}, binary: { data: { directory: dir, fileName: name } } });
+
+// ---------------------------------------------------------------------------
+// ⛔ WIRD DER NAECHSTE BAUSTEIN UEBERHAUPT EINGEPLANT?
+//   Diese Frage beantwortet keine Knotenlogik, sondern n8n selbst - und sie
+//   entscheidet, ob "Sperre freigeben" am Ende erreicht wird. Am Quelltext des
+//   laufenden n8n 2.31.4 (workflow-execute.js ~Z. 1242): der Plan laeuft mit
+//   settings.executionOrder "v1", isLegacyExecutionOrder ist damit falsch, und
+//   die einzige Bedingung fuers Einplanen ist outputData.length !== 0. Ein
+//   Baustein mit alwaysOutputData gibt bei leerer Rueckgabe ein Leer-Element
+//   aus und haelt die Kette damit am Laufen.
+// ⚠ GEGENSTAND IST NUR DIE EINPLANUNG. Was die Bausteine dazwischen RECHNEN,
+//   prueft diese Funktion nicht - sie nimmt an, dass ein Baustein mit n
+//   Elementen am Eingang mindestens eines ausgibt (alle auf diesem Weg tragen
+//   onError "continueRegularOutput"). Fuer die Frage "bleibt die Sperre
+//   liegen?" ist genau das die richtige Rechnung.
+const WF_KNOTEN = {};
+for (const n of wf.nodes) WF_KNOTEN[n.name] = n;
+function eingeplant(startName, stueck, ohne) {
+  const erreicht = new Set();
+  const warte = [[startName, stueck]];
+  while (warte.length) {
+    const [name, menge] = warte.shift();
+    const k = WF_KNOTEN[name] || {};
+    // Genau die Regel aus workflow-execute.js: nichts drin -> nicht eingeplant.
+    if (menge === 0 && k.alwaysOutputData !== true) continue;
+    const raus = Math.max(menge, 1);
+    for (const zweig of ((wf.connections[name] || {}).main || [])) {
+      for (const z of (zweig || [])) {
+        if (z.node === ohne) continue;
+        const marke = z.node + '|' + raus;
+        if (erreicht.has(marke)) continue;
+        erreicht.add(marke);
+        erreicht.add(z.node);
+        warte.push([z.node, raus]);
+      }
+    }
+  }
+  return erreicht;
+}
 const DIR = '/files/dokumente/kap/input/KundeA';
 const JETZT = { toFormat: () => '2026-10-05 08:00:00' };
 // Eine Konsole, die mitschreibt - das Protokoll ist Teil des Ergebnisses.
@@ -418,6 +457,18 @@ const codeUmgebung = (vomFilter, roh, quellen) => ({
     pruefe(hoch10.length === 0,
            '10g bis zum Upload gerechnet: NICHTS geht hoch (' + hoch10.length + ' von '
            + r10.length + ')');
+    // ⛔ UND JETZT DIE EIGENTLICHE FRAGE, bis zum Ende der Kette gerechnet.
+    //   Fail-closed in den Daten heisst: "Nur Dokumente hochladen" gibt eine
+    //   LEERE Liste. Und was eine leere Liste bedeutet, steht im Kopf von
+    //   "Sperre setzen": die Schleife laeuft nicht an, "Ablage entscheiden"
+    //   und "Sperre freigeben" ebenso wenig - .lauf.sperre bleibt liegen, bis
+    //   der 120-Minuten-Notnagel sie wegraeumt. Danach dieselbe Charge,
+    //   derselbe Zustand: alle zwei Stunden ein nutzloser Durchgang, auf
+    //   Dauer keine Aufnahme mehr. Das waere schlimmer als das alte
+    //   fail-open, das wenigstens die Kette am Laufen hielt.
+    pruefe(eingeplant('Nur Dokumente hochladen', hoch10.length).has('Sperre freigeben'),
+           '10l ⛔ und "Sperre freigeben" wird trotz leerer Liste noch eingeplant '
+           + '- sonst bleibt die Sperre 120 Minuten liegen');
     // Und das Protokoll muss den WAHREN Grund nennen - eine .pdf ist kein
     // unvorgesehenes Format, der Fehler steckt eine Stelle frueher.
     const r10ab = await fahre('Ablage entscheiden', {
@@ -434,6 +485,33 @@ const codeUmgebung = (vomFilter, roh, quellen) => ({
     pruefe(String(r10ab[0].json.befehl || '').indexOf('Format nicht vorgesehen (.pdf)') === -1,
            '10k GEGENPROBE: und behauptet NICHT, eine .pdf sei ein unvorgesehenes Format');
   }
+  // ⛔ DER HAEUFIGSTE GRUND, warum eine Liste "nicht ankommt": Der besitzende
+  //   Baustein wurde umbenannt oder lief in diesem Durchgang nicht. Dann WIRFT
+  //   $('...') schon beim Nachschlagen - also vor dem Riegel. Mit onError
+  //   "continueRegularOutput" waere das wieder der Durchlass.
+  const wirftBeimNachschlagen = Object.assign({}, dienst10, {
+    $input: { all: () => roh10 },
+    $: (n) => {
+      if (n === 'Nur ein Bereich je Durchgang') {
+        throw new Error('Referenced node is unexecuted: "Nur ein Bereich je Durchgang"');
+      }
+      return { all: () => quellen10, first: () => ({ json: { karte: { kap: 'kap' } } }) };
+    },
+  });
+  let r10u = null, geworfen2 = null;
+  try { r10u = await fahre('Code', wirftBeimNachschlagen); } catch (e) { geworfen2 = e; }
+  pruefe(geworfen2 === null && r10u !== null,
+         '10m ein umbenannter Baustein laesst "Code" nicht platzen'
+         + (geworfen2 ? ' (geworfen: ' + geworfen2.message.slice(0, 70) + ')' : ''));
+  if (r10u) {
+    pruefe(r10u.every(e => e.json.hochladen === false && e.json.listen_fehlen === true),
+           '10n und derselbe Riegel faellt zu (' + r10u.length + ' Element(e))');
+    const hoch10u = await fahre('Nur Dokumente hochladen', { $input: { all: () => r10u } });
+    pruefe(hoch10u.length === 0
+           && eingeplant('Nur Dokumente hochladen', hoch10u.length).has('Sperre freigeben'),
+           '10o nichts geht hoch, und die Sperre wird freigegeben');
+  }
+
   // ⛔ Die Gegenprobe zum Riegel: so sieht es aus, wenn er faellt statt
   //   zuzufallen - n8n reicht die Eingangsdaten unveraendert weiter.
   const durchgereicht = await fahre('Nur Dokumente hochladen',
@@ -442,6 +520,46 @@ const codeUmgebung = (vomFilter, roh, quellen) => ({
          '10h GEGENPROBE: unmarkierte Elemente wuerden ALLE hochgeladen ('
          + durchgereicht.length + ' von ' + roh10.length + ') - genau deshalb '
          + 'muss "Code" sie markieren, statt zu werfen');
+
+  // ---------------------------------------------------------------- 11
+  // ⛔ DIESELBE FALLE OHNE JEDEN FEHLER: eine Charge, in der alles
+  //   rechtmaessig draussen bleibt. Korrespondenz (.msg/.eml) wird bewusst
+  //   NICHT vor der Sperre weggeraeumt - sie ist erkannt und vertagt
+  //   (22.09.) und laeuft bis "Code" mit. Eine Charge aus lauter .msg oder
+  //   lauter textlosen PDFs macht "Nur Dokumente hochladen" also leer, ohne
+  //   dass irgendetwas kaputt ist. Im KAP-Bestand liegen 65 .msg.
+  console.log('\n11) Charge, in der alles rechtmaessig draussen bleibt');
+  pruefe((wf.settings || {}).executionOrder === 'v1',
+         '11a Voraussetzung: der Plan laeuft mit executionOrder v1 (ist: '
+         + (wf.settings || {}).executionOrder + ') - nur dann gilt die Regel '
+         + '"length !== 0"');
+  pruefe(!eingeplant('Sperre setzen', 1, 'Nur Dokumente hochladen').has('Sperre freigeben'),
+         '11b Voraussetzung: es gibt KEINEN zweiten Weg zu "Sperre freigeben" '
+         + '- er fuehrt nur ueber "Nur Dokumente hochladen"');
+  const NURPOST = ['Post.msg', 'Antwort.eml', 'Weiterleitung.msg'];
+  const eingang11 = NURPOST.map(n => datei(DIR, n));
+  const r11 = await filterLaufen(eingang11);
+  pruefe(r11.length === NURPOST.length,
+         '11c die Korrespondenz passiert den Filter vor der Sperre weiterhin ('
+         + r11.length + ')');
+  const dienst11 = { helpers: { httpRequest: async (o) => ({
+    schluessel: o.body.dateien.map(x => ({
+      bereich: x.bereich, unterpfad: x.unterpfad,
+      schluessel: 'kap-' + x.unterpfad.replace(/\W+/g, '-'),
+      abdruck: 'ab' + x.unterpfad.replace(/\W+/g, '').toLowerCase().slice(-8),
+      nur_beleg: false, traeger: '' })), fehler: [] }) } };
+  const roh11 = r11.map(q => ({ json: {
+    docling_filename: q.binary.data.fileName,
+    data: 'Ein hinreichend langer Text zum Pruefen.' } }));
+  const r11code = await fahre('Code', Object.assign(
+    codeUmgebung(r11[0], roh11, r11), dienst11));
+  const hoch11 = await fahre('Nur Dokumente hochladen', { $input: { all: () => r11code } });
+  pruefe(r11code.every(e => e.json.korrespondenz === true) && hoch11.length === 0,
+         '11d richtig erkannt, nichts geht hoch (' + hoch11.length + ' von '
+         + r11code.length + ')');
+  pruefe(eingeplant('Nur Dokumente hochladen', hoch11.length).has('Sperre freigeben'),
+         '11e ⛔ und die Sperre wird trotzdem freigegeben - ohne das steht die '
+         + 'Aufnahme nach dieser Charge fuer 120 Minuten');
 
   console.log('\n' + fehler + ' Fehler');
   process.exit(fehler ? 1 : 0);

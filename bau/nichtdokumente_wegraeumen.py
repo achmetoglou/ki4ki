@@ -75,6 +75,14 @@ def _pakete(namen, grenze=60000):
       japanischen Namen 129.948 - also genau der Fehler, den diese
       Funktion verhindern soll. Dieselbe Verwechslung steckte im Baustein
       "Nur ein Bereich je Durchgang" (dort b.length, ebenfalls behoben).
+
+    ⚠ DIE GRENZE GILT NUR FUER DIE NAMENSLISTE. _gruende setzt davor noch
+      den Regel-Ausschnitt aus dem Ablaufplan (gemessen 5.663 Byte) und die
+      console.log-Zeile, und node_lauf uebergibt das Ganze als EIN Argument.
+      Groesster Aufruf gemessen: 65.708 von 131.072 Byte, also 50 Prozent
+      Luft - selbst ein doppelt so langer Ausschnitt haelt noch.
+      test_pakete_bleiben_unter_der_befehlsgrenze rechnet das Grundgeruest
+      mit, damit diese Luft nicht unbemerkt verbraucht wird.
     """
     raus, jetzt, laenge = [], [], 2
     for n in namen:

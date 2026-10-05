@@ -2335,7 +2335,176 @@ def szenario_49_eintragen_erhaelt_fremde_felder():
         pruefe(not (e2.get("verfasser") or ""),
                "E1 GEGENPROBE: gibt das Deckblatt keinen Verfasser her, wird der alte "
                "(falsche) NICHT wiederbelebt (ist: %r)" % e2.get("verfasser"))
+        # --- ⚠ UND DIE SCHLEIFE OHNE _json_aus. Heute liefert _json_aus immer
+        #     alle drei Schluessel, die Normalisierung in _einen_nachtragen
+        #     aendert also nie etwas - sie ist toter Code, bis jemand _json_aus
+        #     umstellt oder _deckblatt_lesen ersetzt. Hier wird genau dieser Weg
+        #     gefahren, damit die Zusage traegt und nicht von _json_aus abhaengt.
+        _probe_katalog({SCHLUESSEL: {
+            "titel": "Rechnung Nr. 9002", "verfasser": "Nordwerk Polymere AG",
+            "jahr": "2026", "kategorie": "Sonstiges", "quelle": "modell"}})
+        alt_lesen = bestand._deckblatt_lesen
+        try:
+            bestand._deckblatt_lesen = lambda t: {
+                "titel": "Rechnung Nr. 9002 Durchstrahlungspruefung"}   # NUR Titel
+            bestand._einen_nachtragen(NAME)
+        finally:
+            bestand._deckblatt_lesen = alt_lesen
+        e3 = bestand.angaben(NAME) or {}
+        pruefe(not (e3.get("verfasser") or ""),
+               "E1 GEGENPROBE ohne _json_aus: liefert das Lesen nur einen Titel, bleibt "
+               "der alte Verfasser trotzdem weg (ist: %r)" % e3.get("verfasser"))
+        # --- ⚠ RESTSCHULD, gemessen statt behauptet: Hat das Modell GEANTWORTET
+        #     und nichts hergegeben, waehrend ein echter alter Titel da steht,
+        #     bleibt der ganze alte Satz stehen - Verfasser inbegriffen - und der
+        #     Eintrag wird mit der neuen Fassung geschlossen. Der Fassungssprung
+        #     putzt den e2b-Schaden bei diesen Eintraegen also NICHT weg. Das ist
+        #     die bewusste Abwaegung (ein brauchbarer Titel ist besser als keiner);
+        #     sie steht hier, damit niemand das Gegenteil annimmt.
+        _probe_katalog({SCHLUESSEL: {
+            "titel": "Rechnung Nr. 9002", "verfasser": "Nordwerk Polymere AG",
+            "jahr": "2026", "kategorie": "Sonstiges", "quelle": "modell"}})
+        zurueck()
+        leiber, zurueck = _netz_ruesten(antwort={"titel": "KI4KI"})   # zu kurz -> None
+        bestand._einen_nachtragen(NAME)
+        e4 = bestand.angaben(NAME) or {}
+        pruefe(e4.get("verfasser") == "Nordwerk Polymere AG"
+               and int(e4.get("deckblatt_fassung") or 0) == bestand.DECKBLATT_FASSUNG,
+               "E1 RESTSCHULD: antwortet das Modell und gibt nichts her, bleibt der alte "
+               "Verfasser stehen und der Eintrag wird geschlossen (ist: %r / %r)"
+               % (e4.get("verfasser"), e4.get("deckblatt_fassung")))
     finally:
+        zurueck()
+        bestand._BESTAND_ORDNER = alt_ordner
+        _probe_katalog({})
+        shutil.rmtree(ordner, ignore_errors=True)
+
+
+def szenario_50_abbruch_nur_bei_ausfall():
+    print("\n[50] Ein unlesbares Dokument beendet den Durchgang NICHT")
+    import bestand
+    import shutil
+    import time as _t
+    # ⛔ DIE ANDERE RICHTUNG DES RIEGELS AUS 47. Dort wird bei einem Ausfall
+    #   abgebrochen, damit nicht 5 x 90 s Zeitablauf an einer Bestandsfrage
+    #   haengen. Zaehlte dafuer aber auch "das Modell hat geantwortet und
+    #   nichts hergegeben" als Ausfall, wuerde EIN unlesbares Dokument jeden
+    #   Durchgang stoppen - und die dahinter liegenden kaemen nie dran. Der
+    #   Code ist richtig, die Pruefung fehlte.
+    KOPF = ("Dokumenttyp: Test Report\nSprache: German\n\n## Keywords\n\n- Ultraschall\n\n"
+            "## Inhalt\n\nPruefbericht ueber eine Ultraschallpruefung.")
+    namen = ["Unlesbar-80%02d--b%d" % (i, i) for i in range(1, 6)]
+    ordner = _probe_ordner(dict((n, KOPF) for n in namen))
+    alt_ordner = bestand._BESTAND_ORDNER
+    bestand._BESTAND_ORDNER = ordner
+    # "KI4KI" ist zu kurz -> _json_aus verwirft -> None. Das Modell hat aber
+    # geantwortet; kein Ausfall.
+    leiber, zurueck = _netz_ruesten(antwort={"titel": "KI4KI", "jahr": "2026"})
+    try:
+        _probe_katalog({})
+        bestand.nachtragen(namen, hoechstens=5)
+        pruefe(len(leiber) == 5,
+               "F1 alle fuenf werden gefragt - 'nichts hergegeben' ist kein Ausfall "
+               "(Aufrufe: %d, erwartet 5)" % len(leiber))
+        fertig = [n for n in namen
+                  if int((bestand.angaben(n) or {}).get("deckblatt_fassung") or 0)
+                  == bestand.DECKBLATT_FASSUNG]
+        pruefe(len(fertig) == 5,
+               "F1 und alle fuenf sind danach abgeschlossen, nicht offen (%d von 5)"
+               % len(fertig))
+        # --- ⛔ DER HINTERGRUNDFADEN bricht bei einem Ausfall ebenfalls ab.
+        #     Genau der wuerde sonst 1.785 Dokumente x 90 s = 44 Stunden mahlen.
+        #     Aufbau: das erste Dokument gelingt (sofort-Teil, kein Ausfall, also
+        #     startet der Faden), danach ist das Netz weg.
+        _probe_katalog({})
+        import urllib.request as _ur
+        del leiber[:]
+        zustand = {"erster": True}
+        vorher = _ur.urlopen
+
+        def _erst_gut_dann_weg(anfrage, timeout=None):
+            leiber.append(json.loads(anfrage.data.decode("utf-8")))
+            if zustand["erster"]:
+                zustand["erster"] = False
+                return _Modellantwort(json.dumps({
+                    "titel": "Pruefbericht Nr. 8001 Ultraschallpruefung Rohrleitung",
+                    "verfasser": "Herr Standfuss-Holthausen", "jahr": "2026"}))
+            raise OSError("timed out")
+
+        _ur.urlopen = _erst_gut_dann_weg
+        try:
+            bestand.nachtragen(namen, hoechstens=1)
+            # Der Faden ist ein daemon-Thread ohne Griff - also auf Ruhe warten.
+            ruhig, grenze = 0, _t.time() + 5
+            while _t.time() < grenze and ruhig < 3:
+                vor = len(leiber)
+                _t.sleep(0.05)
+                ruhig = ruhig + 1 if len(leiber) == vor else 0
+        finally:
+            _ur.urlopen = vorher
+        pruefe(len(leiber) == 2,
+               "F1 der Hintergrundfaden bricht nach dem ERSTEN Ausfall ab "
+               "(Aufrufe: %d, erwartet 2: einer gelungen, einer gescheitert)"
+               % len(leiber))
+        offen = [n for n in namen
+                 if int((bestand.angaben(n) or {}).get("deckblatt_fassung") or 0) == 0]
+        pruefe(len(offen) >= 3,
+               "F1 und die nicht mehr versuchten bleiben offen (%d von 5)" % len(offen))
+    finally:
+        zurueck()
+        bestand._BESTAND_ORDNER = alt_ordner
+        _probe_katalog({})
+        shutil.rmtree(ordner, ignore_errors=True)
+
+
+def szenario_51_protokoll_bei_ausfall():
+    print("\n[51] Ein nicht erreichbares Deckblatt-Modell steht im Protokoll")
+    import bestand
+    import shutil
+    import io as _io
+    # ⛔ Der Riegel gegen stilles Scheitern war selbst ungeprueft. Genau diese
+    #   Zeile ist im Urlaub das einzige Zeichen dafuer, dass ein Massenlauf
+    #   gerade jedem Dokument den Dateinamen als Titel gibt.
+    NAME = "Pruefbericht-8100--c1"
+    KOPF = ("Dokumenttyp: Test Report\nSprache: German\n\n## Keywords\n\n- Ultraschall\n\n"
+            "## Inhalt\n\nPruefbericht ueber eine Ultraschallpruefung.")
+    ordner = _probe_ordner({NAME: KOPF})
+    alt_ordner, alt_err = bestand._BESTAND_ORDNER, sys.stderr
+    bestand._BESTAND_ORDNER = ordner
+    leiber, zurueck = _netz_ruesten(wirft=OSError("timed out"))
+    mit = _io.StringIO()
+    try:
+        _probe_katalog({})
+        sys.stderr = mit
+        try:
+            bestand._einen_nachtragen(NAME)
+        finally:
+            sys.stderr = alt_err
+        zeile = mit.getvalue()
+        pruefe("[Bestand]" in zeile,
+               "G1 es gibt ueberhaupt eine Protokollzeile (ist: %r)" % zeile[:80])
+        pruefe("nicht zu erreichen" in zeile and "timed out" in zeile,
+               "G1 sie nennt den Grund und die Ausnahme")
+        pruefe(NAME in zeile,
+               "G1 und das betroffene Dokument - sonst weiss niemand, WIE VIELE")
+        # Gegenprobe: ohne Ausfall darf diese Zeile NICHT kommen, sonst ist das
+        # Protokoll bei 1.785 Dokumenten nicht mehr zu lesen.
+        zurueck()
+        leiber, zurueck = _netz_ruesten(antwort={
+            "titel": "Pruefbericht Nr. 8100 Ultraschallpruefung Rohrleitung",
+            "verfasser": "Herr Standfuss-Holthausen", "jahr": "2026"})
+        _probe_katalog({})
+        still = _io.StringIO()
+        sys.stderr = still
+        try:
+            bestand._einen_nachtragen(NAME)
+        finally:
+            sys.stderr = alt_err
+        pruefe("[Bestand]" not in still.getvalue(),
+               "G1 GEGENPROBE: der gelungene Fall schweigt (ist: %r)"
+               % still.getvalue()[:80])
+    finally:
+        sys.stderr = alt_err
         zurueck()
         bestand._BESTAND_ORDNER = alt_ordner
         _probe_katalog({})
@@ -2460,7 +2629,9 @@ if __name__ == "__main__":
               szenario_46_ruecklage_ohne_deckblatt,
               szenario_47_modell_nicht_erreichbar,
               szenario_48_deckblatt_modell_im_anfrageleib,
-              szenario_49_eintragen_erhaelt_fremde_felder):
+              szenario_49_eintragen_erhaelt_fremde_felder,
+              szenario_50_abbruch_nur_bei_ausfall,
+              szenario_51_protokoll_bei_ausfall):
         try:
             s()
         except Exception as e:
