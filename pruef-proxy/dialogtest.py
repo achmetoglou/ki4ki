@@ -693,7 +693,19 @@ def szenario_26_kategorien():
     pruefe(isinstance(assistent._gruppieren(["DS-24-005", "DS-24-006", "DS-24-007"]), list), "Gruppierung laeuft ohne Katalog durch (liefert Liste)")
     j = bestand._json_aus('{"titel": "Untersuchung des Einflusses einer Mitteneinspannung auf das Ermüdungsverhalten Investigation of the Influence of a Centre Clamping on the Fatigue Behaviour", "verfasser": "Fabian Becker", "jahr": "1980 - 2026"}')
     pruefe(j["titel"] == "Untersuchung des Einflusses einer Mitteneinspannung auf das Ermüdungsverhalten" and j["jahr"] == "2026", "Deckblatt: englischer Anhang abgeschnitten, letztes Jahr einer Spanne")
-    pruefe(bestand._json_aus('{"titel": "Leitfaden", "verfasser": "x", "jahr": ""}') is None and bestand._json_aus('{"titel": "DVS_2213-1_Teil 1_10_2025-WZ", "verfasser": "", "jahr": ""}') is None, "Einwort-Titel und Dateinamen werden verworfen (Dateiname bleibt Titel)")
+    # B1: Das deutsche Kompositum ist EIN Wort und trotzdem ein Titel. Die
+    # Zwei-Wort-Regel war an Dissertationstiteln geeicht; gemessen 05.10.
+    # fielen dadurch 17 von 116 Dokumenten ganz aus dem Katalog.
+    for einwort in ("Auftragsbestätigung", "Durchstrahlungsprüfung", "Schadensklassifizierung"):
+        j1 = bestand._json_aus('{"titel": "%s", "verfasser": "", "jahr": "2020"}' % einwort)
+        pruefe((j1 or {}).get("titel") == einwort,
+               "Einwort-Kompositum gilt als Titel: %s (%d Zeichen) -> %r" % (einwort, len(einwort), (j1 or {}).get("titel")))
+    # B2 GEGENPROBE: gelockert, nicht abgeschafft. "Leitfaden" hat 9 Zeichen
+    # und bleibt ein Allgemeinplatz; ein Dateiname bleibt ein Dateiname.
+    pruefe(bestand._json_aus('{"titel": "Leitfaden", "verfasser": "x", "jahr": ""}') is None
+           and bestand._json_aus('{"titel": "Recherche", "verfasser": "x", "jahr": ""}') is None
+           and bestand._json_aus('{"titel": "DVS_2213-1_Teil 1_10_2025-WZ", "verfasser": "", "jahr": ""}') is None,
+           "GEGENPROBE: Einwort-Allgemeinplatz (<11 Zeichen) und Dateiname werden weiter verworfen")
     pruefe(bestand._englisch(["glass-fiber reinforced plastics", "leaf springs", "fatigue behavior"]) and not bestand._englisch(["Spritzgießverfahren", "Einspritzprofilierung", "Kunststoffverarbeitung"]), "englische Schlagworte erkannt")
 
 
@@ -2045,6 +2057,50 @@ def szenario_45_deckblatt_fassung():
         shutil.rmtree(ordner, ignore_errors=True)
 
 
+def szenario_46_ruecklage_ohne_deckblatt():
+    print("\n[46] Ohne Deckblatt-Titel faellt nicht die GANZE Katalogzeile aus")
+    import bestand
+    import shutil
+    # Produktiver Schluessel: lesbarer Teil + '--' + Abdruck. Daran haengt die
+    # zweite Haelfte der Pruefung - der Ersatztitel ist der ANZEIGEtitel und
+    # damit nicht gleich dem Schluessel.
+    NAME = "Auftragsbestaetigung-5512--9f3a2b1c"
+    KOPF = ("Dokumenttyp: Order Confirmation\nSprache: German\n\n## Keywords\n\n- Schweissnaht\n\n"
+            "## Inhalt\n\nText, aus dem kein Titel lesbar ist.")
+    ordner = _probe_ordner({NAME: KOPF})
+    alt_ordner, alt_lesen = bestand._BESTAND_ORDNER, bestand._deckblatt_lesen
+    bestand._BESTAND_ORDNER = ordner
+    try:
+        _probe_katalog({})
+        bestand._deckblatt_lesen = lambda text: None          # Modell gibt nichts her
+        ok = bestand._einen_nachtragen(NAME)
+        e = bestand.angaben(NAME) or {}
+        pruefe(ok, "B3 der Nachtrag gilt als getan, obwohl das Modell keinen Titel hergab")
+        pruefe(bool(e.get("kategorie")),
+               "B3 die Kategorie steht trotzdem im Katalog (ist: %r)" % e.get("kategorie"))
+        pruefe(e.get("themen") == ["Schweissnaht"],
+               "B3 die Themen stehen trotzdem im Katalog (ist: %r)" % (e.get("themen"),))
+        pruefe(e.get("titel") == "Auftragsbestaetigung-5512" and e.get("titel_quelle") == "dateiname",
+               "B3 Ersatztitel aus dem Dateinamen, als solcher gekennzeichnet (ist: %r / %r)"
+               % (e.get("titel"), e.get("titel_quelle")))
+        # Gegenprobe: die Ruecklage ist kein Grabstein - ein echter Titel
+        # ersetzt sie. Ohne titel_quelle im Dateinamen-Vergleich bliebe sie
+        # fuer immer stehen, weil der Anzeigetitel != Schluessel ist.
+        bestand._deckblatt_lesen = lambda text: {
+            "titel": "Auftragsbestaetigung Nr. 5512 Schweissnahtpruefung",
+            "verfasser": "Frau Petra Kappler", "jahr": "2026"}
+        bestand._einen_nachtragen(NAME)
+        e2 = bestand.angaben(NAME) or {}
+        pruefe(e2.get("titel") == "Auftragsbestaetigung Nr. 5512 Schweissnahtpruefung"
+               and not e2.get("titel_quelle"),
+               "B3 ein echter Titel loest die Ruecklage spaeter ab (ist: %r / %r)"
+               % (e2.get("titel"), e2.get("titel_quelle")))
+    finally:
+        bestand._BESTAND_ORDNER, bestand._deckblatt_lesen = alt_ordner, alt_lesen
+        _probe_katalog({})
+        shutil.rmtree(ordner, ignore_errors=True)
+
+
 # --------------------------------------------- Schicht 2: braucht das Modell
 #
 # A1 laeuft NICHT im Standardlauf. dialogtest.py ist sonst deterministisch
@@ -2159,7 +2215,8 @@ if __name__ == "__main__":
               szenario_42_rolle_ueberlebt_update,
               szenario_43_hochladen_nur_mit_rolle,
               szenario_44_ablage_wird_angelegt,
-              szenario_45_deckblatt_fassung):
+              szenario_45_deckblatt_fassung,
+              szenario_46_ruecklage_ohne_deckblatt):
         try:
             s()
         except Exception as e:

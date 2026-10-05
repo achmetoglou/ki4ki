@@ -467,8 +467,28 @@ def _json_aus(inhalt):
     if not isinstance(d, dict):
         return None
     titel = titel_bereinigen(str(d.get("titel") or ""))
-    if len(titel) < 8 or len(titel.split()) < 2:
-        return None          # zu kurz/allgemein ("Leitfaden") - dann bleibt der Dateiname
+    # ⛔ Hier stand "len(titel) < 8 ODER weniger als zwei Woerter -> verwerfen".
+    # Die Zwei-Wort-Regel war an Dissertationstiteln geeicht ("Untersuchung
+    # des Einflusses ...") und kennt das deutsche Kompositum nicht. Gemessen
+    # 05.10. am laufenden Bestand: 17 von 116 Dokumenten hatten deshalb GAR
+    # KEINEN Katalogeintrag (auw 7/50, kap 6/34, faq 1/5, zz-schluesselprobe
+    # 3/16) - die meisten mit einem voellig brauchbaren Titel aus EINEM Wort:
+    # Auftragsbestaetigung, Durchstrahlungspruefung, Klangpruefung,
+    # Schadensklassifizierung, Ultraschallpruefung, Versagensarten,
+    # Schutzmassnahmen, Reiseabrechnung. Dass im ganzen Index kein einziger
+    # Einwort-Titel stand, war der Fingerabdruck dieser Sperre.
+    #
+    # ⭐ Dieselbe Wurzel wie bei der Schwelle "3 gemeinsame Fachwoerter":
+    #   eine an Hochschulschriften geeichte Kalibrierung ueberlebt den
+    #   Bestandswechsel zu Rechnungen und Angeboten nicht.
+    #
+    # Ein Einwort-Titel gilt jetzt ab 11 Zeichen. Darunter bleibt es beim
+    # Verwerfen - "Leitfaden" (9) und "Recherche" (9) fallen weiter heraus
+    # (Gegenprobe in dialogtest.py, Szenario 26).
+    if len(titel) < 8:
+        return None          # zu kurz ("KI4KI") - dann greift die Ruecklage in _einen_nachtragen
+    if len(titel.split()) < 2 and len(titel) < 11:
+        return None          # ein Wort und zu allgemein ("Leitfaden", "Recherche")
     if re.search(r"\.(?:pdf|md|xlsx|docx)$", titel, re.I) or re.search(r"_\w+_\d", titel):
         return None          # das ist ein Dateiname, kein Titel
     jahre = re.findall(r"(?:19|20)\d{2}", str(d.get("jahr") or ""))
@@ -729,7 +749,13 @@ def _einen_nachtragen(name):
             return False
         alt = angaben(name) or {}
         stamm = str(name)[:-3] if str(name).lower().endswith(".md") else str(name)
-        titel_ist_dateiname = _grund(alt.get("titel") or "") == _grund(stamm)
+        # ⚠ Auch der ANZEIGEtitel zaehlt als Dateiname: der produktive
+        #   Schluessel traegt "--<Abdruck>", die Ruecklage unten legt aber
+        #   den Anzeigetitel ab. Ohne titel_quelle und den zweiten Vergleich
+        #   saehe eine Ruecklage wie ein echter Titel aus - und kein Modell
+        #   wuerde sie je ersetzen.
+        titel_ist_dateiname = (alt.get("titel_quelle") == "dateiname"
+                               or _grund(alt.get("titel") or "") in (_grund(stamm), _grund(_anzeige(stamm))))
         # Ein Eintrag aus einer aelteren Deckblatt-Fassung wird EINMAL neu
         # gelesen. Nur die vom Modell geschriebenen: was aus dem Katalog
         # kommt oder von Hand gesetzt wurde, bleibt unangetastet.
@@ -744,9 +770,31 @@ def _einen_nachtragen(name):
             if not angabe:
                 if alt.get("titel"):
                     angabe = {k: alt.get(k) for k in ("titel", "verfasser", "jahr") if alt.get(k)}
+                    quelle = alt.get("quelle") or "modell"
                 else:
-                    return False
-            quelle = "modell"
+                    # ⛔ Hier stand "return False" - und damit fiel die GANZE
+                    # Katalogzeile aus: auch Kategorie, Themen, Sprache, Jahr
+                    # und Band, die OHNE Modell feststehen und nichts kosten.
+                    # Gemessen 05.10.: 17 von 116 Dokumenten standen seit dem
+                    # Einspielen mit lauter "—" im Katalog, und der Hinweis
+                    # "wird in den naechsten Minuten ergaenzt" log - jeder
+                    # neue Versuch bekam vom selben Modell dieselbe Antwort.
+                    #
+                    # Ein fehlender Titel kostet jetzt nur noch den Titel.
+                    #
+                    # ⚠ OFFEN: quelle="dateiname" nimmt den Eintrag dauerhaft
+                    #   aus nachtragen() heraus - auch beim naechsten Sprung
+                    #   von DECKBLATT_FASSUNG. Das ist heute gewollt (jeder
+                    #   neue Versuch beim selben Modell gaebe dieselbe
+                    #   Antwort), aber wer die Fassung erhoeht, weil ein
+                    #   BESSERES Modell liest, muss die Bedingung dort um
+                    #   "dateiname" erweitern - sonst bleiben ausgerechnet
+                    #   die Dokumente aussen vor, bei denen das Lesen
+                    #   misslungen ist.
+                    angabe = {"titel": _anzeige(stamm), "titel_quelle": "dateiname"}
+                    quelle = "dateiname"
+            else:
+                quelle = "modell"
         # Auch wenn das Modell nichts hergab: die Fassung vermerken, sonst
         # wuerde dasselbe Dokument bei jeder Bestandsfrage erneut befragt.
         angabe["deckblatt_fassung"] = DECKBLATT_FASSUNG
