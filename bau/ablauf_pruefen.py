@@ -75,6 +75,10 @@ NODE = None
 FEHLER = []
 
 
+class NodeFehler(Exception):
+    """Ein Ausschnitt lief nicht durch node - ROT, aber kein Abbruch."""
+
+
 def pruefe(bedingung, text):
     print(("  ok   " if bedingung else "  FEHL ") + text)
     if not bedingung:
@@ -112,7 +116,13 @@ def node_lauf(js):
     e = subprocess.run(NODE + ["-e", js], capture_output=True, text=True,
                        timeout=60)
     if e.returncode != 0:
-        raise SystemExit("node-Fehler:\n" + (e.stderr or "")[:2000])
+        # ⛔ KEIN SystemExit. Ein node-Fehler in EINEM Test hat bis zum
+        #   05.10. den ganzen Pruefstand beendet: Ausgangsstand d9d4ff9 starb
+        #   im zweiten von dreizehn Tests, die elf dahinter liefen nie - und
+        #   der Abbruch sah beim Ueberfliegen aus wie "ging nicht", nicht wie
+        #   "wir pruefen seit Wochen nichts mehr". Ein Test, der platzt, wird
+        #   ROT gemeldet; die uebrigen laufen weiter.
+        raise NodeFehler("node-Fehler:\n" + (e.stderr or "")[:2000])
     return e.stdout.strip()
 
 
@@ -181,6 +191,18 @@ const grund = (s) => String(s)
   .replace(/[^A-Za-z0-9]+/g, '-')
   .replace(/^-+|-+$/g, '')
   .toLowerCase();
+// ⛔ 'dokumente' ENTSTEHT IM BAUSTEIN, VOR dem Ausschnitt: die erste Zeile
+//   des Ausschnitts liest daraus die Mindestzeichen. Ohne diese Stellvertretung
+//   starb node an "ReferenceError: dokumente is not defined" - und weil
+//   node_lauf() dabei SystemExit wirft, brach der GANZE Pruefstand nach dem
+//   ersten Test ab. Elf von dreizehn Tests liefen seither nie (nachgestellt
+//   05.10., Ausgangsstand d9d4ff9). Ein Pruefstand, der mittendrin abbricht,
+//   meldet keine Fehler - er meldet gar nichts.
+// ⚠ Der Wert von vorgesehen_liste ist hier reiner Platzhalter: Er steht
+//   NUR in der Begruendungs-Zeile, und auf seinen Inhalt prueft hier nichts.
+//   Die echte Liste steht an genau einer Stelle im Ablaufplan - das prueft
+//   test_positivliste_hat_genau_eine_quelle().
+const dokumente = [{ mindestzeichen: 20, vorgesehen_liste: '(Platzhalter)' }];
 """ + kern + """
   return { drin, leer, laenge };
 }
@@ -191,15 +213,23 @@ const grund = (s) => String(s)
 const A = "ab12cd34ef";
 const gemeldet = ["kap-kundeb-bericht-" + A + "-md"];
 const fremd = ["kap-kundea-anderes-zz99zz99zz-md"];
+// ⛔ SEIT DEM 24.09. ENTSCHEIDET HIER DIE MARKE, NICHT DIE TEXTLAENGE.
+//   "Ablage entscheiden" liest nur noch d.leer; gerechnet wird die Marke im
+//   Baustein "Code" (leer = text_length < MINDESTZEICHEN). Die Faelle unten
+//   tragen deshalb BEIDES - so, wie "Code" es liefern wuerde. Dass "Code"
+//   die Marke wirklich so rechnet, prueft test_leer_marke_kommt_aus_code()
+//   und, bis zum Upload durchgerechnet, bau/aufnahmetest.js (Fall 2f).
+const mitLeer = (d) => Object.assign({}, d,
+  { leer: Number(d.text_length || 0) < 20 });
 const faelle = [
-  ["Text da, Name gefunden",      {filename:"Bericht.pdf", abdruck:A, text_length:5000}, gemeldet],
-  ["Text LEER, Name gefunden",    {filename:"Bericht.pdf", abdruck:A, text_length:0},    gemeldet],
-  ["Text 5 Zeichen, Name gef.",   {filename:"Bericht.pdf", abdruck:A, text_length:5},    gemeldet],
-  ["Text 20 Zeichen, Name gef.",  {filename:"Bericht.pdf", abdruck:A, text_length:20},   gemeldet],
-  ["Text da, Name NICHT gefunden",{filename:"Bericht.pdf", abdruck:A, text_length:5000}, fremd],
-  ["Text leer, Name nicht gef.",  {filename:"Bericht.pdf", abdruck:A, text_length:0},    fremd],
-  ["text_length fehlt ganz",      {filename:"Bericht.pdf", abdruck:A},                   gemeldet],
-  ["OHNE Abdruck, Name gefunden", {filename:"Bericht.pdf", text_length:5000},            gemeldet],
+  ["Text da, Name gefunden",      mitLeer({filename:"Bericht.pdf", abdruck:A, text_length:5000}), gemeldet],
+  ["Text LEER, Name gefunden",    mitLeer({filename:"Bericht.pdf", abdruck:A, text_length:0}),    gemeldet],
+  ["Text 5 Zeichen, Name gef.",   mitLeer({filename:"Bericht.pdf", abdruck:A, text_length:5}),    gemeldet],
+  ["Text 20 Zeichen, Name gef.",  mitLeer({filename:"Bericht.pdf", abdruck:A, text_length:20}),   gemeldet],
+  ["Text da, Name NICHT gefunden",mitLeer({filename:"Bericht.pdf", abdruck:A, text_length:5000}), fremd],
+  ["Text leer, Name nicht gef.",  mitLeer({filename:"Bericht.pdf", abdruck:A, text_length:0}),    fremd],
+  ["text_length fehlt ganz",      mitLeer({filename:"Bericht.pdf", abdruck:A}),                   gemeldet],
+  ["OHNE Abdruck, Name gefunden", mitLeer({filename:"Bericht.pdf", text_length:5000}),            gemeldet],
 ];
 console.log(JSON.stringify(faelle.map(([t, d, g]) => [t, entscheide(d, g, grund)])));
 """
@@ -345,16 +375,78 @@ console.log(JSON.stringify([
            "Pruefung trifft die Fehlerklasse" % (alt_erg,))
 
 
-def test_positivliste():
-    """Nur vorgesehene Formate kommen in den Bestand.
+def test_leer_marke_kommt_aus_code():
+    """Die Marken entstehen im Baustein 'Code' - und die Liste steht NICHT dort.
 
-    Gemessen am KAP-Bestand (22.09.): 2.093 von 4.325 Dateien gehen an die
-    "sonst"-Weiche zu Tika - 1.707 Bilder und rund 190 in Formaten, die
-    niemand vorgesehen hat. Entschieden hat bisher allein die Textlaenge;
-    aus einer Binaerdatei kommt fast immer irgendein Zeichensalat, und der
-    landete als "Dokument" im Bestand.
+    ⛔ Seit dem 24.09. rechnet "Code" leer/korrespondenz/nicht_vorgesehen und
+      haengt sie an jedes Dokument; "Ablage entscheiden" liest sie nur noch ab.
+      Geprueft hat das bis zum 05.10. nichts.
+
+    ⭐ Zugleich die Gegenprobe gegen die DOPPELTE WAHRHEIT: Die Positivliste
+      wird hier als Stellvertreter hereingereicht (nur pdf/docx/txt). Baut
+      "Code" sich seine eigene Liste, faellt das hier auf - 'Werte.csv' waere
+      dann vorgesehen, obwohl es in der hereingereichten Liste nicht steht.
     """
-    print("\nNur vorgesehene Formate")
+    print("\nMarken entstehen in 'Code' (und die Liste kommt von aussen)")
+    quelle = knoten("1_KI4KI-Masse-Ingest.json", "Code")["parameters"]["jsCode"]
+    kern = ausschnitt(quelle, "const MINDESTZEICHEN = 20;", "return _ausgabe;",
+                      "Marken in Code")
+    if kern is None:
+        return
+    js = """
+// Die Listen kommen aus dem Baustein, der sie BESITZT. Hier steht bewusst
+// eine kurze Stellvertreter-Liste: csv fehlt darin absichtlich.
+const _stellvertreter = { vorgesehen: ['pdf', 'docx', 'txt'],
+                          korrespondenz_formate: ['msg', 'eml'] };
+const $ = (n) => ({ first: () => ({ json: _stellvertreter }) });
+const _ausgabe = [
+  {json:{filename:'Bericht.pdf',  text_length:5000, nur_beleg:false}},
+  {json:{filename:'Leer.pdf',     text_length:0,    nur_beleg:false}},
+  {json:{filename:'Kurz.pdf',     text_length:5,    nur_beleg:false}},
+  {json:{filename:'Knapp.pdf',    text_length:20,   nur_beleg:false}},
+  {json:{filename:'Foto.jpg',     text_length:5000, nur_beleg:false}},
+  {json:{filename:'Post.msg',     text_length:5000, nur_beleg:false}},
+  {json:{filename:'Werte.csv',    text_length:5000, nur_beleg:false}},
+  {json:{filename:'Beleg.pdf',    text_length:5000, nur_beleg:true}},
+];
+""" + kern + """
+console.log(JSON.stringify(_ausgabe.map(e => [e.json.filename, {
+  leer: e.json.leer, korrespondenz: e.json.korrespondenz,
+  nicht_vorgesehen: e.json.nicht_vorgesehen, hochladen: e.json.hochladen,
+  endung: e.json.endung }])));
+"""
+    erg = dict((n, m) for n, m in json.loads(node_lauf(js)))
+    pruefe(erg["Leer.pdf"]["leer"] is True, "0 Zeichen gilt als leer")
+    pruefe(erg["Kurz.pdf"]["leer"] is True, "5 Zeichen gilt als leer")
+    # Gegenprobe zur Schwelle - sonst waere "alles ist leer" ebenso gruen.
+    pruefe(erg["Knapp.pdf"]["leer"] is False, "20 Zeichen gilt NICHT als leer")
+    pruefe(erg["Bericht.pdf"]["hochladen"] is True,
+           "ein lesbares PDF wird hochgeladen")
+    pruefe(erg["Leer.pdf"]["hochladen"] is False, "ein leeres nicht")
+    pruefe(erg["Foto.jpg"]["nicht_vorgesehen"] is True
+           and erg["Foto.jpg"]["hochladen"] is False,
+           "jpg ist nicht vorgesehen und wird nicht hochgeladen")
+    pruefe(erg["Post.msg"]["korrespondenz"] is True
+           and erg["Post.msg"]["nicht_vorgesehen"] is False,
+           "msg ist Korrespondenz, nicht 'unvorgesehenes Format'")
+    pruefe(erg["Beleg.pdf"]["hochladen"] is False,
+           "die Belegquelle wird nicht hochgeladen")
+    # ⛔ DIE EIGENTLICHE FRAGE: Liest 'Code' die Liste, oder fuehrt er eine
+    #   zweite? Steht csv noch in einer eigenen Liste im Baustein, ist das
+    #   hier gruen-falsch.
+    pruefe(erg["Werte.csv"]["nicht_vorgesehen"] is True,
+           "'Code' benutzt die hereingereichte Liste - er fuehrt keine eigene")
+
+
+def test_positivliste():
+    """'Ablage entscheiden' liest die Marken und nennt den WAHREN Grund.
+
+    ⛔ Dieser Test schickte bis zum 05.10. Faelle OHNE Marken hinein (nur
+      filename + text_length) und pruefte damit eine Entscheidung, die der
+      Baustein seit dem 24.09. gar nicht mehr trifft. Aufgefallen ist es
+      nicht, weil er schon vorher an "dokumente is not defined" starb.
+    """
+    print("\nOrt und Begruendung aus den Marken")
     quelle = knoten("1_KI4KI-Masse-Ingest.json",
                     "Ablage entscheiden")["parameters"]["jsCode"]
     # Bis HINTER die Begruendung schneiden - sie ist der halbe Befund.
@@ -366,51 +458,462 @@ def test_positivliste():
                         "function entscheide(d, gefunden, grund) {")
     js = """
 const grund = (s) => String(s).toLowerCase();
+const dokumente = [{ mindestzeichen: 20, vorgesehen_liste: 'pdf, docx, txt' }];
 """ + kern + """
   return { drin, grund: begruendung };
 }
 const A = "ab12cd34ef";
 const G = ["kap-kundeb-bericht-" + A + "-md"];
+// Die Marken, wie "Code" sie setzt. Hier wird NICHT noch einmal entschieden,
+// was ein vorgesehenes Format ist - das waere die zweite Wahrheit.
 const faelle = [
-  ["pdf", "Bericht.pdf"], ["docx", "Bericht.docx"], ["doc", "Bericht.doc"],
-  ["pptx", "Folien.pptx"], ["xlsx", "Werte.xlsx"], ["xlsm", "Werte.xlsm"],
-  ["txt", "Liste.txt"], ["csv", "Werte.csv"], ["md", "Notiz.md"],
-  ["jpg", "Foto.jpg"], ["tif", "Mikroskop.tif"], ["zip", "Anhang.zip"],
-  ["tra", "Messung.tra"], ["001", "Teil.001"], ["msg", "Post.msg"],
-  ["eml", "Post.eml"], ["ohne", "LIESMICH"],
+  ["in Ordnung",       {}],
+  ["nicht vorgesehen", {nicht_vorgesehen:true}],
+  ["Korrespondenz",    {korrespondenz:true}],
+  ["ohne Text",        {leer:true}],
 ];
-console.log(JSON.stringify(faelle.map(([k, n]) =>
-  [k, entscheide({filename: n, abdruck: A, text_length: 5000}, G, grund)])));
+console.log(JSON.stringify(faelle.map(([t, m]) =>
+  [t, entscheide(Object.assign({filename:"X", endung:"pdf", abdruck:A,
+                                text_length:5000}, m), G, grund)])));
 """
     erg = dict((k, e) for k, e in json.loads(node_lauf(js)))
+    pruefe(erg["in Ordnung"]["drin"] is True,
+           "ohne Marke geht das Dokument ins Archiv")
+    pruefe(erg["nicht vorgesehen"]["drin"] is False
+           and "nicht vorgesehen" in erg["nicht vorgesehen"]["grund"],
+           "Marke nicht_vorgesehen -> aussortiert, mit dem WAHREN Grund")
+    pruefe(erg["Korrespondenz"]["drin"] is False
+           and "Korrespondenz" in erg["Korrespondenz"]["grund"],
+           "Korrespondenz bekommt eine EIGENE Begruendung, keinen Formatfehler")
+    pruefe(erg["ohne Text"]["drin"] is False
+           and "kein Text gewonnen" in erg["ohne Text"]["grund"],
+           "Marke leer -> aussortiert, mit dem Grund 'kein Text gewonnen'")
+    # ⛔ Die Gegenprobe, ohne die alles oben nichts sagt: Der Baustein darf
+    #   nicht einfach ALLES abweisen - sonst bliebe der Bestand leer, und
+    #   keine einzige Zeile hier wuerde rot.
+    pruefe(any(e["drin"] for e in erg.values()),
+           "Gegenprobe: mindestens ein Fall kommt ueberhaupt ins Archiv")
+    # Und die Liste im Text kommt aus dem Dokument, nicht aus diesem Baustein.
+    pruefe("pdf, docx, txt" in erg["nicht vorgesehen"]["grund"],
+           "die genannte Liste stammt aus vorgesehen_liste, nicht aus "
+           "'Ablage entscheiden'")
 
-    # 1. Was hinein soll, kommt hinein - auch mit reichlich Text.
-    for k in ("pdf", "docx", "doc", "pptx", "xlsx", "xlsm", "txt", "csv", "md"):
-        pruefe(erg[k]["drin"] is True,
-               "%-5s wird aufgenommen" % k)
 
-    # 2. ⛔ Was Text LIEFERN KOENNTE, aber nicht vorgesehen ist, bleibt
-    #    draussen. Genau hier lag der Fehler: text_length ist in allen
-    #    Faellen 5000, die Entscheidung darf also NICHT daran haengen.
-    for k in ("jpg", "tif", "zip", "tra", "001", "ohne"):
-        pruefe(erg[k]["drin"] is False,
-               "%-5s bleibt draussen, obwohl Text da waere" % k)
-        pruefe("nicht vorgesehen" in erg[k]["grund"],
-               "%-5s nennt den WAHREN Grund, nicht 'kein Text'" % k)
+# --------------------------------------------------------------------------
+# Die Positivliste VOR der Sperre (Befund 05.10.)
+# --------------------------------------------------------------------------
+def _ingest_js():
+    return knoten("1_KI4KI-Masse-Ingest.json",
+                  "Nur ein Bereich je Durchgang")["parameters"]["jsCode"]
 
-    # 3. Korrespondenz bekommt eine EIGENE Begruendung - sie ist nicht
-    #    "nicht vorgesehen", sondern vertagt.
-    for k in ("msg", "eml"):
-        pruefe(erg[k]["drin"] is False, "%-5s bleibt draussen" % k)
-        pruefe("Korrespondenz" in erg[k]["grund"],
-               "%-5s wird als Korrespondenz benannt, nicht als Formatfehler" % k)
 
-    # 4. ⛔ Die Gegenprobe, ohne die alles oben nichts sagt: Die Liste darf
-    #    nicht einfach ALLES abweisen. Ohne diese Zeile waere Nummer 2 auch
-    #    dann gruen, wenn `drin` immer false ist - und der ganze Bestand
-    #    bliebe leer, ohne dass eine Pruefung rot wird.
-    pruefe(any(erg[k]["drin"] for k in erg),
-           "Gegenprobe: mindestens ein Format kommt ueberhaupt durch")
+def test_positivliste_hat_genau_eine_quelle():
+    """Die Liste der vorgesehenen Endungen darf es nur EINMAL geben.
+
+    ⛔ Der Ablaufplan warnt an zwei Stellen selbst davor, dieselbe Liste
+      doppelt zu fuehren ("sonst laufen sie wieder auseinander"). Seit die
+      Liste auch VOR der Sperre gebraucht wird, ist die Versuchung, sie
+      einfach nachzubauen, am groessten - also wird hier gezaehlt.
+    """
+    print("\nDie Positivliste steht an genau einer Stelle")
+    roh = io.open(os.path.join(PLAENE, "1_KI4KI-Masse-Ingest.json"),
+                  encoding="utf-8").read()
+    # ⚠ NICHT 'odp' oder 'htm' zaehlen: Die stehen zu Recht auch in
+    #   OFFICE_ORIGINAL (Belegquellen-Paarung) und in "Dateien
+    #   klassifizieren" (Weichenstellung) - andere Listen, anderer Zweck.
+    #   Gezaehlt wird die Signatur DIESER Liste und eine Endung, die es nur
+    #   in ihr gibt.
+    for stueck in ("'xlsm'", "'pdf', 'doc', 'docx', 'odt', 'rtf'"):
+        pruefe(roh.count(stueck) == 1,
+               "%s steht genau einmal im ganzen Plan (ist: %d)"
+               % (stueck, roh.count(stueck)))
+    besitzer = _ingest_js()
+    pruefe("const VORGESEHEN" in besitzer,
+           "die Liste steht im Baustein 'Nur ein Bereich je Durchgang' - "
+           "demselben, der auch den Wegraeum-Befehl baut")
+    nutzer = knoten("1_KI4KI-Masse-Ingest.json", "Code")["parameters"]["jsCode"]
+    pruefe("$('Nur ein Bereich je Durchgang')" in nutzer,
+           "'Code' LIEST sie von dort, statt sie nachzubauen")
+
+
+def test_positivliste_vor_der_sperre():
+    """Unvorgesehene Endungen muessen VOR der Sperre erkannt werden.
+
+    ⛔ Gemessen an der echten Dateiliste: 85 von 247 Chargen enthalten kein
+      einziges hochladbares Dokument (die erste schon als Nr. 3). Eine solche
+      Charge laesst "Nur Dokumente hochladen" leer; die Schleife laeuft nicht
+      an, "Sperre freigeben" wird nie erreicht - die Sperre bleibt bis zum
+      120-Minuten-Notnagel liegen, und danach wiederholt sich dieselbe Charge.
+
+    ⚠ Geprueft wird GENAU der Ausschnitt, den auch
+      bau/nichtdokumente_wegraeumen.py allein mit node faehrt.
+    """
+    print("\nUnvorgesehene Endungen schon im Filter")
+    quelle = _ingest_js()
+    kern = ausschnitt(quelle, "const NICHTDOKUMENT", "const ersterBereich",
+                      "Positivliste vor der Sperre")
+    if kern is None:
+        return
+    js = kern + """
+const faelle = ["Bericht.pdf", "Angebot.docx", "Folien.pptx", "Werte.xlsm",
+                "Praesentation.odp", "Liste.txt", "Werte.csv", "Notiz.md",
+                "Seite.htm", "Foto.jpg", "Foto.jpeg", "Mikroskop.tif",
+                "Teil.001", "Messung.tra", "Anbau.tsx", "Schluessel.asc",
+                "LIESMICH", "Post.msg", "Post.eml", "Thumbs.db"];
+console.log(JSON.stringify(faelle.map(n => [n, NICHT_VORGESEHEN(n)])));
+"""
+    erg = dict((n, g) for n, g in json.loads(node_lauf(js)))
+    # 1. Was raus muss, bevor die Sperre faellt.
+    for name in ("Foto.jpg", "Foto.jpeg", "Mikroskop.tif", "Teil.001",
+                 "Messung.tra", "Anbau.tsx", "Schluessel.asc", "LIESMICH"):
+        pruefe(bool(erg.get(name)),
+               "%-18s wird als unvorgesehenes Format erkannt (ist %r)"
+               % (name, erg.get(name)))
+    pruefe("jpg" in str(erg.get("Foto.jpg", "")),
+           "und der Grund nennt die Endung")
+    # 2. ⛔ DIE GEGENPROBE (C2): Wer die Liste zu scharf zieht, raeumt den
+    #    Bestand weg. Vorgesehene Formate muessen hier LEER bleiben.
+    for name in ("Bericht.pdf", "Angebot.docx", "Folien.pptx", "Werte.xlsm",
+                 "Praesentation.odp", "Liste.txt", "Werte.csv", "Notiz.md",
+                 "Seite.htm"):
+        pruefe(erg.get(name) == "",
+               "%-18s bleibt drin (ist %r)" % (name, erg.get(name)))
+    # 3. Korrespondenz ist KEIN unvorgesehenes Format - sie hat ihre eigene,
+    #    bewusst vertagte Behandlung und ihre eigene Begruendung.
+    for name in ("Post.msg", "Post.eml"):
+        pruefe(erg.get(name) == "",
+               "%-18s zaehlt nicht als unvorgesehenes Format" % name)
+
+
+def test_aufraeumbefehl_bleibt_unter_der_befehlsgrenze():
+    """Der Wegraeum-Befehl darf die Befehlszeile nicht sprengen.
+
+    ⛔ "Sperre setzen" ist ein executeCommand-Baustein: n8n gibt den ganzen
+      Text als EIN Argument an `sh -c`. Ein einzelnes Argument darf unter
+      Linux hoechstens MAX_ARG_STRLEN (32 Seiten = 131.072 Byte) gross sein -
+      darueber scheitert schon das Starten mit E2BIG.
+
+    ⛔ Gerechnet am Bestand: Die Begruendungszeile je Datei ist rund 600
+      Zeichen lang. Mit der alten Obergrenze von 200 Dateien je Durchgang
+      waeren das ueber 150.000 Zeichen - der Baustein kaeme gar nicht mehr
+      zum Laufen, und zwar JEDE Minute neu. Allein die 151 versteckten
+      Dateien im Bestand reichen dafuer aus.
+    """
+    print("\nDer Wegraeum-Befehl passt in eine Befehlszeile")
+    js = _ingest_js().replace("__STAND__", "pruefstand")
+    eingang = []
+    for i in range(400):
+        eingang.append({"dir": "/files/dokumente/kap/input/Kunde%03d" % i,
+                        "name": "Thumbs.db"})
+        eingang.append({"dir": "/files/dokumente/kap/input/Kunde%03d" % i,
+                        "name": "Bild_%03d.jpg" % i})
+    # Der Baustein wird gefahren wie in bau/aufnahmetest.js: als Funktion mit
+    # untergeschobenem $input/$/$now/console - nicht per Textsuche beurteilt.
+    probe = """
+const EINGANG = %s;
+const JS = %s;
+const alle = EINGANG.map(e => ({ json: {},
+  binary: { data: { directory: e.dir, fileName: e.name } } }));
+const f = new Function('$input', '$', '$now', 'console',
+  '"use strict"; return (async () => {\\n' + JS + '\\n})();');
+f({ all: () => alle },
+  (n) => ({ first: () => ({ json: { localFiles: { items: [] } } }) }),
+  { toFormat: () => '2026-10-05 08:00:00' },
+  { log() {}, error() {} }).then(r => {
+    const b = (r[0] && r[0].json && r[0].json.aufraeumen) || '';
+    console.log(JSON.stringify({ laenge: Buffer.byteLength(b, 'utf8'),
+                                 befehle: b ? b.split(' ; ').length : 0 }));
+  });
+""" % (json.dumps(eingang), json.dumps(js))
+    try:
+        erg = json.loads(node_lauf(probe))
+    except NodeFehler as f:
+        pruefe(False, "der Baustein lief nicht: %s" % str(f)[:200])
+        return
+    pruefe(erg["befehle"] > 0,
+           "Kontrolle: es entsteht ueberhaupt ein Wegraeum-Befehl (%d Befehle)"
+           % erg["befehle"])
+    # 131.072 ist die harte Grenze; der Rest des Bausteins braucht auch Platz.
+    pruefe(erg["laenge"] <= 100000,
+           "800 Dateien ergeben hoechstens 100.000 Byte Befehl (ist: %d)"
+           % erg["laenge"])
+
+
+# --------------------------------------------------------------------------
+# "Sperre setzen" wirklich ausfuehren - mit echtem find in einem Probebaum
+# --------------------------------------------------------------------------
+def _sperre_block():
+    """Claim-Garantie, Leerlauf-Wache und Sperre - der ausfuehrbare Teil."""
+    cmd = knoten("1_KI4KI-Masse-Ingest.json",
+                 "Sperre setzen")["parameters"]["command"]
+    return ausschnitt(cmd, "# Claim-Garantie:", "# Massenlauf-Automatik:",
+                      "Sperre setzen")
+
+
+def _sperre_fahren(block, dateien, umgebung=None, cmin_weg=False):
+    """Den Block in einem Probebaum fahren - mit echtem find.
+
+    ⭐ `find` wird dabei durch einen Mitschreiber ersetzt, der jedes Argument
+      protokolliert und danach das ECHTE find aufruft. Nur so laesst sich
+      beantworten, WELCHE Schwelle wirklich bei find ankommt - der ctime
+      einer Datei laesst sich nicht zurueckdatieren, ein echter 180-Minuten-
+      Fall also nicht herstellen.
+    """
+    import shutil
+    import tempfile
+    echt = shutil.which("find")
+    if not echt:
+        pruefe(False, "kein find vorhanden - dieser Teil ist NICHT geprueft")
+        return None
+    wurzel = tempfile.mkdtemp(prefix="ki4ki-sperre-")
+    try:
+        os.makedirs(os.path.join(wurzel, "json"))
+        os.makedirs(os.path.join(wurzel, "bin"))
+        for rel in dateien:
+            p = os.path.join(wurzel, "dokumente", rel)
+            if not os.path.isdir(os.path.dirname(p)):
+                os.makedirs(os.path.dirname(p))
+            io.open(p, "w", encoding="utf-8").write(u"x")
+        mit = os.path.join(wurzel, "find.mitschrift")
+        stub = os.path.join(wurzel, "bin", "find")
+        io.open(stub, "w", encoding="utf-8").write(u"""#!/usr/bin/env python3
+import os, sys
+args = sys.argv[1:]
+with open(os.environ["MITSCHRIFT"], "a") as f:
+    for a in args:
+        f.write(a + "\\n")
+    f.write("--\\n")
+if os.environ.get("CMIN_WEG") == "1":
+    raus, i = [], 0
+    while i < len(args):
+        if args[i] == "-cmin":
+            i += 2
+            continue
+        raus.append(args[i])
+        i += 1
+    args = raus
+os.execv(%s, [%s] + args)
+""" % (json.dumps(echt), json.dumps(echt)))
+        os.chmod(stub, 0o755)
+        skript = (block.replace("/files/dokumente",
+                                os.path.join(wurzel, "dokumente"))
+                       .replace("/files/json", os.path.join(wurzel, "json")))
+        env = dict(os.environ)
+        env["PATH"] = os.path.join(wurzel, "bin") + os.pathsep + env["PATH"]
+        env["MITSCHRIFT"] = mit
+        env["CMIN_WEG"] = "1" if cmin_weg else "0"
+        for k in ("KI4KI_CLAIM_MINUTEN",):
+            env.pop(k, None)
+        env.update(umgebung or {})
+        e = subprocess.run(["sh", "-c", skript], env=env, cwd=wurzel,
+                           capture_output=True, text=True, timeout=120)
+        argumente = []
+        if os.path.exists(mit):
+            argumente = io.open(mit, encoding="utf-8").read().splitlines()
+        uebrig, protokoll = [], ""
+        for ordner, _, dn in os.walk(os.path.join(wurzel, "dokumente")):
+            for d in dn:
+                voll = os.path.join(ordner, d)
+                uebrig.append(os.path.relpath(voll,
+                                              os.path.join(wurzel,
+                                                           "dokumente")))
+                if d.endswith(".log"):
+                    protokoll += io.open(voll, encoding="utf-8").read()
+        return {"stdout": e.stdout, "stderr": e.stderr, "code": e.returncode,
+                "args": argumente, "dateien": sorted(uebrig),
+                "protokoll": protokoll,
+                "sperre": os.path.isdir(os.path.join(wurzel, "json",
+                                                     ".lauf.sperre"))}
+    finally:
+        shutil.rmtree(wurzel, ignore_errors=True)
+
+
+def _cmin_werte(args):
+    """Welche Schwellen sind bei find angekommen?"""
+    return [args[i + 1] for i, a in enumerate(args)
+            if a == "-cmin" and i + 1 < len(args)]
+
+
+def test_claim_schwelle_aus_der_umgebung():
+    """Die Claim-Schwelle muss einstellbar sein - und Unsinn abfangen.
+
+    ⛔ 180 Minuten sind fuer einen Massenlauf rechnerisch unhaltbar: Bei
+      hoechstens 25 Dateien je Durchgang und einem Durchgang je Minute
+      braucht ein Eingang von 6.151 Dateien mindestens 247 Minuten; gemessen
+      wurden 34-49 Dokumente je Stunde. Nach drei Stunden sind rund 100-150
+      Dateien durch - die uebrigen rund 6.000 haben nahezu denselben ctime
+      und wandern in EINEM Rutsch nach aussortiert/.
+
+    ⛔ Und ein unsinniger Wert darf die Sperre nicht zerstoeren: Unquotiert
+      wuerde `-cmin +$WERT` bei "abc" einen find-Syntaxfehler ergeben und bei
+      "180 -delete" ein zusaetzliches Argument einschleusen.
+    """
+    print("\nClaim-Schwelle kommt aus der Umgebung")
+    block = _sperre_block()
+    if block is None:
+        return
+    eingang = ["kap/input/Bericht.pdf"]
+
+    ohne = _sperre_fahren(block, eingang)
+    if ohne is None:
+        return
+    pruefe(_cmin_werte(ohne["args"])[:1] == ["+180"],
+           "ohne Variable bleibt es bei +180 (ist: %r)"
+           % (_cmin_werte(ohne["args"])[:1],))
+    pruefe(ohne["sperre"] is True and "Sperre gesetzt." in ohne["stdout"],
+           "und die Sperre wird gesetzt")
+
+    hoch = _sperre_fahren(block, eingang, {"KI4KI_CLAIM_MINUTEN": "2880"})
+    pruefe(_cmin_werte(hoch["args"])[:1] == ["+2880"],
+           "KI4KI_CLAIM_MINUTEN=2880 kommt bei find an (ist: %r)"
+           % (_cmin_werte(hoch["args"])[:1],))
+    pruefe(hoch["sperre"] is True, "und die Sperre wird weiterhin gesetzt")
+
+    # ⛔ Unsinn: leer, Buchstaben, Null, und der Einschleus-Versuch.
+    for wert, was in (("", "leer"), ("abc", "Buchstaben"), ("0", "Null"),
+                      ("180 -delete", "eingeschleustes Argument"),
+                      ("-5", "negativ")):
+        e = _sperre_fahren(block, eingang, {"KI4KI_CLAIM_MINUTEN": wert})
+        pruefe(_cmin_werte(e["args"])[:1] == ["+180"],
+               "%-24s faellt auf 180 zurueck (ist: %r)"
+               % (was, _cmin_werte(e["args"])[:1]))
+        pruefe("-delete" not in e["args"],
+               "%-24s schleust kein zweites Argument ein" % was)
+        pruefe(e["sperre"] is True,
+               "%-24s zerstoert die Sperre nicht" % was)
+        pruefe(e["dateien"] == ["kap/input/Bericht.pdf"],
+               "%-24s raeumt nichts weg (uebrig: %r)" % (was, e["dateien"]))
+
+
+def _umgebung_des_dienstes(compose, dienst):
+    """Die environment-Zeilen EINES Dienstes aus der Compose-Datei.
+
+    ⛔ Nicht einfach im ganzen Text suchen: Eine Variable, die beim
+      falschen Dienst steht, erreicht n8n nie - und der Ablaufplan laeuft
+      dann still mit der Vorgabe weiter.
+    """
+    zeilen, aktuell, raus = compose.splitlines(), None, []
+    for z in zeilen:
+        if z[:2] == "  " and z[2:3] not in (" ", "#", "") and z.rstrip().endswith(":"):
+            aktuell = z.strip().rstrip(":")
+        if aktuell == dienst:
+            t = z.strip()
+            if t.startswith("- ") and "=" in t:
+                raus.append(t[2:])
+    return raus
+
+
+def test_claim_minuten_ist_durchgereicht():
+    """Die Schwelle nuetzt nur, wenn sie im Container ankommt.
+
+    ⛔ Ein Schalter, den der Ablaufplan liest, den die Compose aber nicht
+      weitergibt, ist schlimmer als keiner: Man setzt ihn in der .env, hakt
+      ihn ab und laeuft trotzdem in die 180 Minuten.
+    """
+    print("\nKI4KI_CLAIM_MINUTEN kommt im Container an")
+    wurzel = os.path.dirname(PLAENE)
+    pfad = os.path.join(wurzel, "docker-compose.yml")
+    if not os.path.exists(pfad):
+        pruefe(False, "docker-compose.yml fehlt - NICHT geprueft")
+        return
+    umgebung = _umgebung_des_dienstes(io.open(pfad, encoding="utf-8").read(),
+                                      "n8n")
+    # Kontrolle: Findet der Leser ueberhaupt etwas? Sonst sagt alles weitere
+    # nichts - eine leere Liste waere gegen jede Behauptung "gruen".
+    pruefe("KI4KI_MENGE_JE_LAUF=${KI4KI_MENGE_JE_LAUF:-25}" in umgebung,
+           "Kontrolle: die bekannten Schalter stehen beim Dienst n8n (%d "
+           "Eintraege gelesen)" % len(umgebung))
+    pruefe("KI4KI_CLAIM_MINUTEN=${KI4KI_CLAIM_MINUTEN:-180}" in umgebung,
+           "KI4KI_CLAIM_MINUTEN wird genauso weitergereicht wie "
+           "KI4KI_MASSENLAUF_AB und KI4KI_MENGE_JE_LAUF")
+    cmd = knoten("1_KI4KI-Masse-Ingest.json",
+                 "Sperre setzen")["parameters"]["command"]
+    pruefe("${KI4KI_CLAIM_MINUTEN:-180}" in cmd,
+           "und der Ablaufplan liest genau diesen Namen, mit derselben "
+           "Vorgabe 180")
+    for datei, was in ((".env.beispiel", "die .env-Vorlage"),
+                       (os.path.join("doku", "BETRIEB.md"), "die Doku")):
+        p = os.path.join(wurzel, datei)
+        t = io.open(p, encoding="utf-8").read() if os.path.exists(p) else ""
+        pruefe("KI4KI_CLAIM_MINUTEN" in t, "%s nennt den Schalter" % was)
+    doku = io.open(os.path.join(wurzel, "doku", "BETRIEB.md"),
+                   encoding="utf-8").read()
+    pruefe("Massenlauf" in doku.split("KI4KI_CLAIM_MINUTEN")[1][:2000],
+           "und die Doku sagt, WARUM man ihn fuer einen Massenlauf hochsetzt")
+
+
+def test_claim_garantie_raeumt_wirklich():
+    """Gegenprobe: Greift die Schwelle, wird auch wirklich aussortiert.
+
+    ⛔ Ohne diese Probe waere die Pruefung oben auch dann gruen, wenn die
+      Claim-Garantie gar nichts mehr taete - der ctime einer frischen Datei
+      ist nie ueber 180 Minuten alt. Hier faellt deshalb die Schwelle weg,
+      und es wird geprueft, WOHIN die Datei dann geht.
+    """
+    print("\nGegenprobe: die Claim-Garantie raeumt wirklich auf")
+    block = _sperre_block()
+    if block is None:
+        return
+    e = _sperre_fahren(block, ["kap/input/Kunde/Alt.pdf",
+                               "kap/input/.DS_Store"], cmin_weg=True)
+    if e is None:
+        return
+    pruefe("kap/aussortiert/Kunde/Alt.pdf" in e["dateien"],
+           "die liegengebliebene Datei landet in aussortiert/, "
+           "mit Unterordner (ist: %r)" % e["dateien"])
+    pruefe("kap/aussortiert/claim.log" in e["dateien"],
+           "und der Grund steht im claim.log")
+    pruefe("lag laenger als 180 Minuten" in e["protokoll"],
+           "das claim.log nennt die Vorgabe-Schwelle (ist: %r)"
+           % e["protokoll"].strip()[:160])
+    # ⛔ Und bei einer gesetzten Schwelle nennt es DIESE - sonst stuende im
+    #   Protokoll eine Zahl, nach der niemand gehandelt hat. Der Wert muss
+    #   dafuer in das Kind-sh des -exec durchgereicht werden (export).
+    gesetzt = _sperre_fahren(block, ["kap/input/Alt.pdf"],
+                             {"KI4KI_CLAIM_MINUTEN": "4320"}, cmin_weg=True)
+    pruefe("lag laenger als 4320 Minuten" in gesetzt["protokoll"],
+           "und bei gesetzter Schwelle DIESE (ist: %r)"
+           % gesetzt["protokoll"].strip()[:160])
+    pruefe("kap/input/Kunde/Alt.pdf" not in e["dateien"],
+           "sie liegt nicht mehr im Eingang")
+    # ⛔ Gegenprobe zur Gegenprobe: versteckte Dateien fasst die
+    #   Claim-Garantie NICHT an - sonst liefe sie der Leerlauf-Wache davon.
+    pruefe("kap/input/.DS_Store" in e["dateien"],
+           "versteckte Dateien laesst sie liegen")
+
+
+def test_leerlauf_wache_uebersieht_versteckte():
+    """Die Leerlauf-Wache muss dieselben Dateien sehen wie alle anderen.
+
+    ⛔ Sie ist die EINZIGE von vier Stellen, die auch versteckte Dateien
+      zaehlt (fast-glob mit dot:false, die Claim-Garantie und der
+      ANZ-Zaehler schliessen sie aus). Im Bestand liegen 151 versteckte
+      Dateien (66x .DS_Store, 66x ._.DS_Store, 19 weitere ._*). Bleiben am
+      Ende nur noch die uebrig, haelt diese Wache den Eingang fuer belegt,
+      setzt die Sperre und schickt ein Phantom-Element weiter - und der
+      naechste Durchgang findet die Sperre besetzt vor. Dauerleerlauf.
+    """
+    print("\nLeerlauf-Wache sieht dieselben Dateien wie alle anderen")
+    block = _sperre_block()
+    if block is None:
+        return
+    nur_versteckt = _sperre_fahren(block, ["kap/input/.DS_Store",
+                                           "kap/input/Kunde/._Bericht.pdf"])
+    if nur_versteckt is None:
+        return
+    pruefe("KI4KI-ABBRUCH" in nur_versteckt["stdout"],
+           "nur versteckte Dateien im Eingang = nichts zu tun (ist: %r)"
+           % nur_versteckt["stdout"].strip()[:120])
+    pruefe(nur_versteckt["sperre"] is False,
+           "⛔ und die Sperre wird NICHT gesetzt")
+    # ⛔ Die Gegenprobe: Ein echtes Dokument MUSS die Wache passieren -
+    #   sonst waere eine Wache, die immer abbricht, ebenso gruen.
+    mit_arbeit = _sperre_fahren(block, ["kap/input/.DS_Store",
+                                        "kap/input/Bericht.pdf"])
+    pruefe("KI4KI-ABBRUCH" not in mit_arbeit["stdout"]
+           and mit_arbeit["sperre"] is True,
+           "Gegenprobe: liegt ein echtes Dokument daneben, laeuft der "
+           "Durchgang an (ist: %r)" % mit_arbeit["stdout"].strip()[:120])
 
 
 def _plan_lesen(datei):
@@ -781,7 +1284,10 @@ def test_docling_laesst_der_grafikkarte_luft():
 def test_plaene_unversehrt():
     """Die Plaene muessen ladbar und vollstaendig bleiben."""
     print("\nAblaufplaene unversehrt")
-    for datei, knotenzahl in (("1_KI4KI-Masse-Ingest.json", 30),
+    # ⚠ 31, nicht 30: "Nur Dokumente hochladen" kam am 24.09. dazu. Die alte
+    #   Zahl stand seither falsch da und ist nie aufgefallen - der
+    #   Pruefstand starb vorher im zweiten Test (siehe node_lauf).
+    for datei, knotenzahl in (("1_KI4KI-Masse-Ingest.json", 31),
                               ("2_Dateien-in-JSON-umwandeln.json", 22),
                               ("3_Markdown-Datei-erzeugen.json", 6)):
         d = json.load(io.open(os.path.join(PLAENE, datei), encoding="utf-8"))
@@ -867,19 +1373,39 @@ def test_office_pdf_liegt_neben_dem_original():
 
 
 if __name__ == "__main__":
-    test_nichtdokumente()
-    test_leere_aussortieren()
-    test_positivliste()
-    test_unterkette_reisst_nicht_mit()
-    test_docling_einstellungen()
-    test_bereichserkennung()
-    test_office_pdf_liegt_neben_dem_original()
-    test_rueckgabe_garantiert()
-    test_stiller_durchgang_meldet_sich()
-    test_stand_steht_im_protokoll()
-    test_docling_laesst_der_grafikkarte_luft()
-    test_plaene_unversehrt()
-    test_was_n8n_wirklich_geladen_hat()
+    ALLE = [
+        test_nichtdokumente,
+        test_leere_aussortieren,
+        test_leer_marke_kommt_aus_code,
+        test_positivliste,
+        test_positivliste_hat_genau_eine_quelle,
+        test_positivliste_vor_der_sperre,
+        test_aufraeumbefehl_bleibt_unter_der_befehlsgrenze,
+        test_claim_schwelle_aus_der_umgebung,
+        test_claim_minuten_ist_durchgereicht,
+        test_claim_garantie_raeumt_wirklich,
+        test_leerlauf_wache_uebersieht_versteckte,
+        test_unterkette_reisst_nicht_mit,
+        test_docling_einstellungen,
+        test_bereichserkennung,
+        test_office_pdf_liegt_neben_dem_original,
+        test_rueckgabe_garantiert,
+        test_stiller_durchgang_meldet_sich,
+        test_stand_steht_im_protokoll,
+        test_docling_laesst_der_grafikkarte_luft,
+        test_plaene_unversehrt,
+        test_was_n8n_wirklich_geladen_hat,
+    ]
+    # ⛔ JEDER Test einzeln eingefasst. Platzt einer, ist ER rot - die
+    #   uebrigen laufen trotzdem. Vorher beendete ein einziger node-Fehler
+    #   den ganzen Lauf, und elf Tests meldeten sich elf Tage lang gar nicht.
+    for _t in ALLE:
+        try:
+            _t()
+        except Exception as _f:                                  # noqa: BLE001
+            pruefe(False, "%s ist geplatzt: %s: %s"
+                   % (_t.__name__, _f.__class__.__name__,
+                      str(_f).replace("\n", " ")[:300]))
     print("\nGeprueft wurden die Plaene in: %s" % PLAENE)
     print("%d Fehler" % len(FEHLER))
     sys.exit(1 if FEHLER else 0)

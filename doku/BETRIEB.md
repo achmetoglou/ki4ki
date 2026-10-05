@@ -261,9 +261,37 @@ sie stehen in der `docker-compose.yml`.)
 | `KI4KI_FORMELN` | `aus` | Formeln als LaTeX erkennen (~6 min je Dissertation). |
 | `KI4KI_MASSENLAUF_AB` | `6` | Ab so vielen Dateien im Eingang läuft die Aufnahme ohne Bildbeschreibung. |
 | `KI4KI_MENGE_JE_LAUF` | `25` | Dateien je Durchgang. |
+| `KI4KI_CLAIM_MINUTEN` | `180` | Nach so vielen Minuten gilt eine Datei in `input/` als von einem gescheiterten Durchgang liegengelassen und wandert nach `aussortiert/`. **Vor einem Massenlauf hochsetzen** — siehe Abschnitt direkt unter der Tabelle. Ein ungültiger Wert (leer, Buchstaben, `0`) wird verworfen, dann gilt wieder 180. |
 | `KI4KI_DOCLING_THREADS` | `12` | Prozessorkerne für Docling. |
 | `KI4KI_GID` | `1000` | Gruppe, der die Dokumentordner gehören (für SFTP-Zugang). Eigentümer ist immer Benutzer-Nummer 1000. |
 | `KI4KI_ROLLE_GLAETTEN` | `1` | Das Modell formuliert aus den drei Rollen-Feldern den Rollen-Absatz; `0` = die Vorlage gilt wörtlich. |
+
+#### Vor einem Massenlauf: `KI4KI_CLAIM_MINUTEN` hochsetzen
+
+Die Claim-Garantie ist ein Riegel gegen Endlosschleifen: Was länger als
+`KI4KI_CLAIM_MINUTEN` in `input/` liegt, hat ein abgestürzter Durchgang
+liegengelassen und wandert nach `aussortiert/` (mit Grund im `claim.log`).
+Für den Alltag ist die Vorgabe 180 richtig — ein Durchgang dauert Minuten.
+
+⛔ **Für einen Massenlauf ist sie zu knapp, und zwar rechnerisch, nicht
+gefühlt.** Ein Durchgang nimmt höchstens `KI4KI_MENGE_JE_LAUF` (25) Dateien,
+und es läuft ein Durchgang je Minute — allein daraus folgt für 6.151 Dateien
+eine Untergrenze von 247 Minuten. Gemessen am `ctime`-Histogramm früherer
+Läufe liegt der beste je erreichte Durchsatz bei **49 Dokumenten/h** (davor
+34/h). Nach 180 Minuten sind also erst rund 100–150 Dateien durch. Weil alle
+Dateien eines Massen-Einwurfs nahezu denselben `ctime` tragen, wandern die
+übrigen Tausende dann **in einem Rutsch** nach `aussortiert/`.
+
+**Richtwert:** `Dateien ÷ 34 Dok/h × 2` (Sicherheitsaufschlag), aufgerundet.
+
+| Dateien | bei 34 Dok/h | Empfehlung `KI4KI_CLAIM_MINUTEN` |
+|---|---|---|
+| 500 | ~15 h | `1800` (30 h) |
+| 1.785 | ~53 h | `6400` (~4,5 Tage) |
+| 6.151 | ~181 h | `22000` (~15 Tage) |
+
+Nach dem Lauf wieder auf `180` zurücksetzen — sonst bleibt der Riegel gegen
+Endlosschleifen tagelang wirkungslos.
 
 Weitere Schalter (`AUFFANGNETZ`, `E2B_ANTWORT`, `MODELL_ANZEIGE`, `NENNUNG_TILGEN`,
 `BEREICH_HEILEN`, `LOESCHEN`, `PROTOKOLL_TAGE`) stehen mit Erklärung in `.env.beispiel`.

@@ -2,8 +2,12 @@
 // Eingaben durch - ohne n8n, ohne Bestand, ohne Kundendaten.
 //   node aufnahmetest.js  [pfad-zur-workflow-json]
 const fs = require('fs');
+const path = require('path');
+// ⛔ Hier stand ein fester Pfad in ein /tmp-Arbeitsverzeichnis - auf dem
+//   echten Rechner (~/ki4ki) war die Probe damit ohne Argument gar nicht
+//   lauffaehig. Gesucht wird der Plan jetzt neben dem Skript.
 const P = process.argv[2] ||
-  '/tmp/claude-1000/-home-runlvl89/b80e3ade-1035-419c-9733-360f6be0bd17/scratchpad/repo/n8n-workflows/1_KI4KI-Masse-Ingest.json';
+  path.join(__dirname, '..', 'n8n-workflows', '1_KI4KI-Masse-Ingest.json');
 const wf = JSON.parse(fs.readFileSync(P, 'utf8'));
 const code = {};
 const shell = {};
@@ -30,6 +34,25 @@ const DIR = '/files/dokumente/kap/input/KundeA';
 const JETZT = { toFormat: () => '2026-10-05 08:00:00' };
 // Eine Konsole, die mitschreibt - das Protokoll ist Teil des Ergebnisses.
 const mitschrift = () => { const z = []; return { z, log: (...a) => z.push(a.join(' ')), error: () => {} }; };
+
+// ⭐ EINE QUELLE, ZWEI LESER. Die Positivliste der vorgesehenen Endungen
+//   steht im Baustein "Nur ein Bereich je Durchgang" - dort, wo auch der
+//   Wegraeum-Befehl entsteht. "Code" liest sie von dort. Diese Probe baut
+//   sie deshalb NICHT nach, sondern faehrt erst den besitzenden Baustein und
+//   reicht dessen echte Ausgabe weiter. Eine zweite Liste in der Probe waere
+//   genau die doppelte Wahrheit, vor der der Ablaufplan warnt.
+const filterLaufen = async (eingang, konsole) => await fahre('Nur ein Bereich je Durchgang', {
+  $input: { all: () => eingang },
+  $: () => ({ first: () => ({ json: { localFiles: { items: [] } } }) }),
+  $now: JETZT, console: konsole || { log() {}, error() {} },
+});
+// Der $-Platzhalter fuer "Code": Listen vom Filter, Bereichskarte wie gehabt.
+const codeUmgebung = (vomFilter, roh, quellen) => ({
+  $input: { all: () => roh },
+  $: (n) => ({ all: () => (n === 'Dateien in JSON umwandeln' ? roh : quellen),
+               first: () => (n === 'Nur ein Bereich je Durchgang'
+                 ? vomFilter : { json: { karte: { kap: 'kap' } } }) }),
+});
 
 (async () => {
   // ---------------------------------------------------------------- 1
@@ -77,11 +100,9 @@ const mitschrift = () => { const z = []; return { z, log: (...a) => z.push(a.joi
                abdruck: ab,
                nur_beleg: beleg, traeger: beleg ? 'KundeA/Angebot.docx' : '' };
     }), fehler: [] }) } };
-  const r2 = await fahre('Code', Object.assign({
-    $input: { all: () => roh },
-    $: (n) => ({ all: () => (n === 'Dateien in JSON umwandeln' ? roh : quellen),
-                 first: () => ({ json: { karte: { kap: 'kap' } } }) }),
-  }, dienst));
+  const vomFilter2 = (await filterLaufen(quellen))[0];
+  const r2 = await fahre('Code', Object.assign(
+    codeUmgebung(vomFilter2, roh, quellen), dienst));
   const nach = {}; for (const e of r2) nach[e.json.filename] = e.json;
   pruefe(nach['Angebot.pdf'].abdruck === nach['Angebot.docx'].abdruck,
          '2a Belegquelle und Original tragen denselben Abdruck');
@@ -189,11 +210,8 @@ const mitschrift = () => { const z = []; return { z, log: (...a) => z.push(a.joi
   const roh5 = r5.map(q => ({ json: {
     docling_filename: q.binary.data.fileName,
     data: 'Ein hinreichend langer Text zum Pruefen.' } }));
-  const r5code = await fahre('Code', Object.assign({
-    $input: { all: () => roh5 },
-    $: (n) => ({ all: () => (n === 'Dateien in JSON umwandeln' ? roh5 : r5),
-                 first: () => ({ json: { karte: { kap: 'kap' } } }) }),
-  }, dienst5));
+  const r5code = await fahre('Code', Object.assign(
+    codeUmgebung(r5[0], roh5, r5), dienst5));
   const hoch5 = (await fahre('Nur Dokumente hochladen', { $input: { all: () => r5code } }))
     .map(e => e.json.filename);
   pruefe(hoch5.length === 2 && !ABFALL.some(n => hoch5.indexOf(n) !== -1),
@@ -267,6 +285,87 @@ const mitschrift = () => { const z = []; return { z, log: (...a) => z.push(a.joi
   pruefe(r7b.length === 1 && r7b[0].json.aufraeumen === undefined
          && mit7.z.join('\n').indexOf('1 ohne input/ im Pfad liegen gelassen') !== -1,
          '7b ausserhalb von input/ wird NICHTS verschoben, aber gezaehlt');
+
+  // ---------------------------------------------------------------- 8
+  // ⛔ DER BEFUND vom 05.10., zweiter Teil: Eine Charge aus lauter nicht
+  //   vorgesehenen Endungen (jpg, tif, asc, tsx ...) fiel durch ALLE Siebe
+  //   dieses Bausteins und wurde erst hinter dem Upload in "Ablage
+  //   entscheiden" weggeraeumt. Besteht die Charge NUR aus solchen Dateien,
+  //   liefert "Nur Dokumente hochladen" ein leeres [], die Schleife laeuft
+  //   nicht an, "Ablage entscheiden" und "Sperre freigeben" laufen nie -
+  //   die Sperre bleibt bis zum 120-Minuten-Notnagel liegen, und danach
+  //   wiederholt sich dieselbe Charge identisch.
+  //   Nachgerechnet an der echten Dateiliste: 85 von 247 Durchgaengen (34 %)
+  //   enthalten kein einziges hochladbares Dokument, der erste als Nr. 3.
+  console.log('\n8) Eine Charge aus lauter unvorgesehenen Endungen (25x .jpg)');
+  const eingang8 = [];
+  for (let i = 1; i <= 25; i++) eingang8.push(datei(DIR, 'Foto_' + i + '.jpg'));
+  const mit8 = mitschrift();
+  const r8 = await filterLaufen(eingang8, mit8);
+  const auf8 = String((r8[0] && r8[0].json && r8[0].json.aufraeumen) || '');
+  const mv8 = (auf8.match(/mv -f /g) || []).length;
+  pruefe(r8.length === 1 && r8[0].json.nur_aufraeumen === true && !r8[0].binary,
+         '8a die Charge macht die Schleife nicht leer - ein Auftrags-Element '
+         + 'statt 25 Dateien (' + r8.length + ')');
+  pruefe(mv8 === 25, '8b alle 25 Dateien verlassen den Eingang (' + mv8 + ')');
+  pruefe(auf8.indexOf('"/files/dokumente/kap/aussortiert/KundeA/Foto_7.jpg"') !== -1,
+         '8c sie landen in <bereich>/aussortiert/, der Unterordner bleibt');
+  pruefe(auf8.indexOf('Format nicht vorgesehen (.jpg)') !== -1,
+         '8d der Grund nennt die Endung - nicht "kein Dokument"');
+  pruefe(auf8.indexOf('>> "/files/dokumente/kap/aussortiert/aussortiert.log"') !== -1,
+         '8e und steht im aussortiert.log des Bereichs');
+  pruefe(mit8.z.join('\n').indexOf('Nur Abfall im Eingang') !== -1,
+         '8f das Protokoll sagt, dass dieser Durchgang nur aufraeumt');
+  // ⛔ Und der Weg danach: "Sperre setzen" raeumt auf und bricht ab, OHNE
+  //   die Sperre zu setzen. Ohne das bliebe genau hier die Sperre liegen.
+  const sp8 = String(shell['Sperre setzen'] || '');
+  pruefe(sp8.indexOf('{{ $json.aufraeumen') >= 0
+         && sp8.indexOf('{{ $json.aufraeumen') < sp8.indexOf('mkdir "$L"'),
+         '8g der Wegraeum-Befehl laeuft VOR der Sperre');
+
+  // ---------------------------------------------------------------- 9
+  // ⛔ DIE GEGENPROBE. Wer die Positivliste zu scharf zieht, raeumt den
+  //   Bestand weg - und das faellt erst auf, wenn er weg ist.
+  console.log('\n9) Gegenprobe - eine gemischte Charge verliert kein Dokument');
+  const GUT = ['Bericht.pdf', 'Angebot.docx', 'Liste.txt', 'Werte.xlsm',
+               'Praesentation.odp', 'Notiz.md', 'Seite.htm'];
+  const WEG = ['Foto.jpg', 'Messung.tra', 'Anbau.tsx'];
+  const eingang9 = GUT.concat(WEG).concat(['Post.msg'])
+    .map(n => datei(DIR, n));
+  const r9 = await filterLaufen(eingang9);
+  const namen9 = r9.map(e => (e.binary && e.binary.data.fileName) || '');
+  const auf9 = String((r9[0] && r9[0].json && r9[0].json.aufraeumen) || '');
+  pruefe(GUT.every(n => namen9.indexOf(n) !== -1),
+         '9a alle vorgesehenen Dateien gehen weiter (' + namen9.join(', ') + ')');
+  pruefe(auf9.length > 0 && GUT.every(n => auf9.indexOf(n) === -1),
+         '9b ⛔ und KEINE davon steht im Wegraeum-Befehl');
+  pruefe(WEG.every(n => namen9.indexOf(n) === -1 && auf9.indexOf(n) !== -1),
+         '9c nur die unvorgesehenen Endungen werden geraeumt');
+  // ⚠ Korrespondenz (.msg/.eml) ist bewusst NICHT betroffen: Sie ist
+  //   erkannt und vertagt und bekommt in "Ablage entscheiden" ihre eigene
+  //   Begruendung. Wer das aendert, aendert eine Entscheidung vom 22.09.
+  pruefe(namen9.indexOf('Post.msg') !== -1 && auf9.indexOf('Post.msg') === -1,
+         '9d Korrespondenz bleibt unberuehrt (eigene Behandlung, 22.09.)');
+  // Bis zum Upload durchgerechnet - die Charge ist eben NICHT leer.
+  const dienst9 = { helpers: { httpRequest: async (o) => ({
+    schluessel: o.body.dateien.map(x => ({
+      bereich: x.bereich, unterpfad: x.unterpfad,
+      schluessel: 'kap-' + x.unterpfad.replace(/\W+/g, '-'),
+      abdruck: 'ab' + x.unterpfad.replace(/\W+/g, '').toLowerCase().slice(-8),
+      nur_beleg: false, traeger: '' })), fehler: [] }) } };
+  const roh9 = r9.map(q => ({ json: {
+    docling_filename: q.binary.data.fileName,
+    data: 'Ein hinreichend langer Text zum Pruefen.' } }));
+  const r9code = await fahre('Code', Object.assign(
+    codeUmgebung(r9[0], roh9, r9), dienst9));
+  const hoch9 = (await fahre('Nur Dokumente hochladen', { $input: { all: () => r9code } }))
+    .map(e => e.json.filename);
+  pruefe(hoch9.length === GUT.length && GUT.every(n => hoch9.indexOf(n) !== -1),
+         '9e bis zum Upload gerechnet: genau die vorgesehenen Dokumente '
+         + '(' + hoch9.join(', ') + ')');
+  pruefe(String((r9[0].json || {}).vorgesehen_liste || r9code[0].json.vorgesehen_liste || '')
+           .indexOf('xlsm') !== -1,
+         '9f "Ablage entscheiden" bekommt die Liste weiterhin als Text');
 
   console.log('\n' + fehler + ' Fehler');
   process.exit(fehler ? 1 : 0);

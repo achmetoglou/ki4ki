@@ -264,6 +264,21 @@ services:
     - KI4KI_MASSENLAUF_AB=${KI4KI_MASSENLAUF_AB:-6}
     # Dateien je Durchgang der Aufnahme
     - KI4KI_MENGE_JE_LAUF=${KI4KI_MENGE_JE_LAUF:-25}
+    # Claim-Garantie: Nach so vielen Minuten gilt eine Datei in input/ als
+    # von einem gescheiterten Durchgang liegengelassen - sie wandert nach
+    # aussortiert/ und steht mit Grund im claim.log. Im Alltag ist das
+    # richtig (ein Durchgang dauert Minuten).
+    # ⛔ VOR EINEM MASSENLAUF HOCHSETZEN. Bei 25 Dateien je Durchgang und
+    #   einem Durchgang je Minute braucht ein Eingang von 6.151 Dateien
+    #   allein deshalb ueber 247 Minuten; gemessen wurden 34-49 Dokumente je
+    #   Stunde. Nach 180 Minuten waeren erst rund 100-150 Dateien durch -
+    #   und weil alle Dateien eines Massen-Einwurfs nahezu denselben ctime
+    #   tragen, wandern die uebrigen Tausende in EINEM Rutsch nach
+    #   aussortiert/. Richtwert: geplante Laufzeit in Minuten mal zwei
+    #   (Rechenweg in doku/BETRIEB.md).
+    # ⚠ Was keine Zahl ueber 0 ist (leer, Buchstaben, 0), wird verworfen -
+    #   dann gilt wieder 180, und die Sperre funktioniert weiter.
+    - KI4KI_CLAIM_MINUTEN=${KI4KI_CLAIM_MINUTEN:-180}
     volumes:
     - n8n-daten:/home/node/.n8n
     - ./dokumente:/files/dokumente
