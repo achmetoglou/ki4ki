@@ -479,10 +479,93 @@ unbrauchbar machen.
 | Antworten ohne Belege | Bereich prüfen: Modus „Abfrage", Prompt enthält den Kern (`./prompt_aktualisieren.sh`) |
 | Alles plötzlich 10× langsamer | Grafikkarte: `curl -s localhost:3001/pruef-status` → `gpu.warnung`; im Log `[GPU] ⚠`. Der Proxy prüft alle 10 Minuten, ob die Modelle im Grafikspeicher liegen. |
 | Modell antwortet nicht | `docker compose logs -f ollama` und `nothink-proxy` |
-| Platte voll | `df -h`, `docker system df`. Die n8n-Ausführungshistorie wächst (jede Minute ein Lauf): `EXECUTIONS_DATA_PRUNE=true`, `EXECUTIONS_DATA_MAX_AGE=336`. |
+| **Platte voll — und die Aufnahme meldet „0 zu verarbeiten", obwohl der Eingang voll ist** | Fast immer die n8n-Ausführungshistorie. Siehe **10.1** darunter: erkennen, aufräumen, dauerhaft deckeln. |
 | **Jede Datei „im Arbeitsbereich nicht wiedergefunden — Aufnahme unvollständig"** | Dem Bereich fehlt seine **Ablage** im Dokumentenfenster. Die Anlage legt sie seit dem 18.09. selbst an (beim Anlegen und im Fünf-Minuten-Abgleich); bei älteren Ständen von Hand: Dokumentenverwaltung → neuer Ordner, Name genau wie `ablage` in `dokumente/<bereich>/bereich.json`. Die Dateien bleiben im Eingang und laufen danach von selbst durch. |
 | Dokumente verschwinden, oder im Archiv liegen Dateien ohne erkennbare Zuordnung | Gleichnamige Dateien. Die Anlage erkennt ein Dokument nur am Dateinamen — siehe `BUGS_UND_FIXES.md` Punkt 6. Prüfen mit `python3 bau/pfad-messung.py`: Abschnitt 2 zeigt, wie viele Dateien im eigenen Bestand betroffen sind. |
 | Aufnahme steht seit Stunden | Laufsperre `/files/json/.lauf.sperre` im n8n-Container; löst sich nach 120 Minuten selbst, `aktualisiere.sh` räumt sie nach dem Neustart weg |
+
+### 10.1 · Platte voll durch die Ausführungshistorie von n8n
+
+**Woran man es erkennt.** Zwei Zeichen, die zusammengehören:
+
+1. Die Aufnahme meldet Durchgang für Durchgang **„0 zu verarbeiten"**, obwohl in
+   `dokumente/<bereich>/input/` Dateien liegen — ein **Phantom-Durchgang**. Er sieht
+   grün aus: Der Lade-Baustein scheitert, steht aber auf „bei Fehler weiterlaufen",
+   und aus dem Fehler wird ein leeres Ergebnis.
+2. Im Protokoll des Durchgangs steht
+   **`ENOSPC: no space left on device, mkdir '.../executions/<nummer>'`**.
+
+Nachsehen, in dieser Reihenfolge:
+
+```bash
+df -h                                   # steht /dev/sda3 auf 100 %?
+docker system df
+docker exec ki4ki-n8n du -sh /home/node/.n8n/storage
+docker exec ki4ki-n8n du -sh /home/node/.n8n/storage/workflows/*
+docker exec ki4ki-n8n sh -c 'ls /home/node/.n8n/storage/workflows/*/executions | wc -l'
+```
+
+Gemessen am 06.10.2026 auf dem Produktivserver: `/dev/sda3` 251 GB, davon 240 GB
+belegt, 0 frei. `/home/node/.n8n/storage` **116,8 GB**, davon alles in
+`storage/workflows/1DKWgDbdCiwa25E1` — **8.355 Ausführungsordner**.
+
+**Warum es passiert ist.** Zwei Ursachen, beide am 06.10. behoben:
+
+- Der Ablaufplan las **erst alles, dann begrenzte er**. „Daten vom Server laden"
+  holte jede Datei des Eingangs vollständig in den Speicher, und erst danach schnitt
+  „Menge begrenzen" auf `KI4KI_MENGE_JE_LAUF` (25) zu. Mit
+  `N8N_DEFAULT_BINARY_DATA_MODE=filesystem` landet alles Gelesene je Durchgang auf
+  der Platte. Bei 5.837 Dateien (18 GB) im Eingang waren das **18 GB je Durchgang**,
+  und ein Durchgang läuft jede Minute. Jetzt wird die **Liste** ohne Inhalte geholt
+  (`find`), auf 25 begrenzt — und erst **hinter der Sperre** werden genau diese 25
+  Dateien gelesen: rund **79 MB** statt 18 GB. Leerläufe lesen gar nichts mehr.
+- Es war **kein Aufräumen eingestellt**. Ab Werk räumt n8n erst bei 10.000
+  Ausführungen oder 336 Stunden auf — 8.355 Ordner lagen darunter, der Deckel hat
+  also nie gegriffen. Jetzt stehen in der `docker-compose.yml` beim Dienst `n8n`:
+  `EXECUTIONS_DATA_PRUNE`, `EXECUTIONS_DATA_MAX_AGE` (48 Stunden),
+  `EXECUTIONS_DATA_PRUNE_MAX_COUNT` (500),
+  `EXECUTIONS_DATA_PRUNE_SOFT_DELETE_INTERVAL` (15 Minuten) und
+  `EXECUTIONS_DATA_PRUNE_HARD_DELETE_INTERVAL` (5 Minuten). Alle fünf sind über die
+  `.env` verstellbar, Erklärung in [`../.env.beispiel`](../.env.beispiel).
+
+**Wie man aufräumt**, wenn es schon passiert ist:
+
+1. **Erst Platz schaffen, dann neu starten.** Ein n8n, das nicht schreiben kann,
+   repariert sich nicht selbst.
+   ```bash
+   # 1) Was ist überhaupt da?
+   docker exec ki4ki-n8n du -sh /home/node/.n8n/storage/workflows/*
+   # 2) Die Ausführungsdaten des Aufnahme-Plans wegräumen.
+   #    ⚠ NUR den Unterordner "executions" - daneben liegen keine Nutzdaten,
+   #      die Dokumente selbst stehen in dokumente/ und sind davon nicht berührt.
+   docker exec ki4ki-n8n sh -c 'rm -rf /home/node/.n8n/storage/workflows/*/executions'
+   df -h
+   ```
+2. **Deckel setzen und n8n neu starten.** Die Einträge in der Datenbank räumt n8n
+   dann selbst weg — vormerken alle 15 Minuten, löschen alle 5:
+   ```bash
+   docker compose up -d n8n     # übernimmt die EXECUTIONS_*-Einstellungen
+   docker compose logs -f n8n   # „Soft-deleted … executions" / „Hard-deleted …"
+   ```
+   ⚠ Die Liste im Editor kann vorher kurz Durchgänge zeigen, deren Daten schon
+   gelöscht sind. Das ist die Folge von Schritt 1 und erledigt sich mit dem
+   Aufräumen; die Dokumente selbst sind davon nie betroffen.
+3. **Schonfrist beachten:** `EXECUTIONS_DATA_HARD_DELETE_BUFFER` (ab Werk 1 Stunde)
+   schützt alles, was jünger als eine Stunde ist — damit man einen frischen Fehler
+   noch ansehen kann. Direkt nach dem Setzen der Deckel ist der Platz also nicht
+   sofort vollständig zurück.
+4. **Die Laufsperre prüfen.** Ein Durchgang, der an `ENOSPC` gescheitert ist, kann
+   `/files/json/.lauf.sperre` liegengelassen haben. Sie löst sich nach 120 Minuten
+   selbst; `./aktualisiere.sh` räumt sie nach dem Neustart weg.
+5. **Gegenprobe, dass die Aufnahme wieder arbeitet:** Im nächsten Durchgang muss im
+   Protokoll `[Eingang] <n> Dateien gefunden` **und** `Bereich <name>: <n> zu
+   verarbeiten` stehen — nicht mehr „0 zu verarbeiten".
+
+> **⚠ Die Binärdaten bleiben bewusst auf der Platte** (`N8N_DEFAULT_BINARY_DATA_MODE=filesystem`),
+> obwohl 25 Dateien auch in den Arbeitsspeicher passen würden. Ohne diesen Schalter
+> legt n8n sie base64 **in** `database.sqlite`, und SQLite gibt gelöschten Platz ohne
+> `VACUUM` nie an das Dateisystem zurück — das Aufräumen liefe dann ins Leere. Auf der
+> Platte löscht es wirklich.
 
 **Selbst-Check:** `docker exec ki4ki-pruef-proxy python3 /app/selbstcheck.py [<bereich> <anzahl>]`
 stellt zufällige Fragen aus dem eigenen Bestand und prüft mechanisch, ob Belege

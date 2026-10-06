@@ -628,6 +628,76 @@ const codeUmgebung = (vomFilter, roh, quellen) => ({
             .has('Sperre freigeben'),
          '11i GEGENPROBE: am unveraenderten Plan wird sie erreicht');
 
+  // ---------------------------------------------------------------- 12
+  // ⛔ DIE NEUE STELLE, AN DER DIE KETTE LEER WERDEN KANN (06.10.).
+  //   Seit dem Umbau laedt "Daten vom Server laden" erst HINTER der Sperre,
+  //   und zwar je Element genau eine Datei. Findet fast-glob zu keinem
+  //   einzigen Pfad etwas - alle Dateien der Charge sind zwischen dem
+  //   Einlesen der Liste und dem Laden verschwunden (ein Mensch raeumt auf,
+  //   die Claim-Garantie greift) -, gibt der Baustein NICHTS zurueck. In
+  //   n8n heisst nichts: der naechste Baustein wird nicht eingeplant
+  //   (2.31.4, executionOrder v1). Dann liefe "Sperre freigeben" nie, und
+  //   /files/json/.lauf.sperre bliebe bis zum 120-Minuten-Notnagel liegen.
+  //   Deshalb traegt er alwaysOutputData - genau wie "Nur Dokumente
+  //   hochladen" seit dem 05.10.
+  console.log('\n12) Die Charge ist beim Laden verschwunden');
+  const knotenLader = wf.nodes.find(n => n.name === 'Daten vom Server laden') || {};
+  pruefe(String(knotenLader.type || '').endsWith('.readWriteFile'),
+         '12a Kontrolle: "Daten vom Server laden" ist der Lade-Baustein (ist: '
+         + knotenLader.type + ')');
+  pruefe(knotenLader.alwaysOutputData === true,
+         '12b er gibt auch dann ein Element weiter, wenn keine Datei mehr da ist');
+  pruefe(eingeplant('Daten vom Server laden', 0).has('Sperre freigeben'),
+         '12c ⛔ und "Sperre freigeben" wird trotzdem erreicht');
+  const mutLader = kopie();
+  for (const n of mutLader.nodes) {
+    if (n.name === 'Daten vom Server laden') delete n.alwaysOutputData;
+  }
+  pruefe(!eingeplant('Daten vom Server laden', 0, undefined, mutLader)
+            .has('Sperre freigeben'),
+         '12d MUTANT: ohne alwaysOutputData am Lade-Baustein bleibt die Sperre liegen');
+  // ⛔ Und der Baustein dahinter darf nicht werfen: Er schlaegt die Angaben
+  //   bei $('Dateien zurueckholen') nach, und $() wirft, wenn der Baustein
+  //   nicht gelaufen ist (Handstart, Umbenennung). Ein Wurf zwischen
+  //   "Sperre setzen" und "Sperre freigeben" ist dasselbe Liegenbleiben.
+  const anheften = wf.nodes.find(n => n.name === 'Angaben wieder anheften') || {};
+  pruefe(anheften.onError === 'continueRegularOutput',
+         '12e "Angaben wieder anheften" laeuft bei Fehler weiter (ist: '
+         + anheften.onError + ')');
+  let r12 = null, geworfen12 = null;
+  try {
+    r12 = await fahre('Angaben wieder anheften', {
+      $input: { all: () => [datei(DIR, 'Bericht.pdf')] },
+      $: (n) => { throw new Error('Referenced node is unexecuted: "' + n + '"'); },
+      console: { log() {}, error() {} },
+    });
+  } catch (e) { geworfen12 = e; }
+  pruefe(geworfen12 === null && r12 && r12.length === 1,
+         '12f ein fehlender Vorgaenger laesst ihn nicht platzen'
+         + (geworfen12 ? ' (geworfen: ' + geworfen12.message.slice(0, 70) + ')' : ''));
+  // Und im Normalfall heftet er die Marken wirklich wieder an - sonst liefe
+  // die mitgelieferte PDF wieder durch Docling (293 von 779 im Bestand).
+  const gelesen12 = [datei(DIR, 'Beleg.pdf')];
+  const r12b = await fahre('Angaben wieder anheften', {
+    $input: { all: () => gelesen12 },
+    $: () => ({ all: () => [{ json: { pfad: DIR + '/Beleg.pdf',
+                                      belegquelle: true } }] }),
+    console: { log() {}, error() {} },
+  });
+  pruefe(r12b.length === 1 && r12b[0].json.belegquelle === true
+         && r12b[0].binary === gelesen12[0].binary,
+         '12g die Marken aus der Dateiliste sind wieder dran, die Datei auch');
+  // ⛔ GEGENPROBE: Passt der Pfad nicht, wird NICHTS erfunden - und die
+  //   Datei faellt trotzdem nicht aus der Kette.
+  const r12c = await fahre('Angaben wieder anheften', {
+    $input: { all: () => gelesen12 },
+    $: () => ({ all: () => [{ json: { pfad: DIR + '/Anderes.pdf',
+                                      belegquelle: true } }] }),
+    console: { log() {}, error() {} },
+  });
+  pruefe(r12c.length === 1 && r12c[0].json.belegquelle === undefined,
+         '12h GEGENPROBE: ein fremder Pfad bringt keine fremden Marken mit');
+
   console.log('\n' + fehler + ' Fehler');
   process.exit(fehler ? 1 : 0);
 })().catch(e => { console.error('ABBRUCH:', e); process.exit(2); });

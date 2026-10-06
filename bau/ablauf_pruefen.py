@@ -344,7 +344,13 @@ def test_bereichserkennung():
     print("\nBereichserkennung bei Unterordnern")
     quelle = knoten("1_KI4KI-Masse-Ingest.json",
                     "Nur ein Bereich je Durchgang")["parameters"]["jsCode"]
-    kern = ausschnitt(quelle, "const bereichVon", "const nameVon", "bereichVon")
+    # ⚠ DER AUSSCHNITT BEGINNT BEI 'const angabe', NICHT BEI 'const
+    #   bereichVon'. Seit dem 06.10. holt bereichVon seine Angaben ueber
+    #   angabe() - stuende der Marker weiter hinten, liefe der Ausschnitt
+    #   allein nicht mehr ("ReferenceError: angabe is not defined"), und der
+    #   Pruefstand meldete einen Absturz statt eines Ergebnisses. Genau so
+    #   ist er am 24.09. elf Tage unbemerkt gestorben.
+    kern = ausschnitt(quelle, "const angabe", "const nameVon", "bereichVon")
     if kern is None:
         return
     js = kern + """
@@ -358,6 +364,25 @@ console.log(JSON.stringify([
     erg = json.loads(node_lauf(js))
     pruefe(erg == ["kap", "kap", "kap", "auw"],
            "Bereich stimmt auf jeder Ordnertiefe, ist %r" % (erg,))
+    # ⭐ UND AUS BEIDEN QUELLEN. Seit dem 06.10. kommt die Dateiliste ohne
+    #   Inhalte herein; Name und Ordner stehen dann im json statt in
+    #   binary.data. Beide Wege muessen dasselbe ergeben - sonst landen
+    #   Dokumente wieder im falschen Arbeitsbereich.
+    js2 = kern + """
+const f = (item) => bereichVon(item);
+console.log(JSON.stringify([
+  f({json:{directory:'/files/dokumente/kap/input/Normen'}}),
+  f({json:{directory:'/files/dokumente/auw/input'}}),
+  // binary gewinnt, wenn es etwas hergibt - die Probe faehrt diesen
+  // Baustein auch mit Elementen aus "Daten vom Server laden".
+  f({json:{directory:'/files/dokumente/auw/input'},
+     binary:{data:{directory:'/files/dokumente/kap/input'}}}),
+  // ein leeres binary darf den json-Weg NICHT verstellen
+  f({json:{directory:'/files/dokumente/kap/input'}, binary:{data:{}}})]));
+"""
+    erg2 = json.loads(node_lauf(js2))
+    pruefe(erg2 == ["kap", "auw", "kap", "kap"],
+           "Bereich kommt aus json ODER binary, ist %r" % (erg2,))
     # ⛔ Gegenprobe: Die ALTE Zeile muss an denselben Faellen scheitern -
     #   sonst prueft das hier nichts.
     alt = """
@@ -1454,7 +1479,10 @@ def test_plaene_unversehrt():
     # ⚠ 31, nicht 30: "Nur Dokumente hochladen" kam am 24.09. dazu. Die alte
     #   Zahl stand seither falsch da und ist nie aufgefallen - der
     #   Pruefstand starb vorher im zweiten Test (siehe node_lauf).
-    for datei, knotenzahl in (("1_KI4KI-Masse-Ingest.json", 31),
+    # ⚠ 34, nicht 31: "Dateiliste einlesen", "Dateiliste aufbereiten" und
+    #   "Angaben wieder anheften" kamen am 06.10. dazu - der Umbau, der die
+    #   Dateiliste VOR dem Laden begrenzt.
+    for datei, knotenzahl in (("1_KI4KI-Masse-Ingest.json", 34),
                               ("2_Dateien-in-JSON-umwandeln.json", 22),
                               ("3_Markdown-Datei-erzeugen.json", 6)):
         d = json.load(io.open(os.path.join(PLAENE, datei), encoding="utf-8"))
@@ -1539,6 +1567,541 @@ def test_office_pdf_liegt_neben_dem_original():
            "die Endung wird getauscht, nicht angehaengt")
 
 
+# ==========================================================================
+# ⭐ DER KOPF DER KETTE - AN EINEM ECHTEN VERZEICHNIS GEFAHREN (06.10.)
+#
+# ⛔ Warum das sein muss: Der Kopf hat die Platte des Produktivservers
+#   vollgeschrieben. "Daten vom Server laden" las JEDE Datei des Eingangs
+#   vollstaendig in den Speicher und erst DANACH schnitt "Menge begrenzen"
+#   auf 25 zu. Mit N8N_DEFAULT_BINARY_DATA_MODE=filesystem landet alles
+#   Gelesene je Ausfuehrung auf der Platte. Gemessen auf dem Server:
+#   116,8 GB in 8.355 Ausfuehrungsordnern, /dev/sda3 zu 100 % voll, und
+#   danach "ENOSPC: no space left on device, mkdir .../executions/59564".
+#   Der Baustein brach ab, onError machte daraus ein leeres Ergebnis, und
+#   die Kette meldete stundenlang "0 zu verarbeiten" bei vollem Eingang.
+#
+# ⚠ Eine Pruefung auf die REIHENFOLGE allein genuegt hier nicht - sie waere
+#   auch dann gruen, wenn hinter dem Begrenzer wieder ein Platzhalter
+#   stuende und doch alles laedt. Gezaehlt wird deshalb, wie viele Dateien
+#   wirklich von der Platte gelesen werden; dafuer laeuft der Kopf an einem
+#   echten Verzeichnisbaum.
+# ==========================================================================
+SONDERNAME = "Angebot (2) [alt] {neu}.pdf"
+GLOB_SONDER = r"[*?\[\]{}()!@+|^$]"
+
+
+def _schreibe(pfad, text="x"):
+    ordner = os.path.dirname(pfad)
+    if not os.path.isdir(ordner):
+        os.makedirs(ordner)
+    io.open(pfad, "w", encoding="utf-8").write(text)
+
+
+def _eingangsbaum(dokumente=500, abfall=40):
+    """Ein Eingang wie auf dem Server - echte Dateien, kein Nachbau.
+
+    ⛔ DER ABFALL LIEGT IM BEREICH, DER ZUERST EINGELESEN WIRD, und es ist
+      mehr als eine Charge voll (40 > 25). Wer die Menge VOR dem Filter
+      begrenzt, sieht damit ausschliesslich Abfall: kein Dokument wird je
+      gelesen, und der Rest des Abfalls bleibt fuer immer liegen. Genau das
+      prueft die Gegenprobe.
+    """
+    import tempfile
+    w = tempfile.mkdtemp(prefix="ki4ki-kopf-")
+    for bereich in ("auw", "kap"):
+        _schreibe(os.path.join(w, bereich, "bereich.json"),
+                  '{"ablage": "%s"}' % bereich)
+    for i in range(abfall):
+        _schreibe(os.path.join(w, "auw", "input", "ordner%02d" % i, "Thumbs.db"))
+    for i in range(dokumente):
+        _schreibe(os.path.join(w, "kap", "input", "Dok-%03d.pdf" % i))
+    # ⛔ SONDERZEICHEN IM NAMEN. n8n gibt den Dateiwaehler an fast-glob -
+    #   also an einen MUSTERLESER. '(2)' ist dort eine Gruppe, '[alt]' eine
+    #   Zeichenklasse: ein Pfad, der so heisst, wird als Muster NICHT
+    #   gefunden. Die Datei verschwaende dann lautlos aus dem Durchgang und
+    #   bliebe liegen, bis die Claim-Garantie sie aussortiert.
+    _schreibe(os.path.join(w, "kap", "input", SONDERNAME))
+    # ⛔ VERSTECKT. fast-glob laeuft mit dot:false; Claim-Garantie,
+    #   Leerlauf-Wache und ANZ-Zaehler schliessen versteckte Dateien
+    #   ausdruecklich aus ("DIESELBE SICHT WIE ALLE ANDERE"). Wer die
+    #   Dateiliste anders beschafft, darf diese Sicht nicht weiten - sonst
+    #   laufen die 151 versteckten Dateien des Bestands auf einmal in die
+    #   Wegraeum-Maschinerie.
+    _schreibe(os.path.join(w, "kap", "input", ".DS_Store"))
+    return w
+
+
+def _ausdruck(wert, item):
+    """Einen n8n-Ausdruck auf EIN Element anwenden.
+
+    Verstanden wird nur, was im Plan wirklich vorkommt: ein fester Text
+    oder {{ $json.<feld> }}. Alles andere gibt None zurueck und wird vom
+    Aufrufer ROT gemeldet - ein unverstandener Ausdruck darf nicht
+    stillschweigend als fester Text durchgehen.
+    """
+    t = str(wert)
+    if not t.startswith("="):
+        return t
+    t = re.sub(r"\{\{\s*\$json\.([A-Za-z_][A-Za-z0-9_]*)\s*\}\}",
+               lambda m: str((item.get("json") or {}).get(m.group(1), "")),
+               t[1:])
+    return None if "{{" in t else t
+
+
+def _glob_treffer(muster):
+    """Was fast-glob zu diesem Dateiwaehler findet.
+
+    ⚠ MODELL, NICHT DAS ECHTE fast-glob - das liegt nur im n8n-Container.
+      Nachgebildet sind genau die beiden Faelle, die im Plan vorkommen:
+
+      1. ein Platzhalter-Muster (/files/dokumente/*/input/**) - Dateien,
+         keine Ordner, keine versteckten (dot:false);
+      2. ein einzelner Pfad, in dem jedes Sonderzeichen mit \\ entschaerft
+         ist - ein solches Muster trifft genau diesen einen Pfad.
+
+      Bleibt in Fall 2 ein UNENTSCHAERFTES Sonderzeichen uebrig, gibt diese
+      Funktion None zurueck: dann waere die Datei im Betrieb lautlos nicht
+      gefunden worden, und das soll rot werden statt gruen.
+    """
+    if "\\" in muster:
+        if re.search(GLOB_SONDER, re.sub(r"\\.", "", muster)):
+            return None
+        roh = re.sub(r"\\(.)", r"\1", muster)
+        return [roh] if os.path.isfile(roh) else []
+    if re.search(GLOB_SONDER, muster):
+        import glob as _g
+        return sorted(p for p in _g.glob(muster, recursive=True)
+                      if os.path.isfile(p)
+                      and not any(t.startswith(".") for t in p.split(os.sep)))
+    return [muster] if os.path.isfile(muster) else []
+
+
+def _kette_ab(plan, start, ende):
+    """Die Bausteine zwischen start und ende, entlang Ausgang 0.
+
+    ⚠ AUS DEM PLAN GELESEN, nicht fest eingetragen: Verschiebt jemand einen
+      Baustein, faehrt diese Probe den NEUEN Weg - sonst wuerde sie den
+      Umbau gar nicht bemerken.
+    """
+    weg, akt, gesehen = [], start, set()
+    while True:
+        folge = ((plan["connections"].get(akt, {}).get("main") or [[]])[0]) or []
+        if not folge:
+            return weg, False
+        akt = folge[0]["node"]
+        if akt == ende:
+            return weg, True
+        if akt in gesehen:
+            return weg, False
+        gesehen.add(akt)
+        weg.append(akt)
+
+
+def _code_fahren(k, ein, vor):
+    """Einen Code-Baustein mit node fahren - echte Eingangsdaten, echte
+    Ausgaben der Vorgaenger."""
+    js = (
+        "const EIN = " + json.dumps(ein) + ";\n"
+        "const VOR = " + json.dumps(vor) + ";\n"
+        "const _log = [];\n"
+        "const console = { log: function () {"
+        " _log.push(Array.prototype.join.call(arguments, ' ')); },"
+        " error: function () {} };\n"
+        "const $input = { all: () => EIN, first: () => EIN[0],"
+        " last: () => EIN[EIN.length - 1] };\n"
+        "const $ = (n) => { if (!(n in VOR)) { throw new Error("
+        "'Referenced node is unexecuted: \"' + n + '\"'); }\n"
+        "  const a = VOR[n];"
+        " return { all: () => a, first: () => a[0], last: () => a[a.length - 1] }; };\n"
+        "const $now = { toFormat: () => '2026-10-06 08:00:00' };\n"
+        "const _raus = (function () {\n" + k["parameters"]["jsCode"] + "\n})();\n"
+        "process.stdout.write(JSON.stringify({ raus: _raus || [], log: _log }));\n")
+    return json.loads(node_lang(js))
+
+
+def node_lang(js):
+    """Wie node_lauf, aber ueber die Standardeingabe.
+
+    ⛔ NICHT als Befehlsargument: Der Kopf der Kette wird mit 541 Dateien
+      gefahren; Programm und Daten zusammen sprengen MAX_ARG_STRLEN
+      (131.072 Byte), und der Aufruf scheiterte mit E2BIG - also genau so,
+      wie der Wegraeum-Befehl es im Betrieb getan haette.
+    """
+    global NODE
+    if NODE is None:
+        NODE = _node_aufruf()
+    e = subprocess.run(NODE, input=js, capture_output=True, text=True,
+                       timeout=180)
+    if e.returncode != 0:
+        raise NodeFehler("node-Fehler:\n" + (e.stderr or "")[:2000])
+    return e.stdout
+
+
+# Was die Probe NICHT ausfuehrt: alles, was Dateien bewegt. "Sperre setzen"
+# legt /files/json/.lauf.sperre an und verschiebt Dateien - sein Inhalt hat
+# eine eigene Pruefreihe (_sperre_fahren, test_claim_*). Hier zaehlt nur,
+# WAS BEI IHM ANKOMMT und wie viele Dateien bis dahin gelesen wurden.
+BEWEGT = ("mkdir", "mv ", "rm ", "rmdir")
+
+
+def _ohne_kommentar(befehl):
+    """Die Shell-Kommentare raus, bevor nach mkdir/mv gesucht wird.
+
+    ⛔ Ohne das galt "Dateiliste einlesen" als gefaehrlich und wurde nicht
+      ausgefuehrt - allein weil in seinem Kommentar die gemessene
+      Fehlermeldung "mkdir .../executions/59564" steht. Die Probe bekam
+      dann eine leere Dateiliste und meldete "die Kette ist unterbrochen",
+      also einen Fehler, den es gar nicht gab.
+    """
+    return "\n".join(z for z in str(befehl).splitlines()
+                     if not z.lstrip().startswith("#"))
+
+
+def _kopf_fahren(plan, wurzel, grenze):
+    """Den Kopf der Kette an einem echten Verzeichnis fahren.
+
+    Gibt zurueck, wie viele Dateien dabei WIRKLICH von der Platte gelesen
+    wurden - die Zahl, an der die Platte vollgelaufen ist.
+    """
+    nach = dict((n["name"], n) for n in plan["nodes"])
+    weg, heil = _kette_ab(plan, "Bestand abfragen", "Dateien klassifizieren")
+    if not heil:
+        return {"fehler": "Vom Bestand fuehrt kein gerader Weg zur "
+                          "Klassifizierung (gelaufen: %s)" % " -> ".join(weg)}
+    vor = {"Bestand abfragen": [{"json": {"localFiles": {"items": []}}}]}
+    items, gelesen, dateien, mitschrift = vor["Bestand abfragen"], 0, [], []
+    eingang_sperre = None
+    for name in weg:
+        k = nach[name]
+        typ = k["type"].split(".")[-1]
+        p = k.get("parameters") or {}
+        if typ == "readWriteFile":
+            neu = []
+            for e in items:
+                sel = _ausdruck(p.get("fileSelector", ""), e)
+                if sel is None:
+                    return {"fehler": "Den Dateiwaehler von %r versteht diese "
+                            "Probe nicht: %r" % (name, p.get("fileSelector"))}
+                treffer = _glob_treffer(sel.replace("/files/dokumente", wurzel))
+                if treffer is None:
+                    return {"fehler": "Im Dateiwaehler von %r steht ein "
+                            "unentschaerftes Sonderzeichen - fast-glob "
+                            "faende die Datei nicht: %r" % (name, sel)}
+                for d in treffer:
+                    gelesen += 1
+                    dateien.append(d)
+                    neu.append({"json": {}, "binary": {"data": {
+                        "fileName": os.path.basename(d),
+                        "directory": os.path.dirname(d)}}})
+            items = neu
+        elif typ == "limit":
+            items = items[:grenze]
+        elif typ == "code":
+            if p.get("mode") not in (None, "runOnceForAllItems"):
+                return {"fehler": "%r laeuft im Modus %r - diese Probe kennt "
+                        "ihn nicht" % (name, p.get("mode"))}
+            try:
+                erg = _code_fahren(k, items, vor)
+            except NodeFehler as f:
+                # ⛔ KEIN Durchreichen des Absturzes. Ein Baustein, der
+                #   wirft, ist ein ERGEBNIS dieser Probe ("die Kette ist
+                #   unterbrochen") - beim Ueberfliegen sieht ein Traceback
+                #   dagegen aus wie "die Probe ging nicht".
+                return {"fehler": "%r ist beim Fahren gescheitert: %s"
+                        % (name, str(f).replace("\n", " ")[:300])}
+            items, _ = erg["raus"], mitschrift.extend(erg["log"])
+        elif typ == "executeCommand":
+            roh = str(p.get("command", ""))
+            if any(b in _ohne_kommentar(roh) for b in BEWEGT):
+                # Bewegt Dateien - wird NICHT ausgefuehrt, nur abgefangen.
+                eingang_sperre = items
+                items = [{"json": {"stdout": "Sperre gesetzt.", "exitCode": 0}}]
+            else:
+                befehl = _ausdruck(roh, items[0] if items else {})
+                if befehl is None:
+                    return {"fehler": "Den Befehl von %r versteht diese Probe "
+                            "nicht: %r" % (name, roh[:120])}
+                e = subprocess.run(["sh", "-c",
+                                    befehl.replace("/files/dokumente", wurzel)],
+                                   capture_output=True, text=True, timeout=120)
+                items = [{"json": {"stdout": e.stdout, "exitCode": e.returncode}}]
+        else:
+            return {"fehler": "Baustein %r (%s) steht im Kopf der Kette - "
+                    "diese Probe kennt ihn nicht" % (name, typ)}
+        vor[name] = items
+    return {"gelesen": gelesen, "dateien": dateien, "items": items,
+            "weg": weg, "log": mitschrift, "sperre": eingang_sperre}
+
+
+def _menge_je_lauf():
+    """Die Charge je Durchgang - aus dem Plan, nicht geraten."""
+    roh = str(knoten("1_KI4KI-Masse-Ingest.json",
+                     "Menge begrenzen (Testlauf)")["parameters"]["maxItems"])
+    m = re.search(r"\|\|\s*(\d+)", roh)
+    return (roh, "KI4KI_MENGE_JE_LAUF" in roh, int(m.group(1)) if m else None)
+
+
+def test_nur_die_begrenzte_menge_wird_gelesen():
+    """D1: Bei 500 Dateien im Eingang duerfen hoechstens KI4KI_MENGE_JE_LAUF
+    Dateien GELESEN werden - nicht 500.
+
+    ⛔ Das ist der Fehler, der die Platte vollgeschrieben hat. 5.837 Dateien
+      im Eingang waren 18 GB; die wurden bei JEDEM Durchgang vollstaendig
+      gelesen und mit binary-mode=filesystem auf die Platte geschrieben.
+    """
+    print("\nD1 - wie viele Dateien ein Durchgang wirklich liest")
+    roh, nennt_schalter, vorgabe = _menge_je_lauf()
+    pruefe(nennt_schalter and vorgabe == 25,
+           "Vorbedingung: der Begrenzer liest KI4KI_MENGE_JE_LAUF, Vorgabe "
+           "25 (ist: %r)" % roh)
+    grenze = vorgabe or 25
+    plan = _plan_lesen("1_KI4KI-Masse-Ingest.json")
+    if plan is None:
+        return
+    wurzel = _eingangsbaum()
+    try:
+        e = _kopf_fahren(plan, wurzel, grenze)
+        if e.get("fehler"):
+            pruefe(False, e["fehler"] + " - D1 ist damit NICHT geprueft")
+            return
+        # Kontrolle: Liegt ueberhaupt etwas im Probebaum? Ohne sie waere
+        # "hoechstens 25 gelesen" auch bei einem leeren Ordner gruen.
+        vorhanden = sum(len(f) for _, _, f in os.walk(wurzel))
+        pruefe(vorhanden >= 540,
+               "Kontrolle: im Probebaum liegen %d Dateien" % vorhanden)
+        pruefe(e["gelesen"] <= grenze,
+               "hoechstens %d Dateien werden von der Platte gelesen "
+               "(gelesen: %d von %d)" % (grenze, e["gelesen"], vorhanden))
+        # Gegenprobe zur Obergrenze: Es muessen auch wirklich welche
+        # ankommen - "gar nichts lesen" waere sonst die beste Note.
+        pruefe(e["gelesen"] == grenze,
+           "und es sind genau %d - der Durchgang arbeitet (ist: %d)"
+               % (grenze, e["gelesen"]))
+        pruefe(all("/kap/input/" in d for d in e["dateien"]),
+               "gelesen wird nur im Bereich, der an der Reihe ist")
+        pruefe(len(e["items"]) == grenze,
+               "und genau %d Elemente erreichen die Klassifizierung (ist: %d)"
+               % (grenze, len(e["items"])))
+    finally:
+        import shutil
+        shutil.rmtree(wurzel, ignore_errors=True)
+
+    # ⛔ UND DIE DATEI MIT SONDERZEICHEN IM NAMEN. Passt die ganze Charge in
+    #   einen Durchgang, muss JEDE Datei ankommen - auch
+    #   'Angebot (2) [alt] {neu}.pdf'. Wird ein Pfad als fast-glob-Muster
+    #   weitergereicht, ohne entschaerft zu werden, faellt genau sie lautlos
+    #   heraus: sie bliebe im Eingang liegen, bis die Claim-Garantie sie
+    #   aussortiert, und niemand saehe einen Fehler.
+    klein = _eingangsbaum(dokumente=2, abfall=0)
+    try:
+        e = _kopf_fahren(plan, klein, grenze)
+        if e.get("fehler"):
+            pruefe(False, e["fehler"] + " - der Sonderfall ist NICHT geprueft")
+            return
+        pruefe(e["gelesen"] == 3,
+               "eine kleine Charge wird vollstaendig gelesen (3 Dateien, "
+               "gelesen: %d)" % e["gelesen"])
+        pruefe(any(os.path.basename(d) == SONDERNAME for d in e["dateien"]),
+               "darunter %r - Sonderzeichen im Namen gehen nicht verloren"
+               % SONDERNAME)
+    finally:
+        import shutil
+        shutil.rmtree(klein, ignore_errors=True)
+
+
+def test_wegraeumen_sieht_weiterhin_alle_dateien():
+    """D2 (Gegenprobe): Bereichswahl und Wegraeum-Befehl muessen weiter auf
+    ALLEN Dateien arbeiten, nicht nur auf der Charge.
+
+    ⛔ Wer die Menge zu frueh begrenzt, macht aus dem Plattenfehler einen
+      Dauerzustand: Im Probebaum liegen 40 Merkdateien im zuerst
+      eingelesenen Bereich - mehr als eine Charge. Begrenzt man vor dem
+      Filter, besteht die Charge nur aus Abfall, kein Dokument wird je
+      gelesen, und die uebrigen 15 Merkdateien bleiben fuer immer liegen.
+      Genau so lagen vier 'bilder-nachholen.txt' elf Tage im Eingang.
+    """
+    print("\nD2 - der Wegraeum-Befehl arbeitet weiter auf allen Dateien")
+    plan = _plan_lesen("1_KI4KI-Masse-Ingest.json")
+    if plan is None:
+        return
+    wurzel = _eingangsbaum()
+    try:
+        e = _kopf_fahren(plan, wurzel, 25)
+        if e.get("fehler"):
+            pruefe(False, e["fehler"] + " - D2 ist damit NICHT geprueft")
+            return
+        ein = e.get("sperre") or []
+        pruefe(len(ein) > 0,
+               "Kontrolle: beim Baustein, der die Sperre setzt, kommt etwas an")
+        befehl = ""
+        for x in ein:
+            befehl = befehl or str((x.get("json") or {}).get("aufraeumen") or "")
+        geraeumt = set(re.findall(r"/auw/aussortiert/(ordner\d\d)/Thumbs\.db",
+                                  befehl))
+        pruefe(len(geraeumt) == 40,
+               "alle 40 Merkdateien des anderen Bereichs stehen im "
+               "Wegraeum-Befehl (sind: %d)" % len(geraeumt))
+        pruefe(len(geraeumt) > 25,
+               "und das sind MEHR als eine Charge - der Filter hat also die "
+               "ganze Liste gesehen, nicht nur die begrenzte")
+        pruefe("/kap/" not in befehl,
+               "aus dem Bereich, der an der Reihe ist, wird nichts weggeraeumt")
+        # Die Bereichswahl: der erste ECHTE Eintrag entscheidet, nicht der
+        # Abfall - auch wenn der Abfall zuerst eingelesen wird.
+        pruefe(any("Bereich kap" in z for z in e["log"]),
+               "die Bereichswahl faellt auf 'kap' (Protokoll: %r)"
+               % (e["log"][:1] or [""])[0][:120])
+        # ⛔ Und die Sicht darf sich nicht geweitet haben.
+        pruefe(".DS_Store" not in befehl,
+               "versteckte Dateien bleiben unsichtbar - dieselbe Sicht wie "
+               "Claim-Garantie, Leerlauf-Wache und ANZ-Zaehler")
+    finally:
+        import shutil
+        shutil.rmtree(wurzel, ignore_errors=True)
+
+
+def _leser(plan):
+    """Der Baustein, der Dateien aus dem Eingang laedt."""
+    for n in plan["nodes"]:
+        if not n["type"].endswith(".readWriteFile"):
+            continue
+        sel = str((n.get("parameters") or {}).get("fileSelector", ""))
+        if "/input" in sel or "$json" in sel:
+            return n
+    return None
+
+
+def test_begrenzen_steht_vor_dem_laden():
+    """D3: Erst begrenzen, dann laden - und zwar auf JEDEM Weg.
+
+    ⛔ Heute war es umgekehrt. Eine Pruefung "der Begrenzer steht
+      irgendwo davor" genuegt nicht: Es darf KEINEN Weg vom Ausloeser zum
+      Lade-Baustein geben, der am Begrenzer vorbeifuehrt.
+    """
+    print("\nD3 - begrenzen vor laden")
+    plan = _plan_lesen("1_KI4KI-Masse-Ingest.json")
+    if plan is None:
+        return
+    leser = _leser(plan)
+    if leser is None:
+        pruefe(False, "kein Baustein laedt mehr aus dem Eingang - NICHT geprueft")
+        return
+    sel = str((leser.get("parameters") or {}).get("fileSelector", ""))
+    pruefe(not re.search(r"[*?]", sel),
+           "der Lade-Baustein nennt keinen Platzhalter mehr, sondern genau "
+           "eine Datei je Element (ist: %r)" % sel)
+    pruefe(sel.startswith("=") and "$json" in sel,
+           "der Pfad kommt aus dem Element selbst (ist: %r)" % sel)
+    begrenzer = "Menge begrenzen (Testlauf)"
+    rand = [n["name"] for n in plan["nodes"]
+            if n["type"].split(".")[-1] in ("manualTrigger", "scheduleTrigger",
+                                            "webhook")]
+    pruefe(len(rand) >= 3, "Vorbedingung: es gibt Ausloeser (%d)" % len(rand))
+    gesehen, warte, vorbei = set(rand), list(rand), []
+    while warte:
+        akt = warte.pop()
+        for zweig in (plan["connections"].get(akt, {}).get("main") or []):
+            for c in (zweig or []):
+                ziel = c["node"]
+                if ziel == leser["name"]:
+                    vorbei.append(akt)
+                    continue
+                if ziel == begrenzer or ziel in gesehen:
+                    continue
+                gesehen.add(ziel)
+                warte.append(ziel)
+    pruefe(not vorbei,
+           "kein Weg vom Ausloeser zum Lade-Baustein fuehrt am Begrenzer "
+           "vorbei (vorbei ueber: %r)" % (vorbei,))
+    # Gegenprobe: Ohne den Begrenzer MUSS der Lade-Baustein erreichbar sein -
+    # sonst haette die Suche oben auch bei heiler Kette nichts gefunden.
+    gesehen, warte, erreicht = set(rand), list(rand), False
+    while warte:
+        akt = warte.pop()
+        for zweig in (plan["connections"].get(akt, {}).get("main") or []):
+            for c in (zweig or []):
+                if c["node"] == leser["name"]:
+                    erreicht = True
+                if c["node"] in gesehen:
+                    continue
+                gesehen.add(c["node"])
+                warte.append(c["node"])
+    pruefe(erreicht,
+           "GEGENPROBE: ohne diese Sperre ist der Lade-Baustein sehr wohl "
+           "erreichbar - die Suche greift also")
+
+
+def test_aufraeumen_der_ausfuehrungen_ist_durchgereicht():
+    """D4: Die Aufraeum-Einstellungen muessen im Container ankommen.
+
+    ⛔ Ohne sie reicht der Umbau nicht. Rechnung am gemessenen Bestand:
+      5.837 Dateien = 18 GB, also 3,2 MB je Datei. 25 Dateien je Durchgang
+      sind 80 MB; bei 1.440 Durchgaengen am Tag waeren das 115 GB taeglich
+      auf einer 251-GB-Platte. Ab Werk raeumt n8n erst bei 10.000
+      Ausfuehrungen oder 336 Stunden auf - gemessen lagen 8.355 Ordner da,
+      der Deckel war also nie erreicht.
+    """
+    print("\nD4 - die Aufraeum-Einstellungen kommen im Container an")
+    wurzel = os.path.dirname(PLAENE)
+    pfad = os.path.join(wurzel, "docker-compose.yml")
+    if not os.path.exists(pfad):
+        pruefe(False, "docker-compose.yml fehlt - NICHT geprueft")
+        return
+    umgebung = _umgebung_des_dienstes(io.open(pfad, encoding="utf-8").read(),
+                                      "n8n")
+    pruefe("KI4KI_MENGE_JE_LAUF=${KI4KI_MENGE_JE_LAUF:-25}" in umgebung,
+           "Kontrolle: die bekannten Schalter stehen beim Dienst n8n (%d "
+           "Eintraege gelesen)" % len(umgebung))
+    namen = [z.split("=")[0] for z in umgebung]
+    for schalter in ("EXECUTIONS_DATA_PRUNE",
+                     "EXECUTIONS_DATA_MAX_AGE",
+                     "EXECUTIONS_DATA_PRUNE_MAX_COUNT",
+                     "EXECUTIONS_DATA_PRUNE_SOFT_DELETE_INTERVAL",
+                     "EXECUTIONS_DATA_PRUNE_HARD_DELETE_INTERVAL"):
+        pruefe(schalter in namen,
+               "%s wird an n8n weitergereicht" % schalter)
+    # ⛔ Und die Werte muessen ENGER sein als die Vorgabe - ein Schalter,
+    #   der nur die Werkseinstellung wiederholt, aendert nichts.
+    werte = dict(z.split("=", 1) for z in umgebung if "=" in z)
+
+    def zahl(s):
+        m = re.search(r"(\d+)\s*\}?$", werte.get(s, ""))
+        return int(m.group(1)) if m else None
+
+    for schalter, werk, was in (
+            ("EXECUTIONS_DATA_PRUNE_MAX_COUNT", 10000,
+             "der Deckel liegt unter der Werkseinstellung 10.000"),
+            ("EXECUTIONS_DATA_MAX_AGE", 336,
+             "das Hoechstalter liegt unter der Werkseinstellung 336 Stunden"),
+            ("EXECUTIONS_DATA_PRUNE_SOFT_DELETE_INTERVAL", 60,
+             "der Vormerk-Takt liegt unter der Werkseinstellung 60 Minuten"),
+            ("EXECUTIONS_DATA_PRUNE_HARD_DELETE_INTERVAL", 15,
+             "der Loesch-Takt liegt unter der Werkseinstellung 15 Minuten")):
+        w = zahl(schalter)
+        if w is None:
+            pruefe(False, "%s hat keinen lesbaren Wert (%r) - NICHT geprueft"
+                   % (schalter, werte.get(schalter)))
+            continue
+        pruefe(w < werk, "%s (ist: %d)" % (was, w))
+    # Der Betriebsmodus fuer Binaerdaten bleibt eine bewusste Entscheidung
+    # und muss begruendet in der Doku stehen.
+    pruefe("N8N_DEFAULT_BINARY_DATA_MODE=filesystem" in umgebung,
+           "und die Binaerdaten bleiben auf der Platte (nicht in der "
+           "Datenbank - die gibt geloeschten Platz nie zurueck)")
+    for datei, was in ((".env.beispiel", "die .env-Vorlage"),
+                       (os.path.join("doku", "BETRIEB.md"), "die Doku")):
+        p = os.path.join(wurzel, datei)
+        t = io.open(p, encoding="utf-8").read() if os.path.exists(p) else ""
+        pruefe("EXECUTIONS_DATA_PRUNE_MAX_COUNT" in t,
+               "%s nennt den Deckel" % was)
+    doku = io.open(os.path.join(wurzel, "doku", "BETRIEB.md"),
+                   encoding="utf-8").read()
+    for wort, was in (("ENOSPC", "woran man es erkennt"),
+                      ("0 zu verarbeiten", "den Phantom-Durchgang"),
+                      ("storage/workflows", "wo der Platz liegt")):
+        pruefe(wort in doku, "die Doku nennt %s" % was)
+
+
 if __name__ == "__main__":
     ALLE = [
         test_nichtdokumente,
@@ -1562,6 +2125,10 @@ if __name__ == "__main__":
         test_stand_steht_im_protokoll,
         test_docling_laesst_der_grafikkarte_luft,
         test_plaene_unversehrt,
+        test_nur_die_begrenzte_menge_wird_gelesen,
+        test_wegraeumen_sieht_weiterhin_alle_dateien,
+        test_begrenzen_steht_vor_dem_laden,
+        test_aufraeumen_der_ausfuehrungen_ist_durchgereicht,
         test_was_n8n_wirklich_geladen_hat,
     ]
     # ⛔ JEDER Test einzeln eingefasst. Platzt einer, ist ER rot - die

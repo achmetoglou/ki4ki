@@ -220,7 +220,66 @@ services:
     - N8N_SECURE_COOKIE=false
     # Binaerdaten auf die Platte statt in den Arbeitsspeicher: 1.171 PDFs
     # sind 8,9 GB und sprengten den Node-Speicher
+    #
+    # ⭐ BLEIBT SO, auch nach dem Umbau vom 06.10. (nachgerechnet, nicht
+    #   gefuehlt): Ein Durchgang liest jetzt nur noch die Charge - 25
+    #   Dateien zu im Mittel 3,2 MB (gemessen: 5.837 Dateien = 18 GB) sind
+    #   79 MB. Das passte auch in den Arbeitsspeicher. Der Grund dagegen ist
+    #   ein anderer: Ohne diesen Schalter legt n8n die Binaerdaten base64
+    #   IN die Ausfuehrungsdaten, also in database.sqlite. SQLite gibt
+    #   geloeschten Platz ohne VACUUM nie an das Dateisystem zurueck - die
+    #   Datei waechst dann monoton weiter, und das Aufraeumen unten liefe
+    #   ins Leere. Auf der Platte raeumt es mit rm -rf wirklich auf.
     - N8N_DEFAULT_BINARY_DATA_MODE=filesystem
+    #
+    # --- Ausfuehrungsdaten aufraeumen (06.10.) -------------------------
+    # ⛔ DER FEHLER, DER DIE PLATTE VOLLGESCHRIEBEN HAT, hatte zwei
+    #   Ursachen. Die erste war der Ablaufplan: "Daten vom Server laden"
+    #   las JEDE Datei des Eingangs, bevor "Menge begrenzen" auf 25
+    #   zuschnitt (behoben am 06.10.). Die zweite steht hier: Es war
+    #   ueberhaupt kein Aufraeumen eingestellt.
+    #
+    # ⛔ "n8n raeumt doch ab Werk auf" stimmt - aber erst bei 10.000
+    #   Ausfuehrungen oder 336 Stunden. Gemessen auf dem Server lagen
+    #   8.355 Ausfuehrungsordner mit 116,8 GB in
+    #   /home/node/.n8n/storage/workflows/1DKWgDbdCiwa25E1: unter dem
+    #   Werks-Deckel, also hat er nie gegriffen. Danach /dev/sda3 bei
+    #   100 % und "ENOSPC: no space left on device, mkdir
+    #   .../executions/59564".
+    #
+    # DIE RECHNUNG (alles gemessene Zahlen):
+    #   vorher   5.837 Dateien = 18 GB je Durchgang, 1.440 Durchgaenge am
+    #            Tag  ->  rund 25 TB taeglich. Eine 251-GB-Platte ist damit
+    #            nach etwa einer Viertelstunde Dauerlauf voll.
+    #   nachher  25 Dateien zu 3,2 MB = 79 MB je Durchgang MIT Arbeit;
+    #            Leerlaeufe lesen null, weil der Lade-Baustein jetzt hinter
+    #            der Sperre steht. Im Dauerlauf (jeder Durchgang voll)
+    #            waeren das 114 GB am Tag - der Umbau allein reicht also
+    #            NICHT, die Platte waere nach gut zwei Tagen wieder voll.
+    #   Deckel   500 Ausfuehrungen x 79 MB = rund 40 GB im schlimmsten Fall
+    #            (jeder Durchgang voll). Beim gemessenen Durchsatz von
+    #            34-49 Dokumenten je Stunde sind es etwa zwei volle
+    #            Durchgaenge je Stunde, also unter 4 GB.
+    #
+    # ⚠ Erst das HARTE Loeschen gibt den Platz frei. Das Vormerken
+    #   (SOFT) markiert nur; bis dahin liegen die Binaerdaten weiter da.
+    #   Bei Werkseinstellung 60/15 Minuten haengen so bis zu 75 Minuten
+    #   Durchgaenge in der Schwebe - gedeckelt wird deshalb auch der Takt.
+    # ⚠ Zusaetzlich gilt die Schonfrist EXECUTIONS_DATA_HARD_DELETE_BUFFER
+    #   (ab Werk 1 Stunde): Was juenger ist, wird nie geloescht, damit man
+    #   einen frischen Fehler noch ansehen kann. Bleibt so.
+    # ⛔ NICHT EXECUTIONS_DATA_SAVE_ON_SUCCESS=none. Das waere der
+    #   billigste Weg, spart aber genau die Ansicht weg, auf die das
+    #   claim.log verweist ("Grund: siehe ... die n8n-Ausfuehrungen
+    #   (Port 5678)"). Aufgeraeumt wird, nicht abgeschaltet.
+    - EXECUTIONS_DATA_PRUNE=${EXECUTIONS_DATA_PRUNE:-true}
+    # Hoechstalter in STUNDEN (ab Werk 336 = 14 Tage)
+    - EXECUTIONS_DATA_MAX_AGE=${EXECUTIONS_DATA_MAX_AGE:-48}
+    # Hoechstzahl aufbewahrter Ausfuehrungen (ab Werk 10.000)
+    - EXECUTIONS_DATA_PRUNE_MAX_COUNT=${EXECUTIONS_DATA_PRUNE_MAX_COUNT:-500}
+    # Takt in MINUTEN: vormerken (ab Werk 60) und wirklich loeschen (ab Werk 15)
+    - EXECUTIONS_DATA_PRUNE_SOFT_DELETE_INTERVAL=${EXECUTIONS_DATA_PRUNE_SOFT_DELETE_INTERVAL:-15}
+    - EXECUTIONS_DATA_PRUNE_HARD_DELETE_INTERVAL=${EXECUTIONS_DATA_PRUNE_HARD_DELETE_INTERVAL:-5}
     - NODE_OPTIONS=--max-old-space-size=8192
     # keine Nutzungsdaten nach draussen
     - N8N_DIAGNOSTICS_ENABLED=false
