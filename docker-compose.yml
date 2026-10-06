@@ -223,8 +223,9 @@ services:
     #
     # ⭐ BLEIBT SO, auch nach dem Umbau vom 06.10. (nachgerechnet, nicht
     #   gefuehlt): Ein Durchgang liest jetzt nur noch die Charge - 25
-    #   Dateien zu im Mittel 3,2 MB (gemessen: 5.837 Dateien = 18 GB) sind
-    #   79 MB. Das passte auch in den Arbeitsspeicher. Der Grund dagegen ist
+    #   Dateien zu im Mittel 4,22 MB (nachgemessen 06.10. im Container
+    #   ueber /files/dokumente: 6.798 Dateien = 28,67 GB) sind rund
+    #   106 MB. Das passte auch in den Arbeitsspeicher. Der Grund dagegen ist
     #   ein anderer: Ohne diesen Schalter legt n8n die Binaerdaten base64
     #   IN die Ausfuehrungsdaten, also in database.sqlite. SQLite gibt
     #   geloeschten Platz ohne VACUUM nie an das Dateisystem zurueck - die
@@ -251,15 +252,49 @@ services:
     #   vorher   5.837 Dateien = 18 GB je Durchgang, 1.440 Durchgaenge am
     #            Tag  ->  rund 25 TB taeglich. Eine 251-GB-Platte ist damit
     #            nach etwa einer Viertelstunde Dauerlauf voll.
-    #   nachher  25 Dateien zu 3,2 MB = 79 MB je Durchgang MIT Arbeit;
-    #            Leerlaeufe lesen null, weil der Lade-Baustein jetzt hinter
-    #            der Sperre steht. Im Dauerlauf (jeder Durchgang voll)
-    #            waeren das 114 GB am Tag - der Umbau allein reicht also
-    #            NICHT, die Platte waere nach gut zwei Tagen wieder voll.
-    #   Deckel   500 Ausfuehrungen x 79 MB = rund 40 GB im schlimmsten Fall
-    #            (jeder Durchgang voll). Beim gemessenen Durchsatz von
-    #            34-49 Dokumenten je Stunde sind es etwa zwei volle
-    #            Durchgaenge je Stunde, also unter 4 GB.
+    #   nachher  25 Dateien zu 4,22 MB = rund 106 MB je Durchgang MIT
+    #            Arbeit; Leerlaeufe lesen null, weil der Lade-Baustein
+    #            jetzt hinter der Sperre steht.
+    #
+    # ⛔ DIE ZAHLEN HIER STANDEN FALSCH (korrigiert 06.10. nach dem
+    #   Pruefbericht). "3,2 MB im Mittel" war aus 5.837 Dateien = 18 GB
+    #   geschaetzt. Nachgemessen im Container mit find + fs.statSync:
+    #     Eingang /files/dokumente/*/input : 300 Dateien, Mittel 1,42 MB
+    #     Gesamtbestand /files/dokumente   : 6.798 Dateien, 28,67 GB,
+    #                                        Mittel 4,22 MB
+    #     ueber 150 MB: 27 Dateien (nicht 14) · ueber 100 MB: 43
+    #     ueber  50 MB: 69 Dateien (zusammen 11,64 GB) · groesste 539 MB
+    #   Entscheidend ist der GESAMTBESTAND, nicht der heutige Eingang:
+    #   gelesen wird, was nachkommt.
+    #
+    # DER DECKEL, UND WARUM ER 200 IST (Rechnung, nicht Gefuehl):
+    #   mittlerer voller Durchgang   25 x 4,22 MB  = rund 106 MB
+    #   schwerster denkbarer         die 25 schwersten Dateien des
+    #                                Bestands zusammen = 7,71 GB.
+    #                                Das 73-fache. Ein EINZIGER Durchgang.
+    #   Platz                        /dev/sda3 251 GB, am 06.10. nach dem
+    #                                Aufraeumen 117 GB frei. Fuer
+    #                                Ausfuehrungsdaten geben wir hoechstens
+    #                                ein Drittel davon her: rund 39 GB.
+    #   500 x 106 MB = 53 GB  -> ueber dem Budget, kein Puffer.  ✘
+    #   200 x 106 MB = 21 GB  -> passt mit Luft.                 ✔
+    #
+    # ⛔⛔ MAX_COUNT IST KEIN BYTE-DECKEL. Er zaehlt Durchgaenge. Gegen
+    #   einen einzelnen 7,71-GB-Durchgang hilft er nicht, und 200 x 7,71 GB
+    #   waeren 1,5 TB - die gibt es nicht. Was wirklich deckelt, ist
+    #   MAX_AGE: bei gemessenen 34-49 Dokumenten je Stunde passen in 48
+    #   Stunden hoechstens 49 x 48 = 2.352 Dokumente, und die 2.352
+    #   schwersten Dateien des Bestands wiegen zusammen 27,3 GB. Das ist
+    #   die harte Obergrenze eines 48-Stunden-Fensters - ebenfalls unter
+    #   39 GB. 2.352 / 25 = 95 volle Durchgaenge: MAX_COUNT=200 wird im
+    #   Alltag also gar nicht erst erreicht, er ist der Notnagel fuer den
+    #   Fall, dass der Durchsatz springt.
+    # ⚠ WAECHST DER BESTAND ODER DER DURCHSATZ, muss MAX_AGE runter (24
+    #   statt 48 halbiert das Fenster), NICHT MAX_COUNT. Und ein einzelner
+    #   schwerer Durchgang bleibt ungedeckelt: mit der Schonfrist von einer
+    #   Stunde und rund zwei vollen Durchgaengen je Stunde haengen
+    #   hoechstens drei davon gleichzeitig in der Schwebe, also rund 23 GB
+    #   Spitze. Das passt heute - man muss es nur wissen.
     #
     # ⚠ Erst das HARTE Loeschen gibt den Platz frei. Das Vormerken
     #   (SOFT) markiert nur; bis dahin liegen die Binaerdaten weiter da.
@@ -276,7 +311,7 @@ services:
     # Hoechstalter in STUNDEN (ab Werk 336 = 14 Tage)
     - EXECUTIONS_DATA_MAX_AGE=${EXECUTIONS_DATA_MAX_AGE:-48}
     # Hoechstzahl aufbewahrter Ausfuehrungen (ab Werk 10.000)
-    - EXECUTIONS_DATA_PRUNE_MAX_COUNT=${EXECUTIONS_DATA_PRUNE_MAX_COUNT:-500}
+    - EXECUTIONS_DATA_PRUNE_MAX_COUNT=${EXECUTIONS_DATA_PRUNE_MAX_COUNT:-200}
     # Takt in MINUTEN: vormerken (ab Werk 60) und wirklich loeschen (ab Werk 15)
     - EXECUTIONS_DATA_PRUNE_SOFT_DELETE_INTERVAL=${EXECUTIONS_DATA_PRUNE_SOFT_DELETE_INTERVAL:-15}
     - EXECUTIONS_DATA_PRUNE_HARD_DELETE_INTERVAL=${EXECUTIONS_DATA_PRUNE_HARD_DELETE_INTERVAL:-5}

@@ -287,6 +287,134 @@ def test_docling_einstellungen():
            "Zweitversuch bleibt ohne Bildbeschreibung")
 
 
+_FINDET_JS = r"""
+const path = require('path'), cp = require('child_process');
+const { createRequire } = require('module');
+
+// --- UNSER Code, woertlich aus dem Ablaufplan herausgeschnitten ---------
+__ENTSCHAERFEN__
+
+// --- n8ns Code, aus dem laufenden Container, NICHT nachgebaut -----------
+const r = createRequire('/usr/local/lib/node_modules/n8n/package.json');
+const pkg = path.dirname(r.resolve('n8n-nodes-base'));
+const B = path.join(pkg, 'dist/nodes/Files/ReadWriteFile');
+const { normalizeFileSelector } = require(path.join(B, 'helpers/utils.js'));
+// fast-glob genau so aufgeloest, wie read.operation.js es tut.
+const rr = createRequire(path.join(B, 'actions/read.operation.js'));
+const fgm = rr('fast-glob');
+const fg = fgm.default || fgm;
+
+// Der Eingang, mit dem Befehl aus dem Plan selbst gelesen - nur Namen.
+const roh = cp.execSync(__FINDBEFEHL__, { maxBuffer: 1 << 28 }).toString('utf8');
+const pfade = roh.split('\u0000')
+                 .map(s => s.replace(/^[\r\n]+|[\r\n]+$/g, ''))
+                 .filter(Boolean);
+
+(async () => {
+  const messe = async (f) => {
+    let ok = 0, leer = 0, leerMitKlammern = 0;
+    for (const p of pfade) {
+      // GENAU die Kette aus dem Betrieb: unser entschaerfen, dann n8ns
+      // normalizeFileSelector, dann fast-glob - async wie read.operation.js.
+      const treffer = await fg(normalizeFileSelector(f(p)));
+      if (treffer.length > 0) { ok++; }
+      else { leer++; if (/[()[\]]/.test(p)) leerMitKlammern++; }
+    }
+    return { ok: ok, leer: leer, leerMitKlammern: leerMitKlammern };
+  };
+  const jetzt = await messe(entschaerfen);
+  // Eingebaute Gegenprobe: dieselbe Kette, aber ( ) [ ] ein zweites Mal
+  // entschaerft - der Zustand vor dem 06.10. Sie MUSS Treffer verlieren,
+  // sonst misst diese Pruefung nichts.
+  const mutant = await messe((s) => entschaerfen(s).replace(/[()[\]]/g, '\\$&'));
+  console.log(JSON.stringify({
+    n: pfade.length,
+    mitKlammern: pfade.filter(p => /[()[\]]/.test(p)).length,
+    jetzt: jetzt, mutant: mutant,
+  }));
+})().catch(e => { console.error('ABBRUCH ' + e.message); process.exit(3); });
+"""
+
+
+def test_findet_n8n_die_dateien_auch_wirklich():
+    """Faehrt die Kette entschaerfen -> normalizeFileSelector -> fast-glob
+    im ECHTEN Container ueber die echten Pfade des Eingangs.
+
+    ⛔ WARUM DAS SEIN MUSS - und warum _glob_treffer() es nicht kann.
+    _glob_treffer() ist ein Modell. Es kennt nur unser entschaerfen() und
+    nimmt an, dass n8n den Dateiwaehler unveraendert an fast-glob gibt.
+    Das tut n8n nicht: read.operation.js ruft normalizeFileSelector(), und
+    die ruft escapeSpecialCharacters(), die ( ) [ ] NOCH EINMAL mit \\
+    versieht. Aus 'Angebot \\(2\\).pdf' wird 'Angebot \\\\(2\\\\).pdf' - in
+    picomatch ein literaler Backslash plus Gruppe, also null Treffer. Das
+    Modell hat diese doppelte Entschaerfung abgesegnet und haette sie auch
+    nach dem Fix abgesegnet; die halb richtige Fassung M4b hat es sogar
+    ROT bestraft. Ein Modell kann seinen eigenen blinden Fleck nicht
+    sehen - deshalb hier das Original.
+
+    ⚠ UND ES IST VERSIONSABHAENGIG. Faellt escapeSpecialCharacters bei
+    einem n8n-Update weg, muessten ( ) [ ] wieder in entschaerfen() hinein.
+    Diese Pruefung merkt beides: zu viel entschaerft wie zu wenig
+    entschaerft endet in KEIN_TREFFER.
+
+    ⛔ SCHREIBT NICHTS. Kein n8n-Lauf, keine Datei, kein /tmp im Container -
+    das Programm kommt ueber stdin herein, der Befehl aus dem Plan liest
+    nur Namen.
+    """
+    print("\nFindet n8n die Dateien des Eingangs auch wirklich")
+    quelle = knoten("1_KI4KI-Masse-Ingest.json",
+                    "Dateiliste aufbereiten")["parameters"]["jsCode"]
+    m = re.search(r"^const entschaerfen = .*$", quelle, re.M)
+    if m is None:
+        pruefe(False, "entschaerfen() steht nicht mehr im Plan - diese"
+                      " Pruefung weiss nicht mehr, was sie messen soll")
+        return
+    befehl = knoten("1_KI4KI-Masse-Ingest.json",
+                    "Dateiliste einlesen")["parameters"]["command"]
+    if befehl.startswith("="):
+        pruefe(False, "der find-Befehl ist zu einem Ausdruck geworden -"
+                      " diese Pruefung kann ihn nicht mehr fahren")
+        return
+    js = (_FINDET_JS.replace("__ENTSCHAERFEN__", m.group(0))
+                    .replace("__FINDBEFEHL__", json.dumps(befehl)))
+    try:
+        e = subprocess.run(["docker", "exec", "-i", "ki4ki-n8n", "node"],
+                           input=js, capture_output=True, text=True,
+                           timeout=600)
+    except (OSError, subprocess.SubprocessError) as f:
+        print("  uebersprungen: n8n nicht erreichbar (%s)"
+              " - DAS IST KEIN GRUEN, der Dateiwaehler ist hier NICHT"
+              " geprueft" % f.__class__.__name__)
+        return
+    if e.returncode != 0 or not e.stdout.strip():
+        print("  uebersprungen: im Container nicht lauffaehig (%s)"
+              " - DAS IST KEIN GRUEN, der Dateiwaehler ist hier NICHT"
+              " geprueft"
+              % (e.stderr.strip().splitlines() or ["rc=%d" % e.returncode])[-1][:160])
+        return
+    z = json.loads(e.stdout.strip().splitlines()[-1])
+
+    # Erst die Kontrolle. Ohne Pfade mit ( ) [ ] im Eingang sagt alles
+    # Folgende nichts - dann war der Eingang nur gerade harmlos.
+    pruefe(z["n"] > 0, "Kontrolle: der Eingang ist nicht leer (%d Pfade)"
+                       % z["n"])
+    pruefe(z["mitKlammern"] > 0,
+           "Kontrolle: %d der %d Pfade tragen ( ) [ ]"
+           % (z["mitKlammern"], z["n"]))
+    if not z["n"] or not z["mitKlammern"]:
+        print("  -> Ohne Kontrolle sagen die naechsten Zeilen nichts.")
+        return
+    # Und die Gegenprobe: kann diese Messung ueberhaupt rot werden?
+    pruefe(z["mutant"]["leer"] > 0,
+           "Gegenprobe: doppelt entschaerft verliert die Messung %d Treffer"
+           % z["mutant"]["leer"])
+
+    pruefe(z["jetzt"]["leer"] == 0,
+           "n8n findet JEDE der %d Dateien des Eingangs wieder"
+           " (ohne Treffer: %d, davon mit Klammern: %d)"
+           % (z["n"], z["jetzt"]["leer"], z["jetzt"]["leerMitKlammern"]))
+
+
 def test_was_n8n_wirklich_geladen_hat():
     """Die Repo-Datei ist nicht der Betrieb.
 
@@ -1662,7 +1790,26 @@ def _glob_treffer(muster):
       Bleibt in Fall 2 ein UNENTSCHAERFTES Sonderzeichen uebrig, gibt diese
       Funktion None zurueck: dann waere die Datei im Betrieb lautlos nicht
       gefunden worden, und das soll rot werden statt gruen.
+
+    ⛔ WAS DIESES MODELL NICHT KANN - und warum es am 06.10. einen echten
+      Fehler abgesegnet hat. Es nahm an, der Dateiwaehler ginge
+      unveraendert an fast-glob. Tut er nicht: "Daten vom Server laden"
+      ruft erst normalizeFileSelector(). Seitdem das hier nachgebildet
+      ist, faellt die doppelte Entschaerfung auf - aber das bleibt eine
+      NACHBILDUNG nach dem Stand von n8n 2.31.4. Sie weiss nicht, was
+      eine andere n8n-Fassung tut, sie kennt picomatch nicht, und sie
+      sieht nur die Pfade, die dieser Pruefstand selbst erfindet, nicht
+      den echten Bestand. Dafuer gibt es
+      test_findet_n8n_die_dateien_auch_wirklich: die faehrt dieselbe
+      Kette im laufenden Container ueber die echten Pfade des Eingangs.
+      Wird hier etwas gruen, das dort rot ist, gilt dort.
     """
+    # ⛔ n8n legt noch einmal nach: normalizeFileSelector() ->
+    #   escapeSpecialCharacters() setzt vor ( ) [ ] einen weiteren
+    #   Backslash (nodes-base .../ReadWriteFile/helpers/utils.js, 2.31.4).
+    #   Ohne diesen Schritt segnete das Modell eine doppelt entschaerfte
+    #   Liste ab, die im Betrieb KEINE Datei mit Klammern findet.
+    muster = re.sub(r"[()\[\]]", lambda m: "\\" + m.group(0), muster)
     if "\\" in muster:
         if re.search(GLOB_SONDER, re.sub(r"\\.", "", muster)):
             return None
@@ -2034,12 +2181,20 @@ def test_begrenzen_steht_vor_dem_laden():
 def test_aufraeumen_der_ausfuehrungen_ist_durchgereicht():
     """D4: Die Aufraeum-Einstellungen muessen im Container ankommen.
 
-    ⛔ Ohne sie reicht der Umbau nicht. Rechnung am gemessenen Bestand:
-      5.837 Dateien = 18 GB, also 3,2 MB je Datei. 25 Dateien je Durchgang
-      sind 80 MB; bei 1.440 Durchgaengen am Tag waeren das 115 GB taeglich
-      auf einer 251-GB-Platte. Ab Werk raeumt n8n erst bei 10.000
-      Ausfuehrungen oder 336 Stunden auf - gemessen lagen 8.355 Ordner da,
-      der Deckel war also nie erreicht.
+    ⛔ Ohne sie reicht der Umbau nicht. Rechnung am nachgemessenen
+      Bestand (06.10. im Container, find + fs.statSync - die alte Zahl
+      "3,2 MB" war aus 5.837 Dateien = 18 GB geschaetzt und zu klein):
+      6.798 Dateien = 28,67 GB, also 4,22 MB je Datei. 25 Dateien je
+      Durchgang sind rund 106 MB; bei 1.440 Durchgaengen am Tag waeren
+      das 153 GB taeglich auf einer 251-GB-Platte. Ab Werk raeumt n8n
+      erst bei 10.000 Ausfuehrungen oder 336 Stunden auf - gemessen lagen
+      8.355 Ordner da, der Deckel war also nie erreicht.
+
+    ⚠ UND DER DECKEL ZAEHLT DURCHGAENGE, KEINE BYTES. Die 25 schwersten
+      Dateien des Bestands wiegen zusammen 7,71 GB - so schwer kann EIN
+      Durchgang sein. Gedeckelt wird das nur ueber MAX_AGE (48 Stunden x
+      hoechstens 49 Dokumenten je Stunde = 2.352 Dokumente = 27,3 GB).
+      Die Rechnung steht ausfuehrlich in der docker-compose.yml.
     """
     print("\nD4 - die Aufraeum-Einstellungen kommen im Container an")
     wurzel = os.path.dirname(PLAENE)
@@ -2130,6 +2285,7 @@ if __name__ == "__main__":
         test_begrenzen_steht_vor_dem_laden,
         test_aufraeumen_der_ausfuehrungen_ist_durchgereicht,
         test_was_n8n_wirklich_geladen_hat,
+        test_findet_n8n_die_dateien_auch_wirklich,
     ]
     # ⛔ JEDER Test einzeln eingefasst. Platzt einer, ist ER rot - die
     #   uebrigen laufen trotzdem. Vorher beendete ein einziger node-Fehler

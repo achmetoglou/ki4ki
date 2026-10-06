@@ -518,15 +518,54 @@ belegt, 0 frei. `/home/node/.n8n/storage` **116,8 GB**, davon alles in
   der Platte. Bei 5.837 Dateien (18 GB) im Eingang waren das **18 GB je Durchgang**,
   und ein Durchgang läuft jede Minute. Jetzt wird die **Liste** ohne Inhalte geholt
   (`find`), auf 25 begrenzt — und erst **hinter der Sperre** werden genau diese 25
-  Dateien gelesen: rund **79 MB** statt 18 GB. Leerläufe lesen gar nichts mehr.
+  Dateien gelesen: rund **106 MB** statt 18 GB. Leerläufe lesen gar nichts mehr.
 - Es war **kein Aufräumen eingestellt**. Ab Werk räumt n8n erst bei 10.000
   Ausführungen oder 336 Stunden auf — 8.355 Ordner lagen darunter, der Deckel hat
   also nie gegriffen. Jetzt stehen in der `docker-compose.yml` beim Dienst `n8n`:
   `EXECUTIONS_DATA_PRUNE`, `EXECUTIONS_DATA_MAX_AGE` (48 Stunden),
-  `EXECUTIONS_DATA_PRUNE_MAX_COUNT` (500),
+  `EXECUTIONS_DATA_PRUNE_MAX_COUNT` (200),
   `EXECUTIONS_DATA_PRUNE_SOFT_DELETE_INTERVAL` (15 Minuten) und
   `EXECUTIONS_DATA_PRUNE_HARD_DELETE_INTERVAL` (5 Minuten). Alle fünf sind über die
   `.env` verstellbar, Erklärung in [`../.env.beispiel`](../.env.beispiel).
+
+### Das Mengengerüst — nachgemessen, nicht geschätzt
+
+Die erste Fassung dieses Abschnitts rechnete mit „3,2 MB je Datei", abgeleitet aus
+18 GB / 5.837 Dateien im **Eingang**. Das war die falsche Grundmenge: gelesen wird,
+was nachkommt, also der Gesamtbestand. Am 06.10.2026 im Container nachgemessen
+(`find … -print0` plus `fs.statSync`):
+
+| | Dateien | Summe | Mittel |
+|---|---:|---:|---:|
+| Eingang `/files/dokumente/*/input` | 300 | 0,42 GB | **1,42 MB** |
+| Gesamtbestand `/files/dokumente` | 6.798 | **28,67 GB** | **4,22 MB** |
+
+Schwergewichte im Gesamtbestand: **69** Dateien über 50 MB (zusammen 11,64 GB),
+**43** über 100 MB, **27** über 150 MB (nicht 14), größte **539 MB**.
+
+**Die Rechnung für den Deckel.**
+
+- Ein voller Durchgang liest 25 Dateien: im Mittel 25 × 4,22 MB = **rund 106 MB**.
+- Frei auf `/dev/sda3` nach dem Aufräumen: **117 GB** von 251 GB. Für
+  Ausführungsdaten geben wir höchstens ein Drittel her: **rund 39 GB**.
+- 500 × 106 MB = **53 GB** → über dem Budget. 200 × 106 MB = **21 GB** → passt.
+  Deshalb steht `EXECUTIONS_DATA_PRUNE_MAX_COUNT` jetzt auf **200**.
+
+**⛔ `MAX_COUNT` ist kein Byte-Deckel.** Er zählt Durchgänge. Die **25 schwersten
+Dateien des Bestands wiegen zusammen 7,71 GB** — so viel kann ein *einzelner*
+Durchgang auf die Platte schreiben, das 73-fache des Mittels. 200 × 7,71 GB wären
+1,5 TB; die gibt es nicht. Was die Bytes wirklich begrenzt, ist **`MAX_AGE`**: bei
+den gemessenen 34–49 Dokumenten je Stunde passen in 48 Stunden höchstens
+49 × 48 = **2.352 Dokumente**, und die 2.352 schwersten Dateien des Bestands wiegen
+zusammen **27,3 GB** — ebenfalls unter den 39 GB. 2.352 / 25 = **95 volle
+Durchgänge**, also greift `MAX_COUNT` = 200 im Alltag gar nicht; er ist der Notnagel
+für einen Durchsatzsprung.
+
+**Wenn der Bestand oder der Durchsatz wächst:** `MAX_AGE` senken (24 statt 48
+halbiert das Fenster), nicht `MAX_COUNT`. Und einen einzelnen schweren Durchgang
+deckelt nichts: mit der Schonfrist von einer Stunde und rund zwei vollen Durchgängen
+je Stunde hängen höchstens drei davon gleichzeitig in der Schwebe — **rund 23 GB
+Spitze**. Das passt heute; man muss es nur wissen.
 
 **Wie man aufräumt**, wenn es schon passiert ist:
 

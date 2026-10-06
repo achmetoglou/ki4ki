@@ -698,6 +698,121 @@ const codeUmgebung = (vomFilter, roh, quellen) => ({
   pruefe(r12c.length === 1 && r12c[0].json.belegquelle === undefined,
          '12h GEGENPROBE: ein fremder Pfad bringt keine fremden Marken mit');
 
+  // ---------------------------------------------------------------------
+  // ⛔ DIE PAARUNG MIT MEHR ALS EINEM ELEMENT (12i-12k).
+  //   12g und 12h oben fahren je GENAU EIN Element. Bei einem Element
+  //   sieht eine Paarung ueber die POSITION aber genauso aus wie eine
+  //   ueber den PFAD - und der Baustein-Kommentar verspricht
+  //   ausdruecklich die ueber den Pfad. Mutant M9 (die Marken um eine
+  //   Stelle versetzt) blieb deshalb gruen:
+  //     ORIGINAL  A.pdf=true  B.pdf=false
+  //     MUTANT M9 A.pdf=true  B.pdf=true   <- B bekommt A's belegquelle
+  //   Hier laufen DREI Dateien, und die Liste kommt in einer ANDEREN
+  //   Reihenfolge herein als die gelesenen Dateien. Ueber die Position
+  //   gepaart sitzt dann jede Marke falsch.
+  const liste3 = [
+    { json: { pfad: DIR + '/C.pdf', marke: 'C' } },
+    { json: { pfad: DIR + '/A.pdf', marke: 'A', belegquelle: true } },
+    { json: { pfad: DIR + '/B.pdf', marke: 'B' } },
+  ];
+  const marken = (r) => r.map(e => ((e || {}).json || {}).marke).join(',');
+  const wiederAnheften = (elemente) => fahre('Angaben wieder anheften', {
+    $input: { all: () => elemente },
+    $: () => ({ all: () => liste3 }),
+    console: { log() {}, error() {} },
+  });
+
+  const r12i = await wiederAnheften([datei(DIR, 'A.pdf'), datei(DIR, 'B.pdf'),
+                               datei(DIR, 'C.pdf')]);
+  pruefe(r12i.length === 3 && marken(r12i) === 'A,B,C',
+         '12i drei Dateien, verdrehte Liste: jede Marke sitzt an ihrer Datei'
+         + ' (ist ' + marken(r12i) + ')');
+  // ⛔ Und die EINE Marke, an der die Rechenzeit haengt, bleibt bei ihrer
+  //   Datei. Rutschte belegquelle auf den Nachbarn, liefe eine PDF durch
+  //   Docling, die es nicht muesste - oder schlimmer: eine, die es
+  //   muesste, liefe nicht.
+  pruefe(r12i[0].json.belegquelle === true
+         && r12i[1].json.belegquelle === undefined
+         && r12i[2].json.belegquelle === undefined,
+         '12j nur A.pdf traegt belegquelle, kein Nachbar erbt sie');
+  // Dieselbe Liste, die Dateien aber in umgekehrter Reihenfolge - eine
+  // Permutation, bei der KEINE Position zufaellig stimmt.
+  const r12k = await wiederAnheften([datei(DIR, 'C.pdf'), datei(DIR, 'B.pdf'),
+                               datei(DIR, 'A.pdf')]);
+  pruefe(r12k.length === 3 && marken(r12k) === 'C,B,A',
+         '12k umgekehrte Reihenfolge: die Marken folgen dem Pfad, nicht der'
+         + ' Stelle (ist ' + marken(r12k) + ')');
+
+  // ⛔ NUR BINAERLOSE ELEMENTE (12l). Faellt eine ganze Charge beim Laden
+  //   aus - der Lade-Baustein steht auf continueRegularOutput -, kommen
+  //   hier ausschliesslich Elemente OHNE binary an. Wirft der Baustein
+  //   sie weg, ist die Rueckgabe leer; dann plant n8n den naechsten
+  //   Baustein nicht ein, "Sperre freigeben" wird nie erreicht und die
+  //   Sperre haengt bis zum 120-Minuten-Notnagel. Mutant M11 (den
+  //   Durchlass 'raus.push(e); continue;' entfernt) blieb bisher gruen,
+  //   weil ihn nie jemand ohne binary gefahren hat.
+  const nurLeer = [{ json: {} },
+                   { json: { leer: true } },
+                   { json: {}, binary: {} }];
+  const r12l = await wiederAnheften(nurLeer);
+  pruefe(r12l.length === nurLeer.length,
+         '12l eine Charge ganz ohne Binaerdaten kommt vollzaehlig durch'
+         + ' (' + r12l.length + ' von ' + nurLeer.length + ')');
+
+  // ---------------------------------------------------------------------
+  // ⛔ DIE NUL-TRENNUNG IST EINE ZUSICHERUNG, ALSO WIRD SIE BEWACHT (13a).
+  //   Mutant M1 (-print0 -> -print) blieb gruen. Heute traegt kein Name
+  //   im Bestand einen Zeilenumbruch, der Schaden waere also null - aber
+  //   genau deshalb faellt es auch niemandem auf, wenn der Trenner
+  //   verschwindet. Dann zerfaellt der erste Name mit Umbruch in zwei
+  //   Scheinpfade, und beide finden nichts.
+  const findbefehl = shell['Dateiliste einlesen'] || '';
+  pruefe(/-print0(\s|$)/m.test(findbefehl),
+         '13a die Namensliste wird NUL-getrennt ausgegeben (-print0)');
+  // Und die Gegenseite verarbeitet sie auch wirklich: ein Name MIT
+  // Zeilenumbruch muss als EIN Pfad ankommen.
+  const r13b = await fahre('Dateiliste aufbereiten', {
+    $input: { all: () => [{ json: { stdout:
+      [DIR + '/Zwei\nZeilen.pdf', DIR + '/Glatt.pdf'].join('\u0000') } }] },
+    console: { log() {}, error() {} },
+  });
+  pruefe(r13b.length === 2 && r13b[0].json.fileName === 'Zwei\nZeilen.pdf',
+         '13b ein Name mit Zeilenumbruch bleibt EIN Pfad');
+
+  // ⚠ LEERZEICHEN AM NAMENSENDE (13c). 'z.trim()' schnitt sie ab - der
+  //   Pfad im json und der Pfad auf der Platte gingen dann auseinander,
+  //   und die Datei waere lautlos nicht gefunden worden. Im Bestand vom
+  //   06.10. ist davon keine Datei betroffen; die Zusicherung soll
+  //   trotzdem halten, bevor die erste solche Datei hochgeladen wird.
+  const r13c = await fahre('Dateiliste aufbereiten', {
+    $input: { all: () => [{ json: { stdout:
+      [DIR + '/Entwurf.pdf ', DIR + '/Glatt.pdf'].join('\u0000') } }] },
+    console: { log() {}, error() {} },
+  });
+  pruefe(r13c.length === 2 && r13c[0].json.fileName === 'Entwurf.pdf '
+         && r13c[0].json.pfad === DIR + '/Entwurf.pdf ',
+         '13c ein Leerzeichen am Namensende bleibt stehen'
+         + ' (ist ' + JSON.stringify((r13c[0] || {}).json
+                                     && r13c[0].json.fileName) + ')');
+
+  // ⚠ DIE 10-MB-KAPPE VON executeCommand (13d). n8n schneidet stdout bei
+  //   10 MB ab und behaelt das ENDE - die ERSTEN Dateien fielen also
+  //   weg, und zwar ohne jede Meldung. Heute misst die Liste 630 KB
+  //   (6 % des Deckels). Eine Warnzeile ab 5 MB ist die Wache dafuer.
+  let gewarnt = '';
+  const dickeListe = Array.from({ length: 60000 },
+    (_, i) => DIR + '/' + String(i).padStart(6, '0')
+              + '-ein-recht-langer-dateiname-damit-es-dick-wird.pdf')
+    .join('\u0000');
+  const r13d = await fahre('Dateiliste aufbereiten', {
+    $input: { all: () => [{ json: { stdout: dickeListe } }] },
+    console: { log: (t) => { gewarnt += String(t) + '\n'; }, error() {} },
+  });
+  pruefe(dickeListe.length > 5e6 && r13d.length === 60000
+         && /10-MB|10 MB/.test(gewarnt),
+         '13d eine Liste ueber 5 MB meldet sich, bevor n8n sie kappt'
+         + ' (' + (dickeListe.length / 1e6).toFixed(1) + ' MB)');
+
   console.log('\n' + fehler + ' Fehler');
   process.exit(fehler ? 1 : 0);
 })().catch(e => { console.error('ABBRUCH:', e); process.exit(2); });
