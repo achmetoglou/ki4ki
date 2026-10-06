@@ -3165,3 +3165,111 @@ verstümmelt werden. Keine Codestelle darf den ganzen Schlüssel vergleichen.
 **Was zählt:** Prüfsummenvergleich statt Namensvergleich, gezielte Proben in der
 Kollisionsgruppe, eine Löschprobe, bei der die **anderen** nachgezählt werden —
 und ein Fehlerzähler, der nach dem Fix **stillsteht**.
+
+
+## 8 · Stand 06.10. abends: der grosse Lauf laeuft, nach drei Beinahe-Katastrophen
+
+**Zustand der Anlage (gemessen 06.10. 13:27):**
+```
+Bereich kap   input 173 · archiv 384 · aussortiert 471 · parkplatz 5.691
+Bestand       244 Dokumente, 244 Katalogeintraege, 0 leere Zeilen
+Durchsatz     ~160 Dokumente/Stunde (gemessen, nicht geschaetzt)
+Platte        52 %, 117 GB frei · n8n-storage 470 MB
+Sperre        frei · Stand 9da5cd5 aktiv
+.env          KI4KI_CLAIM_MINUTEN=6400 · KI4KI_MASSENLAUF_AB=100
+```
+Noch im Parkplatz: 5.691 Dateien, davon rund **1.940 Dokumente**, 3.496 Bilddateien,
+**27 ueber 150 MB** (bewusst zurueckgehalten: 8 CSV bis 539 MB, 12 pptx, 3 xlsm)
+und 127 versteckte Dateien.
+
+### Was heute gefunden wurde — drei Fehler, die den Urlaubslauf vernichtet haetten
+
+1. ⛔ **Die Claim-Garantie haette nach 3 Stunden alles aussortiert.** 1.785 Dokumente
+   bei 34–49 Dok/h sind 42–60 Stunden; die Schwelle stand bei 180 Minuten, hart
+   verdrahtet. Jetzt `KI4KI_CLAIM_MINUTEN`, Standard unveraendert 180, mit
+   Validierung gegen 24 feindliche Eingaben (`0` haette den Eingang sofort geleert).
+2. ⛔ **34 % der Chargen haetten 120 Minuten blockiert.** Eine Charge aus lauter
+   unvorgesehenen Endungen machte `Nur Dokumente hochladen` leer → Schleife laeuft
+   nicht an → Sperre blieb liegen. Die Positivliste `VORGESEHEN` steht jetzt VOR
+   der Sperre, im selben Baustein wie `NICHTDOKUMENT`.
+3. ⛔ **Die Platte lief voll — und das ist der wichtigste Fund.** `Daten vom Server
+   laden` las bei JEDEM Durchgang den ganzen Eingang; n8n legte das je Ausfuehrung
+   auf Platte. Gemessen: **ein Durchgang = 18,4 GB**, 8.355 Ausfuehrungsordner =
+   116,8 GB, Platte 100 % voll, `ENOSPC`. Die Kette meldete stundenlang
+   „0 zu verarbeiten" bei vollem Eingang.
+   **Jetzt:** Namensliste per `find` holen → begrenzen → nur die Charge lesen.
+   Gemessen im Betrieb: **470 MB statt 18 GB je Durchgang.**
+
+### ⛔ Die Lehre des Tages — teurer als alle drei Fehler zusammen
+
+**Fuenf Behauptungen sind heute an einem falsch gemessenen Artefakt gescheitert.**
+Dreimal habe ich eine Vermutung als Ursache formuliert UND eine Handlung empfohlen
+(„Grenze offener Dateien", „zu viel Datenmenge", „n8n verklemmt → Neustart") —
+alle drei falsch, der Neustart haette nichts bewirkt. Die Wahrheit stand in einem
+Screenshot der n8n-Oberflaeche: `ENOSPC`. Emrach hat vor dem Neustart gestoppt:
+*„bevor ich das mache, pruef das nochmal statt zu raten."*
+
+Der vierte Fehlschuss: ein Regex-Alternativzweig (`PRUNE|…`) verschluckte den
+laengeren Namen, und ich meldete zwei Compose-Schalter faelschlich als falsch.
+Der fuenfte: Ich gab die Pfad-Entschaerfung frei, nachdem ich sie gegen **fast-glob
+direkt** getestet hatte — der echte Weg geht ueber `normalizeFileSelector`, das
+Klammern ein zweites Mal escaped. **453 von 6.925 Dateien (6,5 %) tragen `( ) [ ]`**;
+rund 130 waeren im Urlaub lautlos verschwunden.
+
+⭐ **Regeln, die daraus folgen:**
+- Eine Vermutung wird **nie** als Ursache formuliert und **nie** mit einer
+  Handlungsempfehlung verbunden.
+- Bei einem Ausfall zuerst die **Fehlermeldung des betroffenen Bausteins** holen
+  (n8n: Executions-Ansicht, Baustein anklicken). Logs, Speicher und Dateizahlen
+  sind Umgebung, nicht Befund.
+- Jede Diagnose braucht den Satz „Was wuerde sie widerlegen?".
+- **Nie eine veraendernde Handlung empfehlen, bevor die Ursachenkette lueckenlos
+  gemessen ist** — ein Neustart auf Verdacht vernichtet den Zustand, an dem man
+  die Ursache noch haette sehen koennen.
+- **Pruef das Messwerkzeug, bevor du den Befund meldest.**
+
+### Pruefstaende — Stand heute Abend
+```
+aufnahmetest.js      92 ok    (heute frueh: 39)
+ablauf_pruefen.py   250 ok    (heute frueh: tot, starb im 2. von 13 Tests)
+wegraeumtest.py      44 ok
+dialogtest.py       615 ok    (heute frueh: 567)
+```
+Neu und wichtig: **`test_findet_n8n_die_dateien_auch_wirklich`** faehrt die echte
+Kette `entschaerfen → normalizeFileSelector → fast-glob` gegen den **laufenden
+Container** und besteht auf „ohne Treffer: 0". Eingebaute Gegenprobe: doppelt
+entschaerft muss 7 Treffer verlieren. Ohne Docker meldet sie
+*„DAS IST KEIN GRUEN"* statt sich still zu ueberspringen.
+⚠ `_glob_treffer()` in derselben Datei bleibt ein **Modell** — es kennt picomatch
+nicht. Im Zweifel gilt die Container-Pruefung.
+
+### Offen, in dieser Reihenfolge
+1. **Die restlichen ~1.940 Dokumente** aus dem Parkplatz, portionsweise.
+   ⛔ Der Eingang darf NICHT mit allen 6.200 Dateien gefuellt werden — Bilder und
+   Messdaten gehoeren nicht hinein, sie waeren nur Ladelast.
+2. **E-Mails aufnehmen** (Emrachs Wunsch, 06.10.): 59 `.msg` liegen in
+   `aussortiert/`. Erst an 3–4 Dateien messen, ob Tika Text herausbekommt.
+   `KORRESPONDENZ` ist eine Zeile in `Nur ein Bereich je Durchgang`; Pruefung 9d
+   haelt die heutige Entscheidung fest und muss mitgeaendert werden.
+3. **Verfasser nachschaerfen.** Gemessen am Vossloh-Lauf: 63 Eintraege, davon
+   **2 Rechnungen mit dem KUNDEN als Verfasser**, 20 leer, 16 korrekt „IKV".
+   Geht ohne Neulauf ueber `DECKBLATT_FASSUNG` (eine Zahl hochsetzen → alle
+   Eintraege werden genau einmal neu gelesen).
+   ⚠ Restschuld in `bestand.py:853-855`: antwortet das Modell, liefert aber
+   nichts Brauchbares, bleibt der alte (falsche) Verfasser stehen.
+4. **Die 27 Riesendateien** (CSV bis 539 MB mit 2 Mio. Zeilen, pptx ueber der
+   200-MB-Grenze des office-dienstes). Die groesste CSV ist **semikolon**getrennt,
+   der Baustein steht auf Komma.
+5. **3.496 Bilddateien** — eigenes Vorhaben, kein Fehler im Lauf. Pfad traegt
+   Kunde und Vorgang bereits; es fehlt eine Beschreibung, damit sie durchsuchbar
+   werden. `bilder-nachholen.txt` (97 Zeilen) betrifft etwas anderes: Abbildungen
+   INNERHALB von Dokumenten — und **niemand liest diese Liste**.
+6. **3 Excel+PDF-Paare** werden doppelt aufgenommen (`OFFICE_ORIGINAL` kennt kein
+   `.xlsx`). Gemessen: 3 von 6.620 Dateien.
+7. `schluesseltest.py` und `absichttest.py` bleiben rot — Umgebungsgruende
+   (`KI4KI_PRUEFBAUM`, erreichbares Modell), nicht von den Aenderungen verursacht.
+
+### Nach dem Lauf nicht vergessen
+- `KI4KI_CLAIM_MINUTEN` zurueck auf **180**.
+- Sicherungen `~/kap-sicherung` (30 MB) und `~/waisen-sicherung` (5 MB) erst nach
+  der Abnahme loeschen.
