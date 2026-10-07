@@ -391,7 +391,14 @@ services:
     - STORAGE_DIR=/app/server/storage
     - LLM_PROVIDER=ollama
     - OLLAMA_BASE_PATH=http://nothink-proxy:11435
-    - OLLAMA_MODEL_PREF=gemma4:12b
+    # ⛔ 07.10.: stand hier auf gemma4:12b. Alle Arbeitsbereiche nutzen fuer
+    #   den Chat qwen3.8, der AGENT aber die Systemvorgabe - dadurch war 12b
+    #   (10 GB) zusaetzlich dauerhaft geladen. Gemessen auf der A40:
+    #   qwen3.8 19 GB + gemma4:12b 10 GB + docling 10 GB = 39 von 46 GB; fuer
+    #   gemma4:e2b blieben 3,4 GB, es fiel auf die CPU zurueck (5 von 36
+    #   Schichten) und rechnete mit 1,64 statt 143 Token/s. Chat UND Aufnahme
+    #   standen 75 Minuten. Nach dem Entladen von 12b: alle Modelle 100 % GPU.
+    - OLLAMA_MODEL_PREF=qwen3.8:latest
     - OLLAMA_KEEP_ALIVE_TIMEOUT=14400
     # ⭐ OHNE DAS SIEHT DAS MODELL NUR DIE ERSTE FUNDSTELLE.
     # AnythingLLM teilt das Fenster fest auf: 15 % Systemteil, 70 % Frage,
