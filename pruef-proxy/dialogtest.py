@@ -2631,6 +2631,475 @@ def szenario_52_bestandszahl_zaehlt_dokumente():
            "auch im Stichwortzweig wird die Faltung offengelegt")
 
 
+def szenario_53_stichwort_aus_mehreren_woertern():
+    print("\n[53] Stichwort aus mehreren Woertern findet die Dokumente")
+    # ⛔ 07.10. (Chat-Test): "Welche Unterlagen gibt es zum Auftrag 276596
+    #   bei Johnson Electric?" -> "finde ich im Katalog dieses
+    #   Arbeitsbereichs keinen Titel und kein Thema". Am echten Bereich
+    #   gemessen: 19 Dateinamen tragen 276596. _stichwort_aus() liefert
+    #   die ganze Wortgruppe als EIN Stichwort ("Auftrag 276596 bei
+    #   Johnson Electric"), weil die Zeichenklasse \s enthaelt und der
+    #   Ausdruck auf $ verankert ist - danach wird woertlich gesucht.
+    titel = ["Johnson-Electric-276596-Angebot-276596-Johnson-IKV.md",
+             "Johnson-Electric-276596-Angebot-Kalkulation-276596.md",
+             "Johnson-Electric-276596-Confidential-Agreement.md",
+             "Johnson-Electric-276684-Angebot-276684-Johnson-IKV.md",
+             "Vossloh-Fastening-Systems-GmbH-275269-Angebot-Anschreiben.md",
+             "Kiekert-AG-273009-Zwischenergebnisse-OIT.md"]
+    frage = "Welche Unterlagen gibt es zum Auftrag 276596 bei Johnson Electric?"
+    text = assistent.bestandsauskunft(frage, titel, bereich="kap") or ""
+    pruefe("keinen Titel und kein Thema" not in text,
+           "die Anlage behauptet nicht mehr, es gebe nichts")
+    pruefe("Kalkulation" in text and "Confidential" in text,
+           "beide weiteren Dokumente zu 276596 stehen in der Antwort")
+    # ⚠ Diese beiden sind auf einer Negativantwort ebenfalls gruen
+    #   (Pruefer 07.10.). Deshalb davor eine Pruefung, die nur bei einer
+    #   ECHTEN Trefferliste haelt - sonst tragen sie sich nicht selbst.
+    pruefe("liegen 3 Dokumente vor" in text,
+           "die Antwort nennt genau die drei Treffer zu 276596")
+    pruefe("276684" not in text,
+           "der Nachbarauftrag 276684 wird nicht mitgeschleppt")
+    pruefe("Kiekert" not in text,
+           "ein fremder Kunde taucht nicht auf")
+
+
+def szenario_54_kundenfilter_in_der_bestandsliste():
+    print("\n[54] 'fuer Vossloh' filtert die Bestandsliste")
+    # ⛔ 07.10. (Chat-Test): "Wie viele Angebote haben wir fuer Vossloh"
+    #   lieferte "Angebot — 156 in diesem Arbeitsbereich" samt
+    #   Johnson-Electric-Zeilen. _stichwort_aus() erkennt "fuer <Kunde>"
+    #   nicht (liefert None), und _liste_nach_art() filtert nur nach
+    #   Kategorie. Am echten Bestand: 21 Vossloh-Angebotsdateien auf
+    #   6 Auftragsnummern - die Antwort nannte zwei.
+    # ⚠ bestand.eintragen() schreibt wirklich - aber nur in den Katalog
+    #   dieses Laufs: KI4KI_BESTANDSINDEX zeigt seit dem Dateikopf auf
+    #   tempfile.mkdtemp(). Nachgeprueft 07.10.: bestand.VERZEICHNIS
+    #   liegt unter /tmp/ki4ki-dialogtest-*/katalog.json.
+    import bestand
+    titel = ["Vossloh-Fastening-Systems-GmbH-275269-Angebot-Anschreiben.md",
+             "Vossloh-Fastening-Systems-GmbH-275308-Angebot-Anschreiben.md",
+             "Johnson-Electric-276596-Angebot-276596-Johnson-IKV.md",
+             "Johnson-Electric-276684-Angebot-276684-Johnson-IKV.md",
+             "Kiekert-AG-273009-Angebot-273009.md"]
+    for n in titel:
+        bestand.eintragen(n, {"titel": n[:-3], "kategorie": "Angebot",
+                              "kategorie_quelle": "aufnahme"},
+                          quelle="aufnahme")
+    text = assistent.bestandsauskunft(
+        "Wie viele Angebote haben wir für Vossloh", titel, bereich="kap") or ""
+    pruefe("Johnson" not in text,
+           "Johnson Electric steht nicht in einer Vossloh-Antwort")
+    pruefe("Kiekert" not in text,
+           "Kiekert steht nicht in einer Vossloh-Antwort")
+    pruefe(text.count("Vossloh") >= 2,
+           "beide Vossloh-Angebote stehen in der Antwort")
+
+
+def szenario_55_frage_in_anfuehrungszeichen():
+    print("\n[55] Eine Frage in Anfuehrungszeichen bleibt eine Bestandsfrage")
+    # ⛔ 07.10. (Chat-Test): Die Frage kam laut Protokoll als
+    #   '„Zeig mir alle Geheimhaltungsvereinbarungen."\n\n' an - der
+    #   Nutzer hatte sie als Zitat eingefuegt. Mit dem fuehrenden
+    #   Anfuehrungszeichen meldet ist_bestandsfrage_unscharf False, die
+    #   Frage geht an das Sprachmodell, braucht 192 s und erfindet zwei
+    #   Zeilen, die es im Bestand nicht gibt. Ohne das Zeichen wird sie
+    #   in Sekunden aus dem Katalog beantwortet.
+    roh = "Zeig mir alle Geheimhaltungsvereinbarungen."
+    for f in (roh, "„%s“" % roh, '"%s"' % roh, "„%s“\n\n" % roh,
+              "  %s  " % roh, "»%s«" % roh, "'%s'" % roh):
+        pruefe(assistent.ist_bestandsfrage_unscharf(f),
+               "als Bestandsfrage erkannt: %r" % f[:44])
+    # Gegenprobe: ein Zitat macht aus einer Inhaltsfrage keine Bestandsfrage
+    pruefe(not assistent.ist_bestandsfrage_unscharf('„Was steht in der Norm zu Kleben?“'),
+           "eine zitierte Inhaltsfrage bleibt eine Inhaltsfrage")
+
+
+def szenario_56_kunde_ohne_dokumente():
+    print("\n[56] Ein Kunde ohne Dokumente wird benannt, nicht ersetzt")
+    # ⛔ 07.10. (Chat-Test): "Welche Projekte haben wir mit Siemens
+    #   gemacht" lieferte eine Tabelle "Projekte mit Kiekert AG im
+    #   Katalog" - ohne irgendwo zu sagen, dass es zu Siemens nichts
+    #   gibt. Am echten Bestand: 0 Dateien mit "Siemens", 294 mit
+    #   "Kiekert". Ursache der Weiche: _BESTAND_OBJEKT kennt "Projekt"
+    #   nicht, _ist_bestandsfrage bricht ab, die Frage geht an das
+    #   Sprachmodell.
+    frage = "Welche Projekte haben wir mit Siemens gemacht"
+    pruefe(assistent.einordnen(frage) == "bestand",
+           "'Welche Projekte haben wir mit X' ist eine Bestandsfrage")
+    titel = ["Kiekert-AG-273009-Zwischenergebnisse-OIT.md",
+             "Kiekert-AG-273182-Vorarbeit-Angebot.md",
+             "Vossloh-Fastening-Systems-GmbH-275269-Angebot-Anschreiben.md",
+             "Johnson-Electric-276596-Confidential-Agreement.md"]
+    text = assistent.bestandsauskunft(frage, titel, bereich="kap") or ""
+    pruefe("Siemens" in text,
+           "der gefragte Kunde wird in der Antwort genannt")
+    # ⚠ Zielkonflikt, entschieden am 07.10.: Gar nichts zu zeigen waere
+    #   der Februar-Fehler (szenario_59) - ein falsches "nichts" auf
+    #   vorhandene Dokumente. Kiekert als Antwort auf eine Siemens-Frage
+    #   war die urspruengliche Beschwerde. Beides vermeidet nur eine
+    #   Reihenfolge: zuerst die Wahrheit ueber Siemens, danach der
+    #   Bestand, erkennbar als Bestand.
+    pruefe("nichts" in text.split("Kiekert")[0],
+           "die Fehlanzeige zu Siemens steht VOR jedem fremden Kunden")
+    pruefe(text.index("Siemens") < text.index("Kiekert"),
+           "Siemens wird zuerst genannt, nicht Kiekert")
+    pruefe("ganze Bestand" in text,
+           "die Liste wird als Bestand ausgewiesen, nicht als Siemens-Treffer")
+    # Gegenproben: eine Inhaltsfrage mit "Projekt" bleibt eine Inhaltsfrage
+    pruefe(not assistent.ist_bestandsfrage_unscharf(
+        "Welches Verfahren nutzt Köbel in seiner Dissertation zur Ermüdung?"),
+        "Inhaltsfrage bleibt Inhaltsfrage (Gegenprobe aus Szenario 32)")
+    pruefe(assistent.einordnen("Was steht im Projektbericht 273009 über POM?")
+           != "bestand",
+           "'Was steht im Projektbericht …' bleibt eine Frage ans Dokument")
+
+
+def szenario_57_eingrenzung_luegt_nicht():
+    print("\n[57] Die Eingrenzung darf kein falsches „nichts“ liefern")
+    # ⛔ 07.10. (Pruefer): _entitaet_aus() behandelt ein THEMA nach
+    #   "fuer/mit/von" wie einen Eigennamen und filtert woertlich - ohne
+    #   den Wortstamm, den _katalog_treffer benutzt. "Welche Normen gibt
+    #   es fuer Zugversuche" antwortete deshalb "nichts in der Kategorie
+    #   Norm/Richtlinie zu Zugversuche", obwohl DIN-EN-ISO-527-1-
+    #   Zugversuch danebenliegt. Ein falsches "nichts" auf vorhandene
+    #   Dokumente ist genau der Fehler, den diese Sitzung abstellt.
+    import bestand
+    normen = ["DIN-EN-ISO-527-1-Zugversuch.md",
+              "DIN-EN-ISO-178-Biegeversuch.md",
+              "DVS-2203-5-Pruefung.md"]
+    for n in normen:
+        bestand.eintragen(n, {"titel": n[:-3], "kategorie": "Norm/Richtlinie",
+                              "kategorie_quelle": "aufnahme"},
+                          quelle="aufnahme")
+    text = assistent.bestandsauskunft(
+        "Welche Normen gibt es für Zugversuche", normen, bereich="kap") or ""
+    pruefe("Zugversuch" in text and "nichts" not in text,
+           "Mehrzahl im Fragewort findet die Einzahl im Titel")
+    pruefe("Biegeversuch" not in text,
+           "die andere Norm wird trotzdem nicht mitgeschleppt")
+
+    # Trifft wirklich nichts, dann ehrlich - aber mit der Zahl dazu,
+    # damit niemand den Bereich fuer leer haelt (Docstring _liste_nach_art).
+    # ⚠ Pruefer 07.10.: Mit drei Titeln = drei Dokumenten kann die
+    #   Pruefung Titel und Dokumente nicht trennen. Deshalb vier
+    #   Dateien unter drei Titeln - dann ist 4 richtig und 3 falsch.
+    vier = normen + ["DIN-EN-ISO-527-1-Zugversuch.md"]
+    leer = assistent.bestandsauskunft(
+        "Welche Normen gibt es für Schallschutz", vier, bereich="kap") or ""
+    pruefe("Schallschutz" in leer,
+           "der nicht gefundene Begriff wird benannt")
+    pruefe("vollständig" in leer,
+           "die Liste wird stattdessen vollstaendig gezeigt")
+    pruefe("— 4 " in leer,
+           "stattdessen steht die ganze Liste da, mit 4 Dokumenten")
+
+    # ⛔ Pruefer 07.10.: _FRAGE_FUELLWORT kannte nur die ae-Schreibweise.
+    #   "zu den Auftraegen 276596" blieb deshalb unrepariert.
+    for f in ("Welche Unterlagen gibt es zum Auftrag 276596?",
+              "Welche Unterlagen gibt es zu den Aufträgen 276596?",
+              "Welche Unterlagen gibt es zu den Vorgängen 276596?"):
+        g = assistent._stichwort_gruppen(assistent._stichwort_aus(f) or "")
+        pruefe(g == [["276596"]],
+               "Fuellwoerter fallen weg, auch mit Umlaut: %r" % (g,))
+    pruefe(assistent._stichwort_gruppen("PA 6") == [["pa", "6"]],
+           "eine Zahl bleibt Suchbegriff, auch einstellig")
+
+    # ⛔ Pruefer 07.10.: entkleiden() wirkte nur in der Einordnung; die
+    #   zitierte Frage listete danach ALLE Dokumente statt der drei.
+    zitiert = "„Welche Unterlagen gibt es zum Auftrag 276596 bei Johnson Electric?“"
+    t_z = ["Johnson-Electric-276596-Angebot.md", "Kiekert-AG-273009-OIT.md"]
+    text_z = assistent.bestandsauskunft(zitiert, t_z, bereich="kap") or ""
+    # ⚠ Pruefer 07.10.: "Kiekert not in text" allein ist zahnlos - es ist
+    #   auch auf einer leeren Antwort gruen UND bleibt gruen, wenn
+    #   entkleiden() aus _stichwort_aus faellt (dann faengt _entitaet_aus
+    #   mit 'Johnson Electric' auf, und die Auftragsnummer geht
+    #   verloren). Deshalb direkt auf die Zerlegung zielen.
+    pruefe(assistent._stichwort_aus(zitiert) == "Auftrag 276596 bei Johnson Electric",
+           "die Huelle wird schon in _stichwort_aus abgestreift")
+    pruefe("liegen 1 Dokument" in text_z or "liegen 1 Dokumente" in text_z
+           or "Johnson" in text_z,
+           "der Treffer steht in der Antwort")
+    pruefe("Kiekert" not in text_z,
+           "auch die zitierte Frage wird zerlegt, nicht pauschal gelistet")
+
+
+def szenario_58_kategorieliste_zaehlt_dokumente():
+    print("\n[58] Auch die Kategorieliste zaehlt Dokumente, nicht Titel")
+    # ⛔ 07.10. (Pruefer): In e21578e wurde die Titel-statt-Dokumente-
+    #   Zaehlung in bestandsauskunft behoben - _liste_nach_art und
+    #   _treffer_im_katalog zaehlen aber weiter len(passend) bzw.
+    #   len(treffer), also TITEL, und schreiben "Dokumente"/"Arbeiten
+    #   in diesem Arbeitsbereich" daran. Durch die Kunden-Eingrenzung
+    #   laeuft die Zaehlfrage ("Wie viele Angebote fuer Vossloh") jetzt
+    #   oefter genau dort hinein.
+    import bestand
+    titel = ["Vossloh-275269-Angebot.md", "Vossloh-275269-Angebot.md",
+             "Vossloh-275308-Angebot.md", "Johnson-276596-Angebot.md"]
+    for n in set(titel):
+        bestand.eintragen(n, {"titel": n[:-3], "kategorie": "Angebot",
+                              "kategorie_quelle": "aufnahme"},
+                          quelle="aufnahme")
+    text = assistent.bestandsauskunft(
+        "Wie viele Angebote haben wir für Vossloh", titel, bereich="kap") or ""
+    pruefe("— 3 " in text,
+           "drei Dateien zu Vossloh werden als 3 gezaehlt, nicht als 2")
+    pruefe("verschiedenen Titeln" in text or "einem einzigen Titel" in text,
+           "die Titel-Faltung wird auch hier offengelegt")
+    pruefe("Johnson" not in text, "der fremde Kunde bleibt draussen")
+
+    # Einzahl: "1 Arbeiten" ist falsch
+    einzel = ["Becker-Ermuedung-Blattfedern.md", "Kiekert-273009-OIT.md"]
+    for n in einzel:
+        bestand.eintragen(n, {"titel": n[:-3]}, quelle="aufnahme")
+    t1 = assistent.bestandsauskunft(
+        "Was haben wir von Becker?", einzel, bereich="kap") or ""
+    pruefe("1 Arbeiten" not in t1, "keine '1 Arbeiten'")
+    # ⚠ "1 Arbeiten" enthaelt "1 Arbeit" - die Pruefung muss auf das
+    #   FOLGEWORT zielen, sonst ist sie auf dem Fehler ebenfalls gruen.
+    pruefe("1 Arbeit zu" in t1, "Einzahl heisst 'Arbeit'")
+
+
+def szenario_59_eingrenzung_tritt_beiseite():
+    print("\n[59] Eine Eingrenzung grenzt ein - oder tritt beiseite")
+    # ⛔ 07.10. (Pruefer, zweite Runde): _entitaet_aus nimmt jedes
+    #   grossgeschriebene Wort nach "von/mit/fuer" als Eigennamen. "Was
+    #   haben wir von Februar?" und "Welche Berichte haben wir mit
+    #   Bildern" lieferten danach ein falsches "keinen Titel und kein
+    #   Thema", wo vorher die ganze Liste stand. Ein falsches "nichts"
+    #   auf vorhandene Dokumente ist der Fehler, den diese Sitzung
+    #   abstellt - also darf eine Eingrenzung nie dorthin fuehren.
+    import bestand
+    titel = ["Becker-Ermuedung-Blattfedern.md", "Kiekert-273009-OIT.md",
+             "Vossloh-275269-Angebot.md", "Johnson-276596-Angebot.md"]
+    for n in titel:
+        bestand.eintragen(n, {"titel": n[:-3]}, quelle="aufnahme")
+    for f in ("Was haben wir von Februar?",
+              "Welche Berichte haben wir mit Bildern"):
+        text = assistent.bestandsauskunft(f, titel, bereich="kap") or ""
+        pruefe("keinen Titel und kein Thema" not in text,
+               "kein falsches 'nichts': %r" % f[:38])
+        pruefe("Kiekert" in text,
+               "stattdessen steht der Bestand da: %r" % f[:38])
+
+    # ⛔ Pruefer: _katalog_treffer faltet nur ß→ss. "fuer Prüfungen" und
+    #   "fuer Pruefungen" mussten dasselbe liefern.
+    normen = ["DVS-2203-5-Pruefung.md", "DIN-53504-Pruefverfahren.md",
+              "ISO-527-Zugversuch.md"]
+    for n in normen:
+        bestand.eintragen(n, {"titel": n[:-3], "kategorie": "Norm/Richtlinie",
+                              "kategorie_quelle": "aufnahme"},
+                          quelle="aufnahme")
+    mit = assistent.bestandsauskunft(
+        "Welche Normen gibt es für Prüfungen", normen, bereich="kap") or ""
+    ohne = assistent.bestandsauskunft(
+        "Welche Normen gibt es für Pruefungen", normen, bereich="kap") or ""
+    # ⚠ Die Ueberschrift traegt die Schreibweise der Frage („Prüfungen“
+    #   bzw. „Pruefungen“) - gleich sein muss der TREFFER, nicht der Text.
+    def _zeilen(x):
+        return sorted(z for z in x.split("\n") if z.startswith("| ["))
+    pruefe(_zeilen(mit) == _zeilen(ohne) and _zeilen(mit),
+           "Umlaut und ae-Schreibweise finden dieselben Dokumente")
+    pruefe("— 2 " in mit and "— 2 " in ohne,
+           "beide Pruef-Normen werden gefunden, in beiden Schreibweisen")
+
+    # ⛔ Pruefer: der Katalog-Rueckfall in _enger kippte eine Eingrenzung
+    #   in den GANZEN Bestand ("Norm/Richtlinie — 5 … zu „Siemens“",
+    #   5 von 5 Zeilen), weil gebiet/teilgebiet bei allen gleich stehen.
+    alle = ["Norm-A.md", "Norm-B.md", "Norm-C.md"]
+    for n in alle:
+        bestand.eintragen(n, {"titel": n[:-3], "kategorie": "Norm/Richtlinie",
+                              "kategorie_quelle": "aufnahme",
+                              "gebiet": "Kunststofftechnik"}, quelle="aufnahme")
+    breit = assistent.bestandsauskunft(
+        "Welche Normen gibt es für Kunststofftechnik", alle, bereich="kap") or ""
+    pruefe("zu „Kunststofftechnik“" not in breit or "— 3 " not in breit,
+           "keine Ueberschrift, die eine Eingrenzung nur behauptet")
+
+
+def szenario_60_katalogtreffer_zahlen_stimmen():
+    print("\n[60] Die Katalogtreffer-Tabelle zaehlt Dokumente und bleibt widerspruchsfrei")
+    # ⛔ 07.10. (Pruefer, zweite Runde): Zwei Nachbesserungen in
+    #   _treffer_im_katalog waren von keiner Pruefung gedeckt - die
+    #   Dokumentzaehlung und die Faltungs-Offenlegung. Und die
+    #   Offenlegung widersprach sich bei langen Listen: Der Kopf
+    #   rechnete mit ALLEN Treffern, die Tabelle zeigt hoechstens 60.
+    #   Gemessen: 75 Dokumente / 70 Titel -> "5 Zeilen weniger", obwohl
+    #   15 fehlten, daneben "… und 10 weitere".
+    import bestand
+    klein = ["Kiekert-Bericht-A.md", "Kiekert-Bericht-A.md",
+             "Kiekert-Bericht-B.md", "Kiekert-Bericht-C.md"]
+    for n in set(klein):
+        bestand.eintragen(n, {"titel": n[:-3], "themen": ["Kiekert"]},
+                          quelle="aufnahme")
+    text = assistent.bestandsauskunft(
+        "Was haben wir zum Thema Kiekert?", klein, bereich="kap") or ""
+    pruefe("**4 Arbeiten zu" in text,
+           "vier Dateien unter drei Titeln werden als 4 gezaehlt")
+    pruefe("3 verschiedenen Titeln" in text,
+           "die Faltung wird offengelegt")
+
+    # Lange Liste: die Tabelle wird bei 60 Zeilen abgeschnitten, dann
+    # darf die Faltungszeile nicht danebenstehen.
+    viele = []
+    for i in range(65):
+        n = "Vossloh-Bericht-%03d.md" % i
+        bestand.eintragen(n, {"titel": n[:-3], "themen": ["Vossloh"]},
+                          quelle="aufnahme")
+        viele.append(n)
+    viele += viele[:5]          # fuenf Doppelgaenger -> 70 Dokumente
+    lang = assistent.bestandsauskunft(
+        "Was haben wir zum Thema Vossloh?", viele, bereich="kap") or ""
+    pruefe("**70 Arbeiten zu" in lang,
+           "70 Dateien werden als 70 gezaehlt")
+    pruefe("weitere" in lang,
+           "die Kuerzung der Tabelle wird angesagt")
+    pruefe("Zeilen weniger" not in lang,
+           "keine Faltungszeile neben einer gekuerzten Tabelle")
+
+
+def szenario_61_kategorie_auch_ueber_den_titel():
+    print("\n[61] Eine Kategoriefrage findet auch, was anders einsortiert ist")
+    # ⛔ 07.10. am echten Bestand gemessen: 12 Katalogeintraege tragen
+    #   Geheimhaltung/NDA/Confidential im Schluessel, aber nur 2 sind
+    #   als "Geheimhaltungsvereinbarung" einsortiert - 9 als
+    #   "Vertrag/Vereinbarung". Die Frage "Zeig mir alle
+    #   Geheimhaltungsvereinbarungen" haette also 2 gezeigt und 9
+    #   verschwiegen. Die Einsortierung ist eine Vermutung der Anlage,
+    #   der Titel ist eine Tatsache - beide gehoeren in die Antwort.
+    import bestand
+    namen = ["Vossloh-272791-Geheimhaltung-IKV.md",
+             "Johnson-276596-Geheimhaltung-IKV.md",
+             "Kiekert-274228-Geheimhaltung-Zusatz.md",
+             "Johnson-276596-Geheimhaltungsvereinbarung-A.md",
+             "Johnson-276596-Geheimhaltungsvereinbarung-B.md",
+             "Kiekert-273009-Bericht-OIT.md",
+             "Vossloh-275269-Rechnung.md"]
+    for n in namen:
+        kat = ("Geheimhaltungsvereinbarung"
+               if "vereinbarung" in n.lower()
+               else ("Vertrag/Vereinbarung" if "Geheimhaltung" in n
+                     else "Protokoll/Bericht"))
+        bestand.eintragen(n, {"titel": n[:-3], "kategorie": kat,
+                              "kategorie_quelle": "aufnahme"},
+                          quelle="aufnahme")
+    text = assistent.bestandsauskunft(
+        "Zeig mir alle Geheimhaltungsvereinbarungen.", namen,
+        bereich="kap") or ""
+    pruefe("— 5 " in text,
+           "alle fuenf Geheimhaltungsunterlagen werden gezeigt, nicht zwei")
+    # ⚠ "Titel" allein waere zahnlos - das Wort steht in jeder
+    #   Tabellenueberschrift. Auf den Satz zielen.
+    pruefe("über den Titel gefunden" in text,
+           "die Antwort sagt, dass ein Teil ueber den Titel gefunden wurde")
+    pruefe("Rechnung" not in text and "Bericht-OIT" not in text,
+           "fachfremde Dokumente bleiben draussen")
+
+
+def szenario_62_keine_harte_fehlanzeige_und_kein_wust():
+    print("\n[62] Kein hartes „nichts“, keine 200-Zeilen-Tabelle")
+    import bestand
+    # ⛔ 07.10. (Pruefer, dritte Runde): Der Art-plus-Thema-Zweig
+    #   (assistent.py) benutzte _entitaet_aus OHNE die geraten-
+    #   Unterscheidung. "Welche Dissertationen haben wir von Becker?"
+    #   antwortete "keine Dissertationen zum Thema Becker", obwohl drei
+    #   dalagen - _katalog_treffer durchsucht den VERFASSER nicht.
+    for k, v in (("DS-24-005", {"titel": "Ermuedung an Blattfedern",
+                                "verfasser": "Fabian Becker", "jahr": "2024"}),
+                 ("DS-24-006", {"titel": "Mitteneinspannung",
+                                "verfasser": "Jan Koebel", "jahr": "2024"}),
+                 ("DS-23-004", {"titel": "Mischteile Extrusion",
+                                "verfasser": "Malte Schoen", "jahr": "2023"})):
+        bestand.eintragen(k, v, quelle="aufnahme")
+    diss = ["DS-24-005", "DS-24-006", "DS-23-004"]
+    text = assistent.bestandsauskunft(
+        "Welche Dissertationen haben wir von Becker?", diss, bereich="kap") or ""
+    pruefe("keine **Dissertationen** zum Thema" not in text,
+           "ein geratener Name erzeugt auch hier kein hartes 'nichts'")
+    pruefe("Becker" in text, "der gefragte Name wird trotzdem genannt")
+
+    # ⛔ Pruefer: Die Beiseite-Regel hatte keinen Deckel. 200 Normen
+    #   ergaben eine Tabelle mit 200 Zeilen und 25.000 Zeichen - damit
+    #   war die Ur-Beschwerde ("liefert alle 156 Angebote") zurueck.
+    viele = ["Norm-%03d.md" % i for i in range(200)]
+    for n in viele:
+        bestand.eintragen(n, {"titel": n[:-3], "kategorie": "Norm/Richtlinie",
+                              "kategorie_quelle": "aufnahme"},
+                          quelle="aufnahme")
+    gross = assistent.bestandsauskunft(
+        "Welche Normen gibt es für Schallschutz", viele, bereich="kap") or ""
+    pruefe(gross.count("\n| [") == 0,
+           "bei 200 Treffern wird keine Tabelle ausgeschuettet")
+    pruefe("200" in gross and "Schallschutz" in gross,
+           "stattdessen die Zahl und der nicht gefundene Begriff")
+
+    # ⛔ Pruefer: _wie_kategorie verglich nur die ersten acht Zeichen.
+    #   "Auftragsbestand" landete unter "Auftragsbestaetigung".
+    pruefe(not assistent._wie_kategorie("Auftragsbestätigung",
+                                        "Auftragsbestand-Q3.md"),
+           "Auftragsbestand ist keine Auftragsbestaetigung")
+    pruefe(not assistent._wie_kategorie("Auftragsbestätigung",
+                                        "Auftragseingang-2026.md"),
+           "Auftragseingang auch nicht")
+    pruefe(assistent._wie_kategorie("Geheimhaltungsvereinbarung",
+                                    "Vossloh-272791-Geheimhaltung-IKV.md"),
+           "Geheimhaltung bleibt eine Geheimhaltungsvereinbarung")
+    # der 5-Zeichen-Filter: ohne ihn wuerde "Norm" jedes "normal" ziehen
+    pruefe(not assistent._wie_kategorie("Norm/Richtlinie",
+                                        "Normalbetrieb-Hinweis.md"),
+           "kurze Kategoriewoerter ziehen nichts")
+
+    # ⛔ Pruefer: die Wortanfang-Regel in _gruppe_trifft war ungedeckt.
+    pruefe(not assistent._gruppe_trifft([["pa"]], [["pa"]],
+                                        "Reparaturbericht-Werkzeug.md"),
+           "ein kurzer Begriff trifft nur am Wortanfang")
+    pruefe(assistent._gruppe_trifft([["pa"]], [["pa"]], "PA-6-Datenblatt.md"),
+           "am Wortanfang trifft er sehr wohl")
+
+
+def szenario_63_zwei_hinweise_und_der_rest_der_tabelle():
+    print("\n[63] Beide Hinweise bleiben, und der Tabellenrest zaehlt Dokumente")
+    import bestand
+    # ⛔ 07.10. (Pruefer, dritte Runde): _beiseite wurde zweimal gesetzt -
+    #   der Hinweis "ueber den Titel gefunden" ging verloren, sobald die
+    #   Eingrenzung ausserdem beiseite trat. Drei ueber den Titel
+    #   gezogene Dokumente standen dann ohne Kennzeichnung da.
+    namen = ["Vossloh-272791-Geheimhaltung-IKV.md",
+             "Johnson-276596-Geheimhaltung-IKV.md",
+             "Kiekert-274228-Geheimhaltung-Zusatz.md",
+             "Johnson-276596-Geheimhaltungsvereinbarung-A.md",
+             "Johnson-276596-Geheimhaltungsvereinbarung-B.md"]
+    for n in namen:
+        bestand.eintragen(n, {"titel": n[:-3],
+                              "kategorie": ("Geheimhaltungsvereinbarung"
+                                            if "vereinbarung" in n.lower()
+                                            else "Vertrag/Vereinbarung"),
+                              "kategorie_quelle": "aufnahme"},
+                          quelle="aufnahme")
+    text = assistent.bestandsauskunft(
+        "Zeig mir alle Geheimhaltungsvereinbarungen für Siemens.", namen,
+        bereich="kap") or ""
+    pruefe("über den Titel gefunden" in text,
+           "der Titel-Hinweis ueberlebt das Beiseitetreten")
+    pruefe("Siemens" in text,
+           "und der nicht gefundene Begriff steht auch da")
+
+    # ⛔ Pruefer: Der Kopf rechnete in Dokumenten, die Zeile "… und N
+    #   weitere" in Titeln. 75 Dokumente / 70 Titel ergaben Kopf 75,
+    #   aber 60 Zeilen + 10 weitere = 70. Fuenf blieben unerklaert.
+    viele = []
+    for i in range(70):
+        n = "Vossloh-Bericht-%03d.md" % i
+        bestand.eintragen(n, {"titel": n[:-3], "themen": ["Vossloh"]},
+                          quelle="aufnahme")
+        viele.append(n)
+    viele += ["Vossloh-Bericht-%03d.md" % i for i in range(65, 70)]
+    lang = assistent.bestandsauskunft(
+        "Was haben wir zum Thema Vossloh?", viele, bereich="kap") or ""
+    pruefe("**75 Arbeiten zu" in lang, "der Kopf nennt 75 Dokumente")
+    pruefe("**15 weitere**" in lang,
+           "60 gezeigte + 15 weitere = 75, nicht 70")
+
+
 def deckblatt_am_modell(runden=3):
     """A1 am echten Modell. 0 = gruen, 1 = rot, 2 = gar nicht gelaufen."""
     import bestand
@@ -2705,7 +3174,18 @@ if __name__ == "__main__":
               szenario_49_eintragen_erhaelt_fremde_felder,
               szenario_50_abbruch_nur_bei_ausfall,
               szenario_51_protokoll_bei_ausfall,
-              szenario_52_bestandszahl_zaehlt_dokumente):
+              szenario_52_bestandszahl_zaehlt_dokumente,
+              szenario_53_stichwort_aus_mehreren_woertern,
+              szenario_54_kundenfilter_in_der_bestandsliste,
+              szenario_55_frage_in_anfuehrungszeichen,
+              szenario_56_kunde_ohne_dokumente,
+              szenario_57_eingrenzung_luegt_nicht,
+              szenario_58_kategorieliste_zaehlt_dokumente,
+              szenario_59_eingrenzung_tritt_beiseite,
+              szenario_60_katalogtreffer_zahlen_stimmen,
+              szenario_61_kategorie_auch_ueber_den_titel,
+              szenario_62_keine_harte_fehlanzeige_und_kein_wust,
+              szenario_63_zwei_hinweise_und_der_rest_der_tabelle):
         try:
             s()
         except Exception as e:

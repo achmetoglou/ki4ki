@@ -390,7 +390,14 @@ _BEZUG_AUF_ANTWORT = re.compile(
 # darf keinen weiteren Fachgegenstand tragen.
 _BESTAND_OBJEKT = re.compile(
     r"\b(dokument(?:e|en)?|unterlagen|dateien|quellen|literatur|"
+    # ⛔ 07.10.: "projekte" fehlte. "Welche Projekte haben wir mit Siemens
+    #   gemacht" galt deshalb nicht als Bestandsfrage, ging an das
+    #   Sprachmodell und kam als Tabelle "Projekte mit Kiekert AG"
+    #   zurueck - ohne zu sagen, dass es zu Siemens nichts gibt (0 von
+    #   916 Dateien; Kiekert: 294). Die Wortgrenze schuetzt die
+    #   Inhaltsfrage: "Projektbericht" trifft nicht.
     r"arbeiten|normen|richtlinien|lerneinheiten|bestand|best(?:ä|ae)nde|bestandsliste|"
+    r"projekte?|auftr(?:ä|ae)ge|vorg(?:ä|ae)nge|"
     r"pr(?:ü|ue)fungskataloge?|fragenkataloge?|handb(?:ü|ue)cher|anleitungen|leitf(?:ä|ae)den|verordnungen|"
     r"datenbl(?:ä|ae)tter|pr(?:ä|ae)sentationen|fachb(?:ü|ue)cher|lehrunterlagen|protokolle|forschungsberichte)\b", re.I)
 # "Inhalte" gehoert BEWUSST nicht hierher: Wer nach dem INHALT fragt
@@ -811,6 +818,34 @@ def ist_inhaltsfrage(frage):
     return bool(_INHALTSFRAGE.search(t)) and not _LISTENFRAGE.match(t)
 
 
+# Alles, was Leute um eine Frage herum setzen, wenn sie sie zitieren.
+_HUELLE = "\"'`\u00b4\u201e\u201c\u201d\u00bb\u00ab\u201a\u2018\u2019"
+
+
+def entkleiden(frage):
+    """Anfuehrungszeichen und Leerraum um eine Frage herum abstreifen.
+
+    ⛔ 07.10. (Chat-Test): Die Frage kam als
+    '„Zeig mir alle Geheimhaltungsvereinbarungen."\\n\\n' an, weil der
+    Nutzer sie als Zitat einfuegte. Ein einziges fuehrendes
+    Anfuehrungszeichen laesst jede Pruefung scheitern, die mit ^ auf ein
+    Fragewort zielt - die Frage galt nicht mehr als Bestandsfrage, ging
+    an das Sprachmodell, brauchte 192 s und enthielt zwei Zeilen, die es
+    im Bestand nicht gibt. Ohne das Zeichen beantwortet der Katalog sie
+    in Sekunden.
+
+    Mehrfach, damit auch '"„Frage“"' sauber wird; hoechstens dreimal,
+    damit kein Sonderfall eine Schleife dreht.
+    """
+    t = (frage or "").strip()
+    for _ in range(3):
+        neu = t.strip().strip(_HUELLE).strip()
+        if neu == t:
+            break
+        t = neu
+    return t
+
+
 def ist_bestandsfrage_unscharf(text):
     """Bestandsfrage trotz Tippfehlern ('Was haben wi rim Besdant?'): ein
     Fragewort am Anfang und ein Wort, das einem Bestandswort aehnelt.
@@ -819,7 +854,8 @@ def ist_bestandsfrage_unscharf(text):
       eine Frage ans Dokument, kein Index (gemessen 01.09.: Katalogtabelle
       statt Antwort, danach kein Faden-Dokument, dritte Frage aus der
       falschen Arbeit)."""
-    t = (text or "").strip()
+    t = entkleiden(text)
+    text = t          # auch die Pruefungen weiter unten sehen die blanke Frage
     if ist_inhaltsfrage(t):
         return False
     if ist_bildwunsch(t):
@@ -1032,46 +1068,74 @@ def bestandsauskunft(frage, titel, bereich=None, vorher=None, zusatz=None):
     #   Dissertationen ZUM Thema Spritzgiessen. Fehlende Art/Thema aus der
     #   vorigen Bestandsfrage uebernehmen und BEIDES kombinieren, statt dass
     #   die Art allein die ganze Liste zurueckgibt.
+    # ⚠ Zwei Herkuenfte, die verschieden ernst zu nehmen sind: Ein
+    #   Stichwort aus "zum Thema X" hat jemand so gemeint. Ein Eigenname
+    #   aus "von/mit/bei X" ist GERATEN - "von Februar", "mit Bildern",
+    #   "von Becker". Trifft ein geratener nichts, darf daraus kein
+    #   "nichts" werden. Einmal hier bestimmt, zweimal gebraucht.
+    stichwort = _stichwort_aus(frage)
+    geraten = None if stichwort else _entitaet_aus(frage)
+    stichwort = stichwort or geraten
     try:
         import bestand as _b
         _art = _b.gefragte_art(frage)[0]
-        _stich = _stichwort_aus(frage)
+        _stich = stichwort
+        _stich_geraten = bool(geraten)
         if vorher:
             for _vf in ([vorher] if isinstance(vorher, str) else vorher):
                 if not _art:
                     _art = _b.gefragte_art(_vf)[0]
                 if not _stich:
                     _stich = _stichwort_aus(_vf)
+                    if not _stich:
+                        _stich = _entitaet_aus(_vf)
+                        _stich_geraten = bool(_stich)
                 if _art and _stich:
                     break
         if _art and _stich:
             _kombi = _treffer_im_katalog(_stich, _b.nach_art(sauber, _art),
-                                         bereich, gattung=_b.ARTEN[_art][1])
+                                         bereich, gattung=_b.ARTEN[_art][1],
+                                         je_titel=je_titel)
             if _kombi:
                 return _kombi
-            return ("Ich finde %s keine **%s** zum Thema **%s**."
-                    % ("in diesem Arbeitsbereich" if bereich else "im Bestand",
-                       _b.ARTEN[_art][1], _stich))
+            if not _stich_geraten:
+                return ("Ich finde %s keine **%s** zum Thema **%s**."
+                        % ("in diesem Arbeitsbereich" if bereich
+                           else "im Bestand", _b.ARTEN[_art][1], _stich))
+            # ⛔ Pruefer 07.10.: Hier sagte "Welche Dissertationen haben
+            #   wir von Becker?" ein hartes "keine Dissertationen zum
+            #   Thema Becker", obwohl drei dalagen - _katalog_treffer
+            #   durchsucht den Verfasser nicht. Ein geratener Name
+            #   tritt auch hier beiseite.
+            _nur_art = _liste_nach_art(frage, sauber, bereich, zusatz,
+                                       None, je_titel=je_titel)
+            if _nur_art:
+                return ("Zu **%s** finde ich nichts — deshalb stehen hier "
+                        "alle **%s**.\n\n%s"
+                        % (_stich, _b.ARTEN[_art][1], _nur_art))
     except Exception:
         pass
 
     # ⭐ Fragt jemand nach einer ART? Dann die Liste danach filtern und mit
     #   Titeln beantworten - aus dem Verzeichnis, nicht aus Textstellen.
     #   z.B. auf die Bitte "nenne mir alle Namen und deren Titel auf".
-    antwort = _liste_nach_art(frage, sauber, bereich, zusatz)
+    antwort = _liste_nach_art(frage, sauber, bereich, zusatz, stichwort,
+                              je_titel=je_titel)
     if antwort:
         return antwort
 
     # Sucht die Frage nach einem Stichwort? Dann nur passende Titel zeigen.
-    stichwort = _stichwort_aus(frage)
     if stichwort:
         # ⭐ Erst im Katalog suchen - Titel UND Schlagworte, deutsch wie
         #   englisch. Vorher wurden nur die DATEINAMEN durchsucht, und bei
         #   Namen wie "DS-00-000" oder "0000000" findet das nie etwas.
-        aus_katalog = _treffer_im_katalog(stichwort, sauber, bereich)
+        aus_katalog = _treffer_im_katalog(stichwort, sauber, bereich,
+                                          je_titel=je_titel)
         if aus_katalog:
             return aus_katalog
-        passend = [t for t in sauber if stichwort.lower() in t.lower()]
+        _gruppen = _stichwort_gruppen(stichwort)
+        _st = [[_wortstamm(x) or x for x in g] for g in _gruppen]
+        passend = [t for t in sauber if _gruppe_trifft(_gruppen, _st, t)]
         if passend:
             # ⛔ 07.10.: Hier stand len(passend) - die Zahl der TITEL - mit
             #   dem Wort "Dokumente" daran, waehrend die Fussnote die
@@ -1082,13 +1146,24 @@ def bestandsauskunft(frage, titel, bereich=None, vorher=None, zusatz=None):
                      % (stichwort, _dok))
                     + _titelfaltung(_dok, passend, je_titel))
             return kopf + "\n\n" + _liste(passend, zusatz) + _fussnote(anzahl)
-        _vt = _volltext_zusatz(stichwort, sauber)
-        return ("Zu **%s** finde ich im Katalog%s keinen Titel und kein Thema.%s"
-                % (stichwort, " dieses Arbeitsbereichs" if bereich else "",
-                   _vt or " Das heißt nicht, dass es inhaltlich nichts dazu gibt — frag ruhig direkt nach der Sache."))
+        if not geraten:
+            _vt = _volltext_zusatz(stichwort, sauber)
+            return ("Zu **%s** finde ich im Katalog%s keinen Titel und kein Thema.%s"
+                    % (stichwort, " dieses Arbeitsbereichs" if bereich else "",
+                       _vt or " Das heißt nicht, dass es inhaltlich nichts dazu gibt — frag ruhig direkt nach der Sache."))
+        # ⛔ Pruefer 07.10.: Hier endete "Was haben wir von Februar?" mit
+        #   "keinen Titel und kein Thema", obwohl vier Dokumente dalagen.
+        #   Ein geratener Eigenname tritt beiseite, statt den Bestand zu
+        #   verschweigen.
+        vorspann = ("Zu **%s** finde ich im Katalog%s nichts — deshalb "
+                    "steht hier der ganze Bestand.\n\n"
+                    % (stichwort, " dieses Arbeitsbereichs" if bereich else ""))
+    else:
+        vorspann = ""
 
-    kopf = ("Der Arbeitsbereich enthält **%d Dokumente**." % anzahl
-            if bereich else "Der Bestand umfasst **%d Dokumente**." % anzahl)
+    kopf = vorspann + ("Der Arbeitsbereich enthält **%d Dokumente**." % anzahl
+                       if bereich
+                       else "Der Bestand umfasst **%d Dokumente**." % anzahl)
     kopf += _titelfaltung(anzahl, sauber, je_titel)
     # Gruppen erst zeigen, wenn die blosse Liste unuebersichtlich wird -
     # bei neun Dokumenten steht die Aufteilung sonst direkt ueber einer
@@ -1114,7 +1189,48 @@ def bestandsauskunft(frage, titel, bereich=None, vorher=None, zusatz=None):
 
 
 
-def _liste_nach_art(frage, namen, bereich=None, zusatz=None):
+def _wie_kategorie(kat, name):
+    """Traegt der Dateiname selbst den Kategoriebegriff?
+
+    ⛔ 07.10. am echten Bestand gemessen: 12 Eintraege heissen
+    Geheimhaltung/NDA/Confidential, aber nur 2 sind als
+    "Geheimhaltungsvereinbarung" einsortiert - 9 als
+    "Vertrag/Vereinbarung". Die Einsortierung ist eine Vermutung der
+    Anlage, der Titel ist eine Tatsache. Wer nach einer Kategorie
+    fragt, bekommt sonst 2 statt 11.
+
+    Verglichen wird ueber den gemeinsamen Wortanfang, weil die
+    Kategorie laenger ist als das Wort im Namen
+    ("Geheimhaltungsvereinbarung" gegen "Geheimhaltung"). Kurze
+    Kategoriewoerter (unter fuenf Zeichen) bleiben aussen vor - "Norm"
+    traefe sonst jedes "normal".
+    """
+    teile = [_flach(x) for x in re.split(r"[/\s]+", kat or "") if x]
+    teile = [x for x in teile if len(x) >= 5]
+    if not teile:
+        return False
+    worte = [w for w in re.split(r"[^0-9a-z]+", _flach_mit_fugen(name)) if w]
+    # ⛔ Pruefer 07.10.: Hier wurden nur die ersten acht Zeichen
+    #   verglichen. "Auftragsbestand" und "Auftragseingang" landeten
+    #   damit unter "Auftragsbestaetigung". Jetzt muss das kuerzere Wort
+    #   GANZ am Anfang des laengeren stehen: "Geheimhaltung" passt zu
+    #   "Geheimhaltungsvereinbarung", "Auftragsbestand" nicht zu
+    #   "Auftragsbestaetigung".
+    # ⚠ Bewusst in Kauf genommen: "Norm" hat vier Zeichen und faellt
+    #   unter den Filter, die Normfrage gewinnt ueber den Titel also
+    #   nichts. Das ist der Preis dafuer, dass "normal" nichts zieht.
+    for k in teile:
+        for w in worte:
+            if len(w) < 5:
+                continue
+            kurz, lang = (w, k) if len(w) <= len(k) else (k, w)
+            if lang.startswith(kurz):
+                return True
+    return False
+
+
+def _liste_nach_art(frage, namen, bereich=None, zusatz=None,
+                    eingrenzung=None, je_titel=None):
     """Bestandsliste einer Art - mit Titel, Verfasser und Jahr.
 
     Gibt None zurueck, wenn keine Art gefragt ist; dann greift die
@@ -1130,6 +1246,48 @@ def _liste_nach_art(frage, namen, bereich=None, zusatz=None):
         return None
     kennzeichen, wort = bestand.gefragte_art(frage or "")
     wo = "in diesem Arbeitsbereich" if bereich else "im Bestand"
+
+    def _enger(liste):
+        """⛔ 07.10.: Ohne das hier beantwortete "Angebote fuer Vossloh"
+        die Anlage mit ALLEN 156 Angeboten des Bereichs.
+
+        ⛔ Pruefer 07.10.: Zuerst wurde hier WOERTLICH gefiltert, waehrend
+        _katalog_treffer den Wortstamm benutzt. "Welche Normen gibt es
+        fuer Zugversuche" antwortete deshalb "nichts", obwohl
+        DIN-EN-ISO-527-1-Zugversuch danebenlag. Ein falsches "nichts"
+        auf vorhandene Dokumente ist schlimmer als eine zu lange Liste.
+        """
+        if not eingrenzung:
+            return liste
+        g = _stichwort_gruppen(eingrenzung)
+        st = [[_wortstamm(x) or x for x in gr] for gr in g]
+        enger = [n for n in liste if _gruppe_trifft(g, st, n)]
+        if enger:
+            return enger
+        # Zweiter Versuch ueber den Katalog (Titel, Themen, Methoden) -
+        # der Dateiname traegt das Thema nicht immer.
+        # ⛔ Pruefer 07.10.: NUR, wenn er wirklich eingrenzt. Gebiet und
+        #   Teilgebiet stehen oft bei allen Dokumenten gleich; dann kam
+        #   "Norm/Richtlinie — 5 … zu „Siemens“" mit 5 von 5 Zeilen
+        #   heraus - eine Ueberschrift, die eine Eingrenzung nur
+        #   behauptet.
+        try:
+            aus_kat = [n for n, _a, _g in _katalog_treffer(eingrenzung, liste)]
+        except Exception:
+            return []
+        return aus_kat if 0 < len(aus_kat) < len(liste) else []
+
+    def _zu():
+        return (" zu „%s“" % eingrenzung) if eingrenzung else ""
+
+    def _dok(liste):
+        """Dokumente, nicht Titel - siehe _titelfaltung."""
+        return (sum(je_titel.get(x, 0) for x in liste)
+                if je_titel else len(liste))
+
+    def _faltung(liste):
+        return (_titelfaltung(_dok(liste), liste, je_titel)
+                if je_titel else "")
     if not kennzeichen:
         # Kategorie aus der Aufnahme (Norm/Richtlinie, Pruefungskatalog, Handbuch ...)
         try:
@@ -1143,7 +1301,46 @@ def _liste_nach_art(frage, namen, bereich=None, zusatz=None):
             bestand.nachtragen(list(namen)[:60])
         except Exception:
             pass
-        passend = sorted(bestand.nach_kategorie(namen, kat))
+        _eingeordnet = set(bestand.nach_kategorie(namen, kat))
+        _ueber_titel = sorted(n for n in namen
+                              if n not in _eingeordnet
+                              and _wie_kategorie(kat, n))
+        _alle_kat = sorted(_eingeordnet | set(_ueber_titel))
+        passend = _enger(_alle_kat)
+        _beiseite = ""
+        _ueber_titel_satz = ""
+
+        def _titelhinweis(liste):
+            """⛔ Pruefer 07.10.: Dieser Hinweis stand in derselben
+            Variablen wie der Beiseite-Satz und wurde von ihm
+            ueberschrieben - drei ueber den Titel gezogene Dokumente
+            standen dann ohne Kennzeichnung da."""
+            n = len([x for x in liste if x in set(_ueber_titel)])
+            return ("\n\n*%d davon sind anders einsortiert und wurden "
+                    "über den Titel gefunden.*" % n) if n else ""
+
+        if _ueber_titel and passend:
+            _ueber_titel_satz = _titelhinweis(passend)
+        if not passend and eingrenzung and len(_alle_kat) > 60:
+            # ⛔ Pruefer 07.10.: Ohne Deckel wurden hier 200 Zeilen und
+            #   25.000 Zeichen ausgeschuettet - damit war die
+            #   Ur-Beschwerde ("liefert alle 156 Angebote") zurueck.
+            return ("Zu „%s“ finde ich %s nichts in der Kategorie **%s**. "
+                    "Die Kategorie hat hier **%d** Dokumente — grenze "
+                    "anders ein oder frag ohne die Einschränkung."
+                    % (eingrenzung, wo, kat, _dok(_alle_kat)))
+        if not passend and eingrenzung and _alle_kat:
+            # ⛔ Pruefer 07.10.: Hier stand "Ich finde nichts in der
+            #   Kategorie X zu Y." Das ist ein falsches "nichts", sobald
+            #   Y gar kein Eigenname war ("mit Bildern", "von Februar"),
+            #   und die genannte Zahl zaehlte wieder Titel statt
+            #   Dokumente. Eine Eingrenzung grenzt ein - oder sie tritt
+            #   beiseite und sagt das.
+            _beiseite = ("\n\nZu „%s“ finde ich in dieser Liste nichts — "
+                         "deshalb steht sie hier vollständig." % eingrenzung)
+            passend = _alle_kat
+            eingrenzung = None
+            _ueber_titel_satz = _titelhinweis(passend)
         if not passend:
             vorhanden = {}
             for n in namen:
@@ -1152,18 +1349,32 @@ def _liste_nach_art(frage, namen, bereich=None, zusatz=None):
                     vorhanden[k] = vorhanden.get(k, 0) + 1
             return ("Ich finde %s nichts in der Kategorie **%s**. Vorhandene Kategorien: %s."
                     % (wo, kat, ", ".join("%s (%d)" % kv for kv in sorted(vorhanden.items(), key=lambda x: -x[1])) or "noch keine (Katalog wird nachgetragen)"))
-        return "**%s — %d %s**\n\n%s" % (kat, len(passend), wo, _liste(passend, zusatz))
+        return ("**%s — %d %s%s**%s%s%s\n\n%s"
+                % (kat, _dok(passend), wo, _zu(), _faltung(passend),
+                   _ueber_titel_satz, _beiseite, _liste(passend, zusatz)))
 
-    passend = sorted(bestand.nach_art(namen, kennzeichen))
+    _alle_art = sorted(bestand.nach_art(namen, kennzeichen))
+    passend = _enger(_alle_art)
     einzahl, mehrzahl = bestand.ARTEN[kennzeichen]
-
+    _beiseite = ""
+    if not passend and eingrenzung and len(_alle_art) > 60:
+        return ("Zu „%s“ finde ich %s keine **%s**. Insgesamt liegen hier "
+                "**%d** — grenze anders ein oder frag ohne die "
+                "Einschränkung." % (eingrenzung, wo, mehrzahl, _dok(_alle_art)))
+    if not passend and eingrenzung and _alle_art:
+        _beiseite = ("\n\nZu „%s“ finde ich in dieser Liste nichts — "
+                     "deshalb steht sie hier vollständig." % eingrenzung)
+        passend = _alle_art
+        eingrenzung = None
     if not passend:
         return ("Ich finde %s keine **%s**. Im Katalog stehen "
                 "%s davon — sie sind hier aber nicht hinterlegt."
                 % (wo, mehrzahl, bestand.wie_viele_im_katalog(kennzeichen) or "welche"))
 
     im_katalog = bestand.wie_viele_im_katalog(kennzeichen)
-    kopf = "**Bestand an %s — %d %s**" % (mehrzahl, len(passend), wo)
+    kopf = ("**Bestand an %s — %d %s%s**%s%s"
+            % (mehrzahl, _dok(passend), wo, _zu(), _faltung(passend),
+               _beiseite))
     if im_katalog and im_katalog > len(passend):
         kopf += ("\n\nDer Katalog kennt **%d** %s; hier liegen "
                  "**%d**. Es fehlen also %d."
@@ -1253,6 +1464,127 @@ def _volltext_zusatz(stichwort, namen, ausser=()):
             % (stichwort, len(treffer), "" if len(treffer) == 1 else "en", liste))
 
 
+def _entitaet_aus(frage):
+    """Den Eigennamen aus "... fuer Vossloh" / "... mit Siemens" ziehen.
+
+    ⛔ 07.10. (Chat-Test): "Wie viele Angebote haben wir fuer Vossloh"
+    lieferte alle 156 Angebote des Bereichs, auch die von Johnson
+    Electric. _stichwort_aus() kennt "fuer <Kunde>" nicht - dort ist
+    "fuer" nur zusammen mit Bereich/Gebiet/Feld vorgesehen.
+
+    ⚠ Bewusst eng: nur grossgeschriebene Woerter am SATZENDE, hoechstens
+    vier, danach hoechstens zwei kleingeschriebene ("... mit Siemens
+    gemacht"). Eine Zahl beendet den Treffer - "im Angebot fuer Auftrag
+    999999" ist eine Inhaltsfrage und gehoert nicht hierher. Diese
+    Funktion wird deshalb NICHT in einordnen() benutzt, sondern nur in
+    der Bestandsauskunft: sie darf die Einordnung einer Frage nicht
+    verschieben.
+    """
+    frage = entkleiden(frage)
+    m = re.search(r"\b(?:f(?:ü|ue)r|mit|bei|von)\s+"
+                  r"((?:[A-ZÄÖÜ][\wÄÖÜäöüß&.\-]*)"
+                  r"(?:[\s\-]+[A-ZÄÖÜ][\wÄÖÜäöüß&.\-]*){0,3})"
+                  r"(?:\s+[a-zäöüß]+){0,2}\s*[\?\.!,;]?\s*$",
+                  frage or "")
+    if not m:
+        return None
+    wort = re.sub(r"\s+", " ", m.group(1)).strip(" .,;")
+    return wort if len(wort) >= 3 else None
+
+
+# ⚠ Nicht mit _FUELLWORT weiter unten verwechseln - das sind die
+#   Fuellwoerter fuer TITEL. Hier geht es um die Woerter, die in einer
+#   FRAGE stehen und kein Suchbegriff sind.
+# ⚠ Hier stehen die FLACHEN Formen (_flach: Umlaute aufgeloest, nur
+#   Buchstaben und Ziffern). Pruefer 07.10.: vorher stand nur "auftraege"
+#   da, und "zu den Auftraegen 276596" blieb unrepariert.
+_FRAGE_FUELLWORT = frozenset("""
+auftrag auftrags auftraege auftraegen auftragsnummer
+vorgang vorgangs vorgaenge vorgaengen vorgangsnummer nummer nr
+projekt projekts projekte projekten
+unterlage unterlagen dokument dokumente dokumenten akte akten
+datei dateien bei fuer mit von vom dem der die das den des
+und oder im in zum zur zu alle allen aller unsere unserer unser
+""".split())
+
+
+def _stichwort_gruppen(stichwort):
+    """Ein Stichwort in UND-Gruppen zerlegen.
+
+    ⛔ 07.10. (Chat-Test): "Welche Unterlagen gibt es zum Auftrag 276596
+    bei Johnson Electric?" lieferte "finde ich keinen Titel und kein
+    Thema" - obwohl 19 Dateinamen 276596 tragen. _stichwort_aus() gibt
+    die ganze Wortgruppe zurueck (die Zeichenklasse enthaelt \\s), und
+    danach wurde WOERTLICH gesucht. Kein Titel heisst "Auftrag 276596
+    bei Johnson Electric".
+
+    Die Trennung bleibt zweistufig, damit die bisherige Bedeutung
+    erhalten bleibt: "oder", "und", Komma und Schraegstrich trennen
+    weiterhin ODER-Gruppen; NEU ist, dass Leerzeichen innerhalb einer
+    Gruppe UND bedeuten. "276596 Johnson Electric" trifft nur noch,
+    wenn alle drei vorkommen - "Kleben oder Schweissen" weiterhin,
+    wenn eines vorkommt.
+
+    Fuellwoerter fliegen raus, sonst scheitert jede Gruppe an "bei"
+    oder "Auftrag". Bleibt dabei nichts uebrig, gilt der Teil als
+    Ganzes - lieber zu grob als gar kein Treffer.
+    """
+    w = (stichwort or "").strip().lower()
+    if not w:
+        return []
+    gruppen = []
+    for teil in re.split(r"\s+oder\s+|\s+und\s+|\s*[,/]\s*", w):
+        teil = teil.strip()
+        if len(teil) < 3:
+            continue
+        # ⚠ Ziffern bleiben, auch einstellig: "PA 6" muss ["pa","6"]
+        #   ergeben. Mit ["pa"] allein traf die Suche "Reparaturbericht"
+        #   und "Kapazitaetsplan" (Pruefer 07.10.).
+        kern = [x for x in teil.split()
+                if _flach(x) not in _FRAGE_FUELLWORT
+                and (len(x) >= 2 or x.isdigit())]
+        gruppen.append(kern or [teil])
+    return gruppen or [[w]]
+
+
+def _flach_mit_fugen(text):
+    """Wie _flach, aber die Trennzeichen bleiben - fuer die Wortliste."""
+    t = (text or "").lower()
+    for alt, neu in (("ä", "ae"), ("ö", "oe"), ("ü", "ue"), ("ß", "ss")):
+        t = t.replace(alt, neu)
+    return t
+
+
+def _gruppe_trifft(gruppen, staemme, text):
+    """Trifft eine der UND-Gruppen diesen Text?
+
+    ⛔ Pruefer 07.10.: Es gab zwei Semantiken in derselben Datei -
+    _enger suchte woertlich, _katalog_treffer mit Wortstamm, und beide
+    falteten nur ß→ss. "Welche Normen gibt es fuer Prüfungen" antwortete
+    deshalb "nichts", "… fuer Pruefungen" fand zwei. Jetzt entscheidet
+    diese eine Stelle, und sie faltet die Umlaute mit.
+
+    ⚠ Kurze Begriffe (bis drei Zeichen) nur am Wortanfang: "pa" als
+    Teilkette traf sonst "Reparaturbericht" und "Spanplatte".
+    """
+    flach = _flach(text)
+    worte = [w for w in re.split(r"[^0-9a-z]+", _flach_mit_fugen(text)) if w]
+
+    def _eins(x):
+        xf = _flach(x)
+        if not xf:
+            return False
+        if len(xf) <= 3:
+            return any(w == xf or w.startswith(xf) for w in worte)
+        return xf in flach
+
+    for satz in (gruppen, staemme):
+        for g in satz:
+            if g and all(_eins(x) for x in g):
+                return True
+    return False
+
+
 def _katalog_treffer(stichwort, namen):
     """[(name, angaben, grund)] fuer ein Stichwort - Titel, Themen, Methoden,
     Gebiet, Kurzfassung; wortgenau oder ueber den Wortstamm."""
@@ -1263,16 +1595,13 @@ def _katalog_treffer(stichwort, namen):
     w = (stichwort or "").strip().lower()
     if len(w) < 3:
         return []
-    teile = [t.strip() for t in re.split(r"\s+oder\s+|\s+und\s+|\s*[,/]\s*", w)
-             if len(t.strip()) >= 3] or [w]
-    staemme = [s for s in (_wortstamm(t) for t in teile) if s]
+    gruppen = _stichwort_gruppen(w)
+    if not gruppen:
+        return []
+    staemme = [[_wortstamm(x) or x for x in g] for g in gruppen]
 
     def _trifft(text):
-        tx = (text or "").lower()
-        if any(_t in tx for _t in teile):
-            return True
-        tx2 = tx.replace("ß", "ss")
-        return any(s in tx2 for s in staemme)
+        return _gruppe_trifft(gruppen, staemme, text)
     treffer = []
     for n in namen:
         a = bestand.angaben(n) or {}
@@ -1353,7 +1682,8 @@ def themen_gegenpruefung(thema, namen, bereich=True):
     return "\n".join(zeilen)
 
 
-def _treffer_im_katalog(stichwort, namen, bereich=None, gattung=None):
+def _treffer_im_katalog(stichwort, namen, bereich=None, gattung=None,
+                        je_titel=None):
     """Arbeiten zu einem Stichwort - ueber Titel und Schlagworte.
 
     Gibt None zurueck, wenn der Katalog fehlt oder nichts trifft; dann
@@ -1377,14 +1707,37 @@ def _treffer_im_katalog(stichwort, namen, bereich=None, gattung=None):
     wo = "in diesem Arbeitsbereich" if bereich else "im Bestand"
     zeilen = ["| Kennung | Titel | Verfasser | Jahr | gefunden über |",
               "|---|---|---|---|---|"]
-    weitere = max(0, len(treffer) - 60)
-    for n, a, grund in sorted(treffer)[:60]:
+    # ⛔ Pruefer 07.10.: Hier stand len(treffer) - 60, also TITEL,
+    #   waehrend der Kopf Dokumente nennt. 75 Dokumente / 70 Titel
+    #   ergaben "60 Zeilen + 10 weitere", und fuenf blieben unerklaert.
+    _gezeigt = sorted(treffer)[:60]
+    _dok_gezeigt = (sum(je_titel.get(n, 0) for n, _a, _g in _gezeigt)
+                    if je_titel else len(_gezeigt))
+    _dok_gesamt = (sum(je_titel.get(n, 0) for n, _a, _g in treffer)
+                   if je_titel else len(treffer))
+    weitere = max(0, _dok_gesamt - _dok_gezeigt)
+    for n, a, grund in _gezeigt:
         zeilen.append("| [%s](/pdf/%s) | %s | %s | %s | %s |"
                       % (_zelle(n), quote(n, safe=""), _zelle(a["titel"]),
                          _zelle(a.get("verfasser")), _zelle(a.get("jahr")),
                          _zelle(grund)))
+    # ⛔ Pruefer 07.10.: Hier stand len(treffer) - die Zahl der TITEL -
+    #   mit "Arbeiten" daran, und die Einzahl fehlte ("1 Arbeiten zu
+    #   Becker"). Derselbe Fehlertyp wie in e21578e, nur eine Funktion
+    #   weiter.
+    _namen = [n for n, _a, _g in treffer]
+    _dok = _dok_gesamt
     kopf = ("**%d %s zu „%s“ %s**"
-            % (len(treffer), gattung or "Arbeiten", stichwort, wo))
+            % (_dok, gattung or ("Arbeit" if _dok == 1 else "Arbeiten"),
+               stichwort, wo))
+    # ⛔ Pruefer 07.10.: Die Faltungszeile rechnete mit ALLEN Treffern,
+    #   die Tabelle zeigt aber hoechstens 60. Bei 75 Dokumenten / 70
+    #   Titeln stand "5 Zeilen weniger" ueber einer Tabelle, der 15
+    #   fehlten - daneben "… und 10 weitere". Drei Zahlen, die sich
+    #   widersprechen. Bei gekuerzter Tabelle erklaert die
+    #   "weitere"-Zeile die Kuerzung allein.
+    if je_titel and not weitere:
+        kopf += _titelfaltung(_dok, _namen, je_titel)
     if weitere:
         zeilen.append("")
         zeilen.append("… und **%d weitere**. Grenze die Frage ein — etwa mit einer Art („Welche Normen …“) oder einem zweiten Stichwort." % weitere)
@@ -1508,7 +1861,10 @@ def _gruppieren(titel):
 
 def _stichwort_aus(frage):
     """Das Thema aus einer Bestandsfrage ziehen ("... zum Thema Kleben")."""
-    frage = re.sub(r"[#\s]+$", "", frage or "")   # Tipp-Reste wie "#" am Ende dulden
+    # ⛔ Pruefer 07.10.: entkleiden() wirkte nur in der Einordnung. Die
+    #   zitierte Frage „… zum Auftrag 276596 …“ lieferte danach die
+    #   ganze Bestandsliste statt der drei Treffer.
+    frage = re.sub(r"[#\s]+$", "", entkleiden(frage))   # Tipp-Reste wie "#" dulden
     m = re.search(r"\b(?:zu(?:m|r)?|ueber|über|betreffend|bezueglich|"
                   r"bezüglich|thema|hinsichtlich|in\s+bezug\s+auf|"
                   r"(?:im|in\s+dem|aus\s+dem|zum|f(?:ü|ue)r\s+den|f(?:ü|ue)r\s+das)\s+(?:bereich|gebiet|feld|fach|themenbereich|themenfeld)|"
