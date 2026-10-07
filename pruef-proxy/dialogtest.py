@@ -2558,6 +2558,79 @@ GESCHAEFTSBRIEFE = [
 ]
 
 
+def szenario_52_bestandszahl_zaehlt_dokumente():
+    print("\n[52] Bestandszahl: gleiche Titel sind verschiedene Dokumente")
+    # ⛔ 07.10. (Nutzermeldung): Der Arbeitsbereich kap hielt 916 Dokumente,
+    #   die Auskunft nannte 845. Gemessen am echten Bereich: 51 Titel kommen
+    #   mehrfach vor (31x doppelt, 20x dreifach) = genau 71 Dokumente, die
+    #   das Set in assistent.py:1014 verschluckte. Bei 45 der 51 Gruppen
+    #   sind die Mitglieder VERSCHIEDEN LANG - es sind also verschiedene
+    #   Dokumente mit gleichem Titel (mehrere "Angebot"), keine Doppel-
+    #   gaenger. Nur 6 Gruppen waren gleich lang. Dieselbe Faltung machte
+    #   aus 67 Vossloh-Unterlagen 14.
+    titel = ["Angebot.md", "Angebot.md", "Angebot.md",
+             "Lastenheft.md", "Pruefbericht.md"]
+    text = assistent.bestandsauskunft("Welche Dokumente haben wir?",
+                                      titel, bereich="kap") or ""
+    pruefe("**5 Dokumente**" in text,
+           "5 Dateien -> '5 Dokumente' (nicht 3 nach Titel-Faltung)")
+    # ⚠ Die Liste selbst bleibt nach Titel gefaltet: _liste() baut die
+    #   Kennung als Link AUS DEM TITEL ("[%s](/pdf/%s)", assistent.py:1408).
+    #   Drei gleiche Titel = drei identische Links, von denen nur einer
+    #   aufgeht - das ist die Nutzermeldung "Dieses Dokument liegt nicht
+    #   vor." Statt Zeilen zu verdoppeln muss die Faltung also SICHTBAR
+    #   sein. Vollstaendige Zeilen brauchen vorher einen eindeutigen
+    #   Dokumentschluessel (eigener Schritt).
+    pruefe("verschiedenen Titeln" in text,
+           "die Titel-Faltung wird offengelegt, nicht verschwiegen")
+    pruefe("**3 Dokumente**" not in text,
+           "die gefaltete Titelzahl wird nicht als Dokumentzahl ausgegeben")
+    # ⚠ Die Zahl im Hinweis muss stimmen: bei 3x "Angebot" teilen sich DREI
+    #   Dokumente einen Titel, fehlen aber nur ZWEI Zeilen. Wer die
+    #   Differenz (2) als "Dokumente, die sich einen Titel teilen"
+    #   ausgibt, erfindet eine Zahl - im echten Bereich kap waeren das
+    #   71 statt der tatsaechlichen 122.
+    pruefe("1 Titel trägt mehrere Dokumente" in text,
+           "genau 1 Titel wird als mehrfach belegt gemeldet")
+    pruefe("2 Zeilen weniger" in text,
+           "die Differenz wird als fehlende ZEILEN benannt, nicht als Dokumente")
+
+    # ⛔ Drei Befunde des Pruefers vom 07.10., alle selbst reproduziert.
+    # (A) Im Rueckfallweg ruft pruef_proxy.py:7029/9706 mit bereich=None;
+    #     der Kopf sagt dann "Bestand", der Zusatz behauptete einen
+    #     "Bereich", den es dort nicht gibt.
+    text_b = assistent.bestandsauskunft(
+        "Welche Dokumente haben wir?",
+        ["Angebot.md", "Angebot.md", "Lastenheft.md"], bereich=None) or ""
+    pruefe("der Bereich Dokumente" not in text_b,
+           "ohne Bereich wird kein Bereich erfunden")
+    pruefe("als es Dokumente gibt" in text_b,
+           "die Differenz wird ohne Bereichsbegriff benannt")
+
+    # (B) "X.md" und "X.pdf" sind zwei Dokumente unter einem Titel -
+    #     daraus wurde "unter 1 verschiedenen Titeln".
+    text_e = assistent.bestandsauskunft(
+        "Welche Dokumente haben wir?", ["X.md", "X.pdf"], bereich="kap") or ""
+    pruefe("1 verschiedenen Titeln" not in text_e,
+           "kein '1 verschiedenen Titeln'")
+    pruefe("einem einzigen Titel" in text_e,
+           "ein einziger Titel steht im Singular")
+
+    # (C) Der Stichwortzweig zaehlte die TITEL und schrieb "Dokumente"
+    #     daran, waehrend die Fussnote die Dokumente zaehlt. Vier
+    #     Dokumente zum Thema unter zwei Titeln, sieben insgesamt.
+    t_k = ["Kleben-A.md", "Kleben-A.md", "Kleben-B.md", "Kleben-B.md",
+           "Fraesen.md", "Drehen.md", "Bohren.md"]
+    text_k = assistent.bestandsauskunft(
+        "Was haben wir zu Kleben?", t_k, bereich="kap") or ""
+    pruefe("liegen 4 Dokumente vor" in text_k,
+           "Stichworttreffer zaehlt Dokumente (4), nicht Titel (2)")
+    pruefe("von insgesamt 7 Dokumenten" in text_k,
+           "der Nenner bleibt die Gesamtzahl der Dokumente")
+    pruefe("2 verschiedenen Titeln" in text_k,
+           "auch im Stichwortzweig wird die Faltung offengelegt")
+
+
 def deckblatt_am_modell(runden=3):
     """A1 am echten Modell. 0 = gruen, 1 = rot, 2 = gar nicht gelaufen."""
     import bestand
@@ -2631,7 +2704,8 @@ if __name__ == "__main__":
               szenario_48_deckblatt_modell_im_anfrageleib,
               szenario_49_eintragen_erhaelt_fremde_felder,
               szenario_50_abbruch_nur_bei_ausfall,
-              szenario_51_protokoll_bei_ausfall):
+              szenario_51_protokoll_bei_ausfall,
+              szenario_52_bestandszahl_zaehlt_dokumente):
         try:
             s()
         except Exception as e:

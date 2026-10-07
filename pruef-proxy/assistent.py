@@ -1011,9 +1011,21 @@ def bestandsauskunft(frage, titel, bereich=None, vorher=None, zusatz=None):
     """
     if not titel:
         return None
-    sauber = sorted({_titel_saubern(t) for t in titel if t})
+    # ⛔ 07.10.: Hier stand nur das Set. Der Arbeitsbereich kap hielt 916
+    #   Dokumente, die Auskunft nannte 845 - weil 51 Titel mehrfach
+    #   vorkommen (31x doppelt, 20x dreifach, zusammen genau 71). Bei 45
+    #   dieser 51 Gruppen sind die Mitglieder verschieden lang: es sind
+    #   verschiedene Dokumente mit gleichem Titel (mehrere "Angebot"),
+    #   keine Doppelgaenger. Die Faltung ist fuer die LISTE noetig, weil
+    #   _liste() die Kennung als Link aus dem Titel baut - fuer die ZAHL
+    #   ist sie eine Falschaussage. Beides wird jetzt getrennt gefuehrt.
+    import collections as _c
+    namen_alle = [t for t in titel if t]
+    je_titel = _c.Counter(_titel_saubern(t) for t in namen_alle)
+    sauber = sorted(je_titel)
     if not sauber:
         return None
+    anzahl = len(namen_alle)
 
     # ⭐ Folgefrage-Verfeinerung + Art/Thema kombinieren:
     #   "Nur Dissertationen" nach "... ueber Spritzgiessen" meint
@@ -1061,16 +1073,23 @@ def bestandsauskunft(frage, titel, bereich=None, vorher=None, zusatz=None):
             return aus_katalog
         passend = [t for t in sauber if stichwort.lower() in t.lower()]
         if passend:
-            kopf = ("Zu **%s** liegen %d Dokumente vor:"
-                    % (stichwort, len(passend)))
-            return kopf + "\n\n" + _liste(passend, zusatz) + _fussnote(len(sauber))
+            # ⛔ 07.10.: Hier stand len(passend) - die Zahl der TITEL - mit
+            #   dem Wort "Dokumente" daran, waehrend die Fussnote die
+            #   Dokumente zaehlte. Vier Treffer unter zwei Titeln wurden
+            #   so zu "2 Dokumente von insgesamt 7".
+            _dok = sum(je_titel.get(x, 0) for x in passend)
+            kopf = (("Zu **%s** liegen %d Dokumente vor."
+                     % (stichwort, _dok))
+                    + _titelfaltung(_dok, passend, je_titel))
+            return kopf + "\n\n" + _liste(passend, zusatz) + _fussnote(anzahl)
         _vt = _volltext_zusatz(stichwort, sauber)
         return ("Zu **%s** finde ich im Katalog%s keinen Titel und kein Thema.%s"
                 % (stichwort, " dieses Arbeitsbereichs" if bereich else "",
                    _vt or " Das heißt nicht, dass es inhaltlich nichts dazu gibt — frag ruhig direkt nach der Sache."))
 
-    kopf = ("Der Arbeitsbereich enthält **%d Dokumente**." % len(sauber)
-            if bereich else "Der Bestand umfasst **%d Dokumente**." % len(sauber))
+    kopf = ("Der Arbeitsbereich enthält **%d Dokumente**." % anzahl
+            if bereich else "Der Bestand umfasst **%d Dokumente**." % anzahl)
+    kopf += _titelfaltung(anzahl, sauber, je_titel)
     # Gruppen erst zeigen, wenn die blosse Liste unuebersichtlich wird -
     # bei neun Dokumenten steht die Aufteilung sonst direkt ueber einer
     # Liste, die sie ohnehin zeigt.
@@ -1372,6 +1391,37 @@ def _treffer_im_katalog(stichwort, namen, bereich=None, gattung=None):
     fuss = ("\n\n*Gefunden über Titel und Schlagworte des Katalogs.*"
             + _volltext_zusatz(stichwort, namen, ausser=[n for n, _, _ in treffer]))
     return kopf + "\n\n" + "\n".join(zeilen) + fuss
+
+
+def _titelfaltung(dokumente, titel, je_titel):
+    """Offenlegen, dass die Liste weniger Zeilen hat als es Dokumente gibt.
+
+    ⛔ 07.10.: Die Auskunft nannte die Zahl der verschiedenen TITEL und
+    schrieb "Dokumente" daran. Wer 916 Dokumente hochgeladen hat und 845
+    liest, glaubt, 71 seien verschwunden. Die Liste bleibt gefaltet, weil
+    _liste() die Kennung als Link aus dem Titel baut - aber die Faltung
+    wird benannt.
+
+    ⚠ Drei Groessen, die man leicht verwechselt - im Bereich kap sind das
+    51 mehrfach belegte Titel, 122 beteiligte Dokumente und 71 fehlende
+    Zeilen. Wer die Differenz (71) als "Dokumente, die sich einen Titel
+    teilen" ausgibt, erfindet eine Zahl.
+
+    "dokumente" und "titel" beziehen sich auf denselben Ausschnitt: fuer
+    den ganzen Bestand ist das alles, im Stichwortzweig nur die Treffer.
+    """
+    if dokumente <= len(titel):
+        return ""
+    mehrfach = sum(1 for x in titel if je_titel.get(x, 0) > 1)
+    fehlend = dokumente - len(titel)
+    return (" Sie stehen unter %s — %s mehrere Dokumente, die Liste hat"
+            " deshalb %d Zeile%s weniger, als es Dokumente gibt."
+            % ("**einem einzigen Titel**" if len(titel) == 1
+               else "**%d verschiedenen Titeln**" % len(titel),
+               ("1 Titel trägt" if mehrfach == 1
+                else "%d Titel tragen" % mehrfach),
+               fehlend, "" if fehlend == 1 else "n"))
+
 
 def _titel_saubern(t):
     t = re.sub(r"\.(md|pdf|docx?|xlsx?|pptx?)$", "", t.strip(), flags=re.I)
