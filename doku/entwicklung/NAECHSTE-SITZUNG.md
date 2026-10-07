@@ -3427,3 +3427,144 @@ den 54 erzeugten zuordnet.
 ⛔ **Lehre, die ueber diesen Abschnitt hinausgeht:** Ein Pruefbericht ist kein
 Urteil. Jede seiner Beanstandungen braucht dieselbe Gegenprobe wie die
 urspruengliche Behauptung — sonst ersetzt man eine falsche Zahl durch eine andere.
+
+---
+
+## 10 · Stand 07.10. mittags: die GPU war voll — und der Chat hat fuenf Fehler
+
+### Der Tag in Zahlen
+| | 06.10. frueh | 07.10. 12:30 |
+|---|---|---|
+| Bestand | 244 | **925** |
+| archiv | 384 | 1.174 |
+| parkplatz | 5.691 | 5.123 |
+
+Drei Portionen durch (300 / 299 / 297). Im parkplatz warten noch rund **950
+aufnehmbare** Dokumente, dazu 31 zu textreiche (davon 6, die mit der heutigen
+Kette NIE aufnehmbar sind — jede sprengt allein die 512-MiB-Grenze).
+
+### ⛔ 75 Minuten Totalstillstand: die Karte war voll
+Gemessen auf der A40 (46 GB):
+```
+qwen3.8 19 GB + gemma4:12b 10 GB + docling 10 GB = 39 GB
+fuer gemma4:e2b blieben 3,4 GB -> offloaded 5/36 layers
+1,64 Token/s statt 143  (Faktor 87)
+```
+**Chat UND Aufnahme standen gleichzeitig** (09:16-10:31): ein Deckblatt brauchte
+sechs Minuten statt einer Sekunde, fuenf blieben ungelesen; Chatantworten liefen
+ins 240-s-Zeitlimit.
+
+**Warum 12b ueberhaupt da war:** Alle Arbeitsbereiche nutzen fuer den Chat
+`qwen3.8` — der **AGENT** aber die Systemvorgabe `OLLAMA_MODEL_PREF`, und die
+stand auf `gemma4:12b`. Dazu kam die Einordnungsstufe (`absicht.py`), die je
+Chatfrage 12b anfordert.
+
+**Repariert (07.10.):**
+- `docker-compose.yml`: `OLLAMA_MODEL_PREF=qwen3.8:latest` (Commit 75166e5)
+- `.env`: `KI4KI_ABSICHT_MODELL=0` → der Regel-Router in `assistent.einordnen()`
+  uebernimmt; der Rueckfall war schon eingebaut (`pruef_proxy.py:5992-5994`).
+- ⚠ Ein bereits geladenes Modell bleibt trotzdem: `KEEP_ALIVE=-1` haelt es
+  "Forever". Nach der Aenderung **einmal** `ollama stop gemma4:12b` noetig.
+
+⚠ **Nicht geloest:** `docker-compose.gpu.yml` behauptet im Kommentar, der
+Massenlauf schalte docling ab, solange gefragt wird. Docling hielt seine
+**10 GB durchgehend**. Das ist die zweite Haelfte des GPU-Problems.
+
+⛔ **Die Anlage hatte sich selbst gewarnt** und niemand sah hin:
+```
+09:20:46  [GPU] ⚠ gemma4:e2b rechnet teilweise auf der CPU (1.7 von 8.8 GB im VRAM)
+10:22:40  [GPU] wieder alles auf der Grafikkarte
+```
+Die Warnung steht in `_gpu_pruefen()` (`pruef_proxy.py:1188-1216`) UND im Feld
+`gpu` von `/pruef-status`. Ich habe dieses Feld am selben Vormittag ausgelesen
+und bin darueber hinweggegangen. **Ein Melder, den keiner liest, ist keiner.**
+
+### Die fuenf Chat-Fehler (echter Nutzertest, 916 kap-Dokumente)
+
+**1. Die Frage wird nicht zerlegt — der schlimmste.**
+`assistent._stichwort_aus()` (**assistent.py:1459-1481**) gibt die ganze Phrase
+`'Auftrag 276596 bei Johnson Electric'` als EIN Stichwort zurueck (Regex auf `$`
+verankert, Zeichenklasse schluckt Leerzeichen). `_katalog_treffer._trifft()`
+(**assistent.py:1251-1256**) sucht woertliche Teilzeichenkette — kein Titel
+enthaelt diesen Satz.
+```
+68 von 68 Vorgangsnummern scheitern, sobald "Auftrag" oder der Kunde in der Frage steht
+"Was gibt es zu 276596?"  (nackte Nummer am Satzende)  ->  trifft
+```
+Betrifft alle 647 benannten kap-Dokumente. **Die Anlage behauptet, vorhandene
+Unterlagen gaebe es nicht.**
+
+**2. Kein Kundenfilter.** `_liste_nach_art()` (**assistent.py:1098-1137**) greift
+schon bei **assistent.py:1047**, vor dem Stichwort-Zweig (1050), und filtert nur
+nach Kategorie (`bestand.nach_kategorie`, 1134). **432 von 432** Kombinationen
+aus 27 Kategorie-Frageworten x 16 Kunden: Kategorie 432/432 erkannt, Kunde 0/432.
+⭐ Auf die **Nachfrage** "Fuer Vossloh?" antwortet die Anlage richtig und
+korrigiert sich sogar selbst ("Die 156 Angebote gehoeren zu Johnson Electric").
+
+**3. Die Kategorie trifft nicht — ein `.strip()` zu viel.**
+`kategorie.py:162`: `woerter = [w.strip().lower() for w in rest.split(",") …]`
+frisst die Leerzeichen, mit denen `STANDARD` die Wortgrenze absichert. **49
+Stichwoerter** verloren ihren Rand. Folgen, vollstaendig ausgezaehlt:
+```
+57 von 82 "Norm/Richtlinie" entschieden allein durch das randlose 'en'
+   (Kunststoffgrundlag-EN, Rissbildung an KS-Bauteil-EN, Chempark Dormag-EN)
+   davon mit echter Normbezeichnung: 0
+'nda' trifft in Firme-NDA-ten und Gege-NDA-rstellung
+15 Dokumente mit "Geheimhaltung" im Titel -> 0 in der Kategorie Geheimhaltungsvereinbarung
+```
+Zweiter Grund: `zuordnen()` prueft Dokumenttyp **vor** Titel **vor**
+Dateiname+Tags und nimmt den ERSTEN Treffer; "laengstes Stichwort gewinnt"
+(`kategorie.py:295`) gilt nur INNERHALB eines Stoffs.
+⚠ Das `.strip()` einfach zu entfernen reicht nicht: 45 Eintraege fallen dann
+anders aus, 12 davon schlechter (Industrie**laufzettel** trifft `" laufzettel"`
+mit Rand nicht mehr).
+
+**4. Die Rechteliste veraltet, ohne Altersprüfung.**
+`dokument_erlaubt` (**pruef_proxy.py:2208-2212**) nimmt den gemerkten
+Zugangs-Schnappschuss ohne Altersprobe; `ZUGANG_DAUER = 12 h`
+(**pruef_proxy.py:1772**). `erlaubte_dokumente` (**:2102**) prueft dagegen 300 s.
+Folge: **jedes frisch aufgenommene Dokument ist bis zu 12 h nicht anklickbar** —
+gemessen 60 von 750, alle nach dem Zeitpunkt der Listenerstellung eingebettet.
+Dazu 3 echte Luecken (2x Reste des von Hand entfernten Testordners `_probe`,
+1x auw-Altweg ohne Abdruck). Meldung ist in beiden Faellen wortgleich
+("Dieses Dokument liegt nicht vor.", `_beleg_tor`, **:2966-2975**).
+
+**5. ⛔ NEU: Bestandsfragen werden aus der Trefferliste beantwortet.**
+```
+Vossloh im Bestand:      67 Dokumente, 21 Angebote
+Antwort der Anlage:      14 Unterlagen,  2 Angebote
+Siemens-Antwort: "Die Fundstellen enthalten ausschliesslich Unterlagen zu
+                  Kiekert AG und Johnson Electric"   (es sind 16 Kunden)
+```
+Die Anlage beschreibt ihre **Fundstellen**, formuliert es aber wie eine Aussage
+ueber den Bestand. Fuer "wie viele" / "alle" ist eine Aehnlichkeitssuche mit
+begrenzter Trefferzahl das falsche Werkzeug. **Noch nicht am Code belegt.**
+
+**6. Darstellung:** Die Treffertabellen werden rechts abgeschnitten (Spalten
+JAHR/THEMEN nicht lesbar). Gemeldet 07.10. mit Bildschirmfotos.
+
+### Antwortzeiten (echter Test, nach der GPU-Reparatur)
+| Frage | vorher | nachher |
+|---|---|---|
+| Katalogweg (Bestandsliste) | 17-20 s | sofort |
+| "Fuer Vossloh?" | — | 47 s |
+| Siemens | 252 s (Abbruch) | 82 s |
+| Auftrag 999999 | 176 s | 132 s |
+Besser, aber fuer einen Test immer noch zu langsam. Zeitlimit: **240 s**
+(`gespraech.py:38`, `KI4KI_GESPRAECH_TIMEOUT`), zweiter Deckel 300 s (`:50`).
+
+### Reihenfolge fuer die Reparatur (Vorschlag, nicht entschieden)
+1. **Fragezerlegung** (Fehler 1) — trifft alle 647 Dokumente, behauptet Nichtexistenz
+2. **Bestandsfragen** (Fehler 5) — liefert falsche Zahlen, klingt aber sicher
+3. **Kategorie** (Fehler 3) — 57 falsche Normen, 0 von 15 Geheimhaltungen
+4. **Rechteliste** (Fehler 4) — selbstheilend nach 12 h, aber genau waehrend eines Tests toedlich
+5. **Kundenfilter** (Fehler 2) — liefert zu viel statt zu wenig
+6. **Tabellenbreite** (Fehler 6) — Darstellung
+
+### Zwei neue Messfallen fuer die Liste
+- `docker logs -t` druckt **UTC**, `--since/--until` nimmt **Lokalzeit**. Wer das
+  mischt, greift um zwei Stunden daneben (mir am 07.10. passiert: ich meldete
+  einen aktiven Fehler als "zwei Stunden alt").
+- Eine Wache, die nur EIN Protokoll beobachtet, meldet Stillstand als
+  Normalbetrieb. Meine Hintergrundwache sah nur n8n; der Ausfall stand im
+  pruef-proxy. 55 Minuten lang "alles ruhig".
