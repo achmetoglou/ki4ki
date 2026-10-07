@@ -3273,3 +3273,157 @@ nicht. Im Zweifel gilt die Container-Pruefung.
 - `KI4KI_CLAIM_MINUTEN` zurueck auf **180**.
 - Sicherungen `~/kap-sicherung` (30 MB) und `~/waisen-sicherung` (5 MB) erst nach
   der Abnahme loeschen.
+
+---
+
+## 9 · Stand 06.10. spaet / 07.10. frueh: Portion 2, und warum "gross" das falsche Mass war
+
+### Was durchgelaufen ist
+| | 06.10. 13:27 | 07.10. 08:46 |
+|---|---|---|
+| Bestand | 244 | **694** |
+| archiv | 384 | 941 |
+| parkplatz | 5.691 | 5.420 |
+| Platte | 52 % | 53 %, 115 GB frei |
+
+Zwei Portionen: 300 Dateien (12:49-14:19) und 299 Dateien (15:33-18:14, mit
+Unterbrechung). Durchsatz ohne Messdaten im Eingang: **rund 200 Dateien/Stunde**
+(Portion 1: 300 in 90 min; Portion 2 ohne Blockade: 143 in 48 min). Eine
+einzelne 25er-Charge schafft kurzzeitig 319/h - das ist KEINE Dauerleistung,
+mit der man planen darf.
+
+### Die Blockade, die anderthalb Stunden gekostet hat
+Ab 16:01 stand der Lauf. Jeder Durchgang nahm dieselben 25 Dateien und scheiterte,
+der Eingang bewegte sich nicht. Im Protokoll stand `RangeError: Invalid string
+length`, sonst nichts.
+
+**Drei Anlaeufe, zwei davon falsch:**
+
+| Vermutung | Ergebnis |
+|---|---|
+| Dateien ueber 200 MB blockieren den office-dienst | falsch — die erreichten ihn nie, `.xlsm` laeuft ueber Tika |
+| Dateien ueber 50 MB entfernen | wirkungslos — 3 der 4 Uebeltaeter waren nur 9 MB gross |
+| **entpackte Textmenge ueber 10 MiB** | **richtig — 687 MB -> 12 MB, Fehler weg** |
+
+**Das Mass ist nicht die Dateigroesse, sondern die entpackte Textmenge.**
+Gemessen am Bestand:
+
+```
+46,5 MB Datei  ->  224,7 MiB entpackt   Auswertung_kurz_272401_...EX2637.xlsm
+ 9,8 MB Datei  ->   70,4 MiB entpackt   XY_Zug_0.xlsm
+ 9,5 MB Datei  ->   66,7 MiB entpackt   Tabelle.xlsm
+254   MB Datei ->    ~0 MiB entpackt    Filter.pptx   (nur Bilder drin)
+```
+
+11 von 155 Dateien trugen **674 von 687 MiB**. Alle anderen zusammen: 12 MiB.
+
+**Warum das ueberhaupt platzt** (gemessen im Container, Node v24.16.0):
+`require("buffer").constants.MAX_STRING_LENGTH` = **536.870.888 Zeichen = 512 MB**.
+Gegenprobe: `"x".repeat(max-1)` geht, `"x".repeat(max+1)` wirft exakt diese Meldung.
+n8n packt den Text **der ganzen Charge** in einen String, an zwei Stellen:
+- `execution-persistence.ts:585`, flatted stringify im Hook `workflowExecuteAfter`
+- `task-broker-ws-server.ts:92`, `jsonStringify` in `TaskBrokerWsServer.sendMessage` (5 von 6 Faellen)
+
+`EXECUTIONS_DATA_SAVE_ON_SUCCESS=none` wuerde nur den ersten Ort treffen, und auch
+nur bei `status === 'success'`. Den haeufigeren zweiten Ort beruehrt **kein**
+`EXECUTIONS_DATA_*`-Schalter (geprueft: kein Modul unter `dist/task-runners` liest einen).
+`KI4KI_MENGE_JE_LAUF` zu senken verkleinert den String proportional — ob es unter
+512 MiB reicht, ist **nicht gemessen**.
+
+### ⛔ NEUER FEHLER: gewandelt wird, bevor entschieden ist
+`2_Dateien-in-JSON-umwandeln.json`, Knoten `Office nach PDF` schickt
+`X-Ziel: /files/dokumente/<bereich>/archiv/<unterpfad>.pdf` — der office-dienst
+legt die PDF **sofort im Archiv ab** (`office_dienst.py:129`, `ablegen()` ab Z. 66). Erst danach
+entscheidet `Ablage entscheiden`, ob das Original ueberhaupt aufgenommen wird.
+
+Faellt es durch, bleibt die PDF verwaist im Archiv: **kein Katalogeintrag, keine
+Logzeile.** Gemessen, ein Fall in Portion 2:
+```
+archiv/Robert Bosch GmbH, Schwieberdingen/276191/_Unterauftrag AA/pvT/
+    216191-Probengewicht.pdf          Abdruck 9o0v9xsd5d, 0 Treffer in beiden Katalogen
+Grund: das Original .docx ging 18:14 nach aussortiert ("kein Text gewonnen, 13 Zeichen")
+```
+Trifft jedes Office-Dokument, dessen Wandlung gelingt und das danach aussortiert
+wird. **Zu reparieren: erst entscheiden, dann wandeln — oder wenigstens eine
+Logzeile schreiben.**
+
+### Bilanz Portion 2, sauber
+`122 ins archiv + 21 aussortiert + 1 liegengeblieben = 144` ✓ (Eingang ab 17:31).
+Alle 122 haben einen Katalogeintrag; +121 Zuwachs stimmt exakt — eine der 122
+ist eine mitgelieferte Belegquelle und teilt sich den Eintrag mit ihrem Original.
+(In der Portion gab es 16 Belegquellen; 15 davon gingen nach `aussortiert/`,
+nur diese eine ins Archiv.)
+
+⚠ Die fehlende Katalogzeile steckt NICHT bei den 122, sondern bei den 54 frisch
+gewandelten PDF — siehe den Probengewicht-Fall oben (mtime 18:11:42 beweist die
+Zuordnung). Ein Pruefer hat hier am 07.10. das Gegenteil behauptet; die mtime
+widerlegt ihn.
+
+⚠ **Zwei Messfallen, beide real aufgetreten:**
+- `aussortiert/aussortiert.log` zaehlt sich bei `find aussortiert -newerct` **selbst mit** (22 statt 21).
+- Der Zaehler `bestand` aus `/pruef-status` ist `len(BESTAND.titel())` = die
+  **AnythingLLM-Dokumente**, bereichsuebergreifend und entdoppelt — **nicht** die
+  Zeilen in `bestandsindex.json` (700 Dateien / 694 Titel / 741 Index-Eintraege).
+- Der Abdruck taugt **nicht** als Suchschluessel in `bestandsindex.json` (nur 43
+  von 741 Schluesseln tragen ueberhaupt einen) — dort ueber
+  `_ohne_endung(_anzeige(name))` nachschlagen.
+- `docker logs --since/--until` nimmt **Lokalzeit**, `-t` druckt **UTC**. Wer das
+  mischt, greift um zwei Stunden daneben.
+
+### Harmlos, aber irrefuehrend benannt
+`"war schon im Bestand (eingebettet, aber nie abgelegt)"` steht im
+**aussortiert.log**, ist aber eine **Ablage ins Archiv**
+(`pruef_proxy.py:790-897`, `_liegengebliebene_einraeumen()`). 36 Faelle in
+Portion 2. Vorbedingung ist, dass der Abdruck bereits im Bestand steht — es kann
+dabei nichts unsichtbar werden.
+
+### Offen, zusaetzlich zu §8
+8. **Verwaiste Wandlungs-PDF** (siehe oben) — der Mechanismus, nicht der Einzelfall.
+9. **`Blaichach/272727/µ/Vorlaeufige Ergebnisse.pdf`** wartet auf ihr `.pptx`
+   (58 MB). Seit 07.10. 08:51 im Eingang als Teil von Portion 3 — heilt dort
+   von selbst.
+10. **Index-Kollision**: `276191_PP-GF30_Tait_AA.xlsm` und `.xlsx` fallen in
+    `bestandsindex.json` auf denselben Schluessel (`_ohne_endung(_anzeige(name))`,
+    `bestand.py:703-745`). In AnythingLLM sind beide da — kein Datenverlust.
+11. **Die Leerlauf-Dublette**: eine liegengebliebene Datei erzeugt **jede Minute**
+    einen Leerlauf-Durchgang (720 ueber Nacht gemessen). Dokumentiertes Verhalten
+    (`Nur ein Bereich je Durchgang`, Z. 14-19), aber das Protokoll wird unlesbar.
+
+### Der Portionsbefehl, Stand 07.10.
+Zwei Filter, beide noetig. Ordnerweise, damit Original und PDF zusammenbleiben:
+```bash
+cd ~/ki4ki/dokumente/kap
+DOK='.*\.\(docx?\|odt\|rtf\|pdf\|pptx?\|odp\|xlsx?\|xlsm\|txt\)'
+find parkplatz -type f ! -name '.*' -iregex "$DOK" -printf '%h\n' \
+  | sort | uniq -c | sort -n \
+  | awk '{c=$1;$1="";sub(/^[ \t]+/,"");if(s+c>300)exit;s+=c;print}' > ~/portion.txt
+while IFS= read -r d; do find "$d" -maxdepth 1 -type f ! -name '.*' -iregex "$DOK"; done \
+  < ~/portion.txt > ~/portion-dateien.txt
+```
+Danach **zwingend** die entpackte Groesse pruefen und alles ueber 10 MiB herausnehmen
+(Python-Schnipsel: ZIP-Inhaltsverzeichnis, `sheet|sharedStrings|document|slide`-XML
+summieren; `zipfile.ZipFile()` braucht ein offenes Dateiobjekt, ein bytes-Pfad wirft
+still AttributeError).
+
+⛔ **`-size` ist als Filter NICHT geeignet** — das war der Fehlschlag vom 06.10.
+
+⚠ **Latente Falle im awk-Teil:** `{c=$1;$1="";...}` baut `$0` mit `OFS=" "` neu und
+presst dabei mehrere Leerzeichen auf eines zusammen. Haette ein Kundenordner je
+zwei Leerzeichen oder einen Tabulator im Namen, fiele er **stumm** heraus. Heute
+gibt es keinen solchen Ordner — geprueft 07.10., 0 Fehlerzeilen im Trockenlauf.
+
+⚠ **Zwei Zaehlweisen fuer den parkplatz:** `find parkplatz -type f` = **5.420**
+(mit Punktdateien), der Portionsbefehl zaehlt **ohne** = **5.293**. Die 127
+Punktdateien sind macOS-Reste; n8n ignoriert sie ohnehin (`-not -path '*/.*'`).
+
+### Was der Pruefer am 07.10. an diesem Abschnitt gefunden hat
+Von 9 beanstandeten Angaben waren **8 wirklich falsch** und sind oben korrigiert
+(Endzeit, Blockadedauer, Durchsatz, Index-Zahl, zwei Codestellen, Belegquellen-
+Begruendung, Punkt 9). Die neunte — "alle 122 haben einen Katalogeintrag" — war
+**richtig**; der Pruefer hatte die verwaiste PDF faelschlich den 122 verschobenen
+zugerechnet, obwohl ihre mtime (18:11:42, also frisch gewandelt) sie eindeutig
+den 54 erzeugten zuordnet.
+
+⛔ **Lehre, die ueber diesen Abschnitt hinausgeht:** Ein Pruefbericht ist kein
+Urteil. Jede seiner Beanstandungen braucht dieselbe Gegenprobe wie die
+urspruengliche Behauptung — sonst ersetzt man eine falsche Zahl durch eine andere.
