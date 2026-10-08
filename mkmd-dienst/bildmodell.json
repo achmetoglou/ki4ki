@@ -30,7 +30,7 @@
       }
     }
   },
-  "picture_area_threshold": 0.03,
+  "picture_area_threshold": 0.01,
   "classification_allow": null,
   "classification_deny": null
 }

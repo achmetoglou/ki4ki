@@ -32,7 +32,7 @@ HTTP=$(curl -s -o "$TMP/d.json" -w "%{http_code}" -m 7200 \
   -F "table_mode=accurate" -F "md_page_break_placeholder=[[SEITE]]" \
   -F "do_picture_description=true" \
   -F "do_picture_classification=true" \
-  -F "picture_description_area_threshold=0.03" \
+  -F "picture_description_area_threshold=0.01" \
   -F "picture_description_custom_config=$(cat "$(dirname "$0")/bildmodell.json")")
 if [ "$HTTP" != "200" ]; then
   # Ohne diese Unterscheidung stand im Protokoll die Meldung von head

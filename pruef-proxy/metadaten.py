@@ -13,7 +13,10 @@ Jeder Bereich kann eine Datei `dokumente/<bereich>/metadaten.json` fuehren:
 Felder (alle optional): freigabe = entwurf | geprueft | freigegeben | archiviert ·
 owner · version · gueltig_bis (JJJJ-MM-TT) · review_am · ki = ja | nein
 ("fuer KI ausschliessen": Dokument bleibt liegen, wird aber weder gelistet
-noch durchsucht noch zitiert) · anlage · fehlercodes (Liste) · art.
+noch durchsucht noch zitiert) · anlage · fehlercodes (Liste) · art ·
+herkunft = bildbeschreibung (vom Modell aus einem Bild erzeugt, KEINE
+belegte Fundstelle - loest eine Warnung in jeder Antwort aus; gesetzt von
+bau/bilder_nachholen.py).
 
 Schalter je Bereich in bereich.json: "nur_freigegebene": true -> nur Dokumente
 mit freigabe = freigegeben sind fuer die KI sichtbar (Truth Gate).
@@ -171,6 +174,15 @@ def warnung(kennung, wurzel, heute=None):
         aus.append("Status „%s“ — nicht freigegeben" % f)
     if _abgelaufen(m.get("gueltig_bis"), heute):
         aus.append("Gültigkeit abgelaufen (%s)" % m["gueltig_bis"])
+    # ⭐ 08.10.2026: Bildbeschreibungen sind vom Modell erzeugt, nicht aus
+    #   einem Dokument belegt. Emrachs Entscheidung war "ja, aber
+    #   gekennzeichnet" - und die Kennzeichnung im Text allein reicht
+    #   nicht: Zitiert das Modell eine Stelle aus der Mitte, sieht der
+    #   Leser den Warnblock oben nie. Diese Zeile bringt ihn in die
+    #   Fusszeile JEDER Antwort, die so ein Dokument benutzt.
+    if str(m.get("herkunft", "")).strip().lower() == "bildbeschreibung":
+        aus.append("Maschinell erzeugte Bildbeschreibung — keine belegte "
+                   "Fundstelle")
     return "; ".join(aus)
 
 

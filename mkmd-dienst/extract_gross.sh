@@ -42,7 +42,7 @@ ABGABE=$(curl -s -m 300 -X POST \
   -F "table_mode=accurate" -F "md_page_break_placeholder=[[SEITE]]" \
   -F "do_picture_description=true" \
   -F "do_picture_classification=true" \
-  -F "picture_description_area_threshold=0.03" \
+  -F "picture_description_area_threshold=0.01" \
   -F "picture_description_custom_config=$(cat "$HIER/bildmodell.json")")
 
 KENNUNG=$(printf '%s' "$ABGABE" | python3 -c \
