@@ -131,8 +131,23 @@ def test_die_werte_kommen_auch_bei_partnern_an():
         pruefe(False, "docker-compose.yml nicht gefunden - NICHT geprueft")
         return
     t = open(compose, encoding="utf-8").read()
-    pruefe("KI4KI_ANTWORT_TOKEN=${KI4KI_ANTWORT_TOKEN:-2048}" in t,
+    # ⭐ 08.10.: 2048 → 4096. Emrach, nach zwei Chats mit abgeschnittenen
+    #   Vergleichstabellen: "2048 Tokens sind fuer eine Antwort zu wenig".
+    #   Die Gegenrechnung vom 23.09. steht weiter in der Compose - sie ist
+    #   nicht falsch geworden, nur anders gewichtet: lieber sechs Minuten
+    #   warten und eine ganze Tabelle bekommen als drei Minuten warten und
+    #   eine halbe.
+    pruefe("KI4KI_ANTWORT_TOKEN=${KI4KI_ANTWORT_TOKEN:-4096}" in t,
            "die Antwortlaenge steht in der Compose und ist ueberschreibbar")
+    import re as _re
+    # ⛔ Nicht nach "2048" IRGENDWO suchen - der Name steht auch im
+    #   Kommentar darueber. Die ECHTE Umgebungszeile holen.
+    _zeile = _re.search(r"^\s*-\s*KI4KI_ANTWORT_TOKEN=.*$", t, _re.M)
+    pruefe(_zeile is not None, "es gibt genau eine Umgebungszeile dafuer")
+    pruefe(bool(_zeile) and "2048" not in _zeile.group(0),
+           "und sie steht NICHT mehr auf 2048 - das war die Ursache der\n"
+           "           abgeschnittenen Vergleichstabellen (ist: %r)"
+           % (_zeile.group(0).strip() if _zeile else None))
     pruefe("num_predict gilt JE MODELLAUFRUF" in t,
            "und daneben steht, WARUM nicht mehr - die Grenze gilt je\n           Aufruf, ein Zug hat bis zu fuenf davon")
     pruefe("KI4KI_GESPRAECH_TIMEOUT=${KI4KI_GESPRAECH_TIMEOUT:-600}" in t,
