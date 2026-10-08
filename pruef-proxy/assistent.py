@@ -822,6 +822,50 @@ def ist_inhaltsfrage(frage):
 _HUELLE = "\"'`\u00b4\u201e\u201c\u201d\u00bb\u00ab\u201a\u2018\u2019"
 
 
+def abgerissenes_ende_heilen(text):
+    """Einen mitten im Verweis abgebrochenen Text sauber beenden.
+
+    ⛔ 08.10. (Bildschirmfoto): Die Vergleichsantwort riss an der
+    Laengengrenze (KI4KI_ANTWORT_TOKEN=2048) mitten in der Adresse ab -
+    "[…, S. 1](/stelle?dok=kap-Johnson-Electric-276684-Angebot-". Die
+    Oberflaeche stellt das als nackten Text dar: eine Zeichenwueste,
+    und niemand sieht, dass die Antwort unvollstaendig ist.
+
+    ⚠ Bewusst eng: Nur wenn hinter der LETZTEN offenen eckigen Klammer
+    kein Zeilenumbruch mehr steht und der Verweis dort wirklich
+    angefangen, aber nicht geschlossen wurde. "Siehe den [Anhang] am
+    Ende." bleibt unberuehrt.
+    """
+    if not text:
+        return text
+    i = text.rfind("[")
+    if i < 0:
+        return text
+    schwanz = text[i:]
+    if "\n" in schwanz:
+        return text
+    # ⛔ Pruefer 08.10.: Die erste Fassung pruefte den ganzen Schwanz mit
+    #   einem fullmatch. Sobald hinter dem letzten Verweis noch Text mit
+    #   einer runden Klammer stand - "(netto)", "(vgl. Tabelle 2)",
+    #   "(siehe oben)" -, schlug der fehl, und die Heilung amputierte
+    #   eine VOLLSTAENDIGE Antwort samt falscher Abschneide-Meldung -
+    #   fuenf von fuenfzehn geprueften heilen Saetzen, naemlich alle
+    #   mit einer runden Klammer hinter dem Verweis. Deutsche
+    #   Fliesstexte benutzen Klammern laufend.
+    #   Jetzt wird nur noch gefragt, ob die LETZTE Klammerung offen ist.
+    j = schwanz.find("]")
+    if j < 0:
+        offen = True                      # "[Johnson, S. 1" - kein ]
+    elif schwanz[j + 1:j + 2] == "(":
+        offen = ")" not in schwanz[j + 1:]  # "[…](… " - keine )
+    else:
+        offen = False                     # "[Anhang] am Ende." - zu
+    if not offen:
+        return text
+    return (text[:i].rstrip() + " …\n\n*Die Antwort war an dieser Stelle "
+            "zu lang und wurde abgeschnitten.*")
+
+
 def entkleiden(frage):
     """Anfuehrungszeichen und Leerraum um eine Frage herum abstreifen.
 
@@ -861,7 +905,22 @@ def ist_bestandsfrage_unscharf(text):
     if ist_bildwunsch(t):
         return False          # "Zeig mir ein Diagramm aus der Arbeit" = Bild-Weg, kein Index (01.09.)
     if re.match(r"^\s*(?:ok(?:ay)?\.?\s*|gut\.?\s*|und\s+)?(?:was|welche\w*)\s+(?:gibt\s+es|habt\s+ihr|haben\s+wir|hast\s+du|liegt|liegen|existier\w+)\b",
-                t, re.I) and _stichwort_aus(t):
+                t, re.I) and (_stichwort_aus(t)
+                              or _entitaet_aus(t, streng=True)):
+        # ⛔ 08.10.: Hier stand nur _stichwort_aus. "Was haben wir von
+        #   Februar?" galt deshalb nicht als Bestandsfrage, ging an das
+        #   Sprachmodell, der Browser schloss nach 13 s die Verbindung,
+        #   und der Proxy starb beim Schreiben (BrokenPipeError). Der
+        #   Nutzer sah "Could not respond to message".
+        # ⚠ KORREKTUR (Pruefer, selbe Sitzung): Die erste Begruendung
+        #   hier behauptete einen Widerspruch zu einordnen(). Den gibt
+        #   es nicht - gemessen war er im Container MIT Auffangnetz,
+        #   ohne Netz liefert einordnen() "normal". Die Weiche war
+        #   schlicht zu eng, nicht widerspruechlich.
+        # ⚠ Und streng=True ist Pflicht: ohne das wurden "von Becker
+        #   gelernt", "mit Becker besprochen", "bei Vossloh falsch
+        #   gemacht" zu Bestandsfragen - fuenf Inhaltsfragen in der
+        #   Bestandsliste.
         return True           # "Was gibt es zum Thema X" = Liste zum Thema (README-Zusage)
     if _ist_bestandsfrage(text):
         return True
@@ -1095,7 +1154,7 @@ def bestandsauskunft(frage, titel, bereich=None, vorher=None, zusatz=None):
         if _art and _stich:
             _kombi = _treffer_im_katalog(_stich, _b.nach_art(sauber, _art),
                                          bereich, gattung=_b.ARTEN[_art][1],
-                                         je_titel=je_titel)
+                                         je_titel=je_titel, zusatz=zusatz)
             if _kombi:
                 return _kombi
             if not _stich_geraten:
@@ -1110,9 +1169,17 @@ def bestandsauskunft(frage, titel, bereich=None, vorher=None, zusatz=None):
             _nur_art = _liste_nach_art(frage, sauber, bereich, zusatz,
                                        None, je_titel=je_titel)
             if _nur_art:
-                return ("Zu **%s** finde ich nichts — deshalb stehen hier "
-                        "alle **%s**.\n\n%s"
-                        % (_stich, _b.ARTEN[_art][1], _nur_art))
+                # ⛔ 08.10. (Bildschirmfoto): Der Vorspann kuendigte
+                #   "deshalb stehen hier alle Dissertationen" an, und
+                #   darunter stand "Ich finde keine Dissertationen".
+                #   Angekuendigt wird nur, was wirklich folgt - eine
+                #   Tabellenzeile beginnt mit "| [".
+                if "| [" in _nur_art:
+                    return ("Zu **%s** finde ich nichts — deshalb stehen "
+                            "hier alle **%s**.\n\n%s"
+                            % (_stich, _b.ARTEN[_art][1], _nur_art))
+                return ("Zu **%s** finde ich nichts. %s"
+                        % (_stich, _nur_art))
     except Exception:
         pass
 
@@ -1130,7 +1197,7 @@ def bestandsauskunft(frage, titel, bereich=None, vorher=None, zusatz=None):
         #   englisch. Vorher wurden nur die DATEINAMEN durchsucht, und bei
         #   Namen wie "DS-00-000" oder "0000000" findet das nie etwas.
         aus_katalog = _treffer_im_katalog(stichwort, sauber, bereich,
-                                          je_titel=je_titel)
+                                          je_titel=je_titel, zusatz=zusatz)
         if aus_katalog:
             return aus_katalog
         _gruppen = _stichwort_gruppen(stichwort)
@@ -1464,7 +1531,7 @@ def _volltext_zusatz(stichwort, namen, ausser=()):
             % (stichwort, len(treffer), "" if len(treffer) == 1 else "en", liste))
 
 
-def _entitaet_aus(frage):
+def _entitaet_aus(frage, streng=False):
     """Den Eigennamen aus "... fuer Vossloh" / "... mit Siemens" ziehen.
 
     ⛔ 07.10. (Chat-Test): "Wie viele Angebote haben wir fuer Vossloh"
@@ -1480,11 +1547,18 @@ def _entitaet_aus(frage):
     der Bestandsauskunft: sie darf die Einordnung einer Frage nicht
     verschieben.
     """
+    # ⛔ Pruefer 08.10.: Die nachlaufenden Kleinbuchstaben ("… von
+    #   Becker GELERNT", "… mit Becker BESPROCHEN") machen aus der Frage
+    #   eine Inhaltsfrage. Wer den Eigennamen zur WEICHE benutzt, muss
+    #   deshalb streng fragen: der Name hat den Satz zu beenden.
+    #   Fuer die Eingrenzung innerhalb einer Bestandsauskunft bleibt es
+    #   locker - dort ist die Frage schon als Bestandsfrage erkannt.
     frage = entkleiden(frage)
+    nachlauf = "" if streng else r"(?:\s+[a-zäöüß]+){0,2}"
     m = re.search(r"\b(?:f(?:ü|ue)r|mit|bei|von)\s+"
                   r"((?:[A-ZÄÖÜ][\wÄÖÜäöüß&.\-]*)"
                   r"(?:[\s\-]+[A-ZÄÖÜ][\wÄÖÜäöüß&.\-]*){0,3})"
-                  r"(?:\s+[a-zäöüß]+){0,2}\s*[\?\.!,;]?\s*$",
+                  + nachlauf + r"\s*[\?\.!,;]?\s*$",
                   frage or "")
     if not m:
         return None
@@ -1564,8 +1638,20 @@ def _gruppe_trifft(gruppen, staemme, text):
     deshalb "nichts", "… fuer Pruefungen" fand zwei. Jetzt entscheidet
     diese eine Stelle, und sie faltet die Umlaute mit.
 
-    ⚠ Kurze Begriffe (bis drei Zeichen) nur am Wortanfang: "pa" als
-    Teilkette traf sonst "Reparaturbericht" und "Spanplatte".
+    ⚠ Die Grenze liegt bei vier Zeichen, und sie ist zweimal gemessen
+    worden (Pruefer 08.10., beide Runden):
+      - Bis vier Zeichen nur am Wortanfang. Als Teilkette traf "Form"
+        sonst "Information" und "Reformierung", "2024" traf "…-120248",
+        "pa" traf "Reparaturbericht" und "Spanplatte".
+      - Ab fuenf Zeichen als Teilkette. Mit der Wortanfang-Regel fuer
+        ALLE Begriffe gingen neun Treffer verloren, weil deutsche
+        Zusammensetzungen das Suchwort hinten tragen:
+        "Kleben"/"Metallkleben", "Pruefung"/"Werkstoffpruefung" (1 auf
+        0 Treffer), "Angebot"/"Nachtragsangebot", "53504"/"DIN53504".
+    ⚠ Der Preis: vierbuchstabige Begriffe finden ihre Zusammensetzung
+    nicht mehr ("Guss" in "Spritzgussformteil"). Das ist der kleinere
+    Schaden - ein falsches "nichts" auf ein vorhandenes Dokument waere
+    der groessere.
     """
     flach = _flach(text)
     worte = [w for w in re.split(r"[^0-9a-z]+", _flach_mit_fugen(text)) if w]
@@ -1574,7 +1660,7 @@ def _gruppe_trifft(gruppen, staemme, text):
         xf = _flach(x)
         if not xf:
             return False
-        if len(xf) <= 3:
+        if len(xf) <= 4:
             return any(w == xf or w.startswith(xf) for w in worte)
         return xf in flach
 
@@ -1605,11 +1691,22 @@ def _katalog_treffer(stichwort, namen):
     treffer = []
     for n in namen:
         a = bestand.angaben(n) or {}
-        if not a.get("titel"):
-            continue
         grund = None
-        if _trifft(a["titel"]):
+        if a.get("titel") and _trifft(a["titel"]):
             grund = "Titel"
+        elif _trifft(n):
+            # ⛔ 08.10. am echten Bestand gemessen: 294 Dateien tragen
+            #   "Kiekert" im Namen, hier gefunden wurden 66; bei
+            #   "Lanxess" 31 gegen 3. Der Kundenname steht NUR im
+            #   Dokumentnamen ("Kiekert-AG-273009-Zwischenergebnis"),
+            #   der lesbare Titel heisst "Zwischenergebnis 3 des
+            #   Projektes 273009c". Weil der Katalog ein paar Treffer
+            #   lieferte, kehrte bestandsauskunft sofort zurueck und
+            #   erreichte die Namenssuche nie. Der Name ist eine
+            #   Tatsache - er gehoert vor die abgeleiteten Felder.
+            grund = "Dateiname"
+        elif not a:
+            continue
         else:
             passende = [s for s in (a.get("schlagworte") or []) + (a.get("themen") or []) + (a.get("methoden") or [])
                         + [x for x in (a.get("teilgebiet"), a.get("gebiet")) if x]
@@ -1683,7 +1780,7 @@ def themen_gegenpruefung(thema, namen, bereich=True):
 
 
 def _treffer_im_katalog(stichwort, namen, bereich=None, gattung=None,
-                        je_titel=None):
+                        je_titel=None, zusatz=None):
     """Arbeiten zu einem Stichwort - ueber Titel und Schlagworte.
 
     Gibt None zurueck, wenn der Katalog fehlt oder nichts trifft; dann
@@ -1696,53 +1793,64 @@ def _treffer_im_katalog(stichwort, namen, bereich=None, gattung=None,
         import bestand
     except Exception:
         return None
-    from urllib.parse import quote
     treffer = _katalog_treffer(stichwort, namen)
     if not treffer:
         return None
 
-    def _zelle(t):
-        return (t or "").replace("|", "\\|").replace("\n", " ").strip()
-
     wo = "in diesem Arbeitsbereich" if bereich else "im Bestand"
-    zeilen = ["| Kennung | Titel | Verfasser | Jahr | gefunden über |",
-              "|---|---|---|---|---|"]
-    # ⛔ Pruefer 07.10.: Hier stand len(treffer) - 60, also TITEL,
-    #   waehrend der Kopf Dokumente nennt. 75 Dokumente / 70 Titel
-    #   ergaben "60 Zeilen + 10 weitere", und fuenf blieben unerklaert.
-    _gezeigt = sorted(treffer)[:60]
+    # ⛔ Pruefer 08.10.: Hier stand eine eigene Tabelle mit fuenf
+    #   Spalten. Seit der Dateiname mitgesucht wird, antwortet dieser
+    #   Weg viel oefter - und es fehlten Kategorie, Themen, Datei und
+    #   die Legende zu ° und *. Die Zusage vom 26.08. lautet: "diese
+    #   Spaltenansicht soll er immer machen … quasi ein Index". Also
+    #   dieselbe _liste wie ueberall, und das WARUM als gezaehlte Zeile
+    #   darunter. Was die alte Tabelle besser konnte: sie nannte den
+    #   Grund je Dokument und zeigte bei Eintraegen ohne Katalog die
+    #   Kennung statt "—". Beides wiegt die fehlenden drei Spalten und
+    #   die Legende nicht auf.
+    _sortiert = sorted(treffer)
+    _gezeigt = _sortiert[:60]
+    _namen = [n for n, _a, _g in _sortiert]
     _dok_gezeigt = (sum(je_titel.get(n, 0) for n, _a, _g in _gezeigt)
                     if je_titel else len(_gezeigt))
-    _dok_gesamt = (sum(je_titel.get(n, 0) for n, _a, _g in treffer)
-                   if je_titel else len(treffer))
+    _dok_gesamt = (sum(je_titel.get(n, 0) for n in _namen)
+                   if je_titel else len(_sortiert))
     weitere = max(0, _dok_gesamt - _dok_gezeigt)
-    for n, a, grund in _gezeigt:
-        zeilen.append("| [%s](/pdf/%s) | %s | %s | %s | %s |"
-                      % (_zelle(n), quote(n, safe=""), _zelle(a["titel"]),
-                         _zelle(a.get("verfasser")), _zelle(a.get("jahr")),
-                         _zelle(grund)))
-    # ⛔ Pruefer 07.10.: Hier stand len(treffer) - die Zahl der TITEL -
-    #   mit "Arbeiten" daran, und die Einzahl fehlte ("1 Arbeiten zu
-    #   Becker"). Derselbe Fehlertyp wie in e21578e, nur eine Funktion
-    #   weiter.
-    _namen = [n for n, _a, _g in treffer]
     _dok = _dok_gesamt
     kopf = ("**%d %s zu „%s“ %s**"
             % (_dok, gattung or ("Arbeit" if _dok == 1 else "Arbeiten"),
                stichwort, wo))
-    # ⛔ Pruefer 07.10.: Die Faltungszeile rechnete mit ALLEN Treffern,
-    #   die Tabelle zeigt aber hoechstens 60. Bei 75 Dokumenten / 70
-    #   Titeln stand "5 Zeilen weniger" ueber einer Tabelle, der 15
-    #   fehlten - daneben "… und 10 weitere". Drei Zahlen, die sich
-    #   widersprechen. Bei gekuerzter Tabelle erklaert die
-    #   "weitere"-Zeile die Kuerzung allein.
     if je_titel and not weitere:
         kopf += _titelfaltung(_dok, _namen, je_titel)
+    zeilen = [_liste([n for n, _a, _g in _gezeigt], zusatz)]
     if weitere:
         zeilen.append("")
-        zeilen.append("… und **%d weitere**. Grenze die Frage ein — etwa mit einer Art („Welche Normen …“) oder einem zweiten Stichwort." % weitere)
-    fuss = ("\n\n*Gefunden über Titel und Schlagworte des Katalogs.*"
-            + _volltext_zusatz(stichwort, namen, ausser=[n for n, _, _ in treffer]))
+        # ⛔ Pruefer 08.10.: Liegen mehrfach belegte Titel in den ersten
+        #   60 Zeilen, geht die Rechnung fuer den Leser nicht auf -
+        #   60 Zeilen + 10 weitere = 70, der Kopf sagt 75. In Dokumenten
+        #   stimmt es; es stand nur nirgends, und die Faltungszeile ist
+        #   bei gekuerzter Tabelle unterdrueckt.
+        if _dok_gezeigt > len(_gezeigt):
+            zeilen.append("Die Tabelle zeigt **%d Zeilen** für **%d "
+                          "Dokumente** — gleiche Titel stehen in einer "
+                          "Zeile; **%d weitere** sind nicht aufgeführt. "
+                          "Grenze die Frage ein — etwa mit einer Art "
+                          "(„Welche Normen …“) oder einem zweiten "
+                          "Stichwort."
+                          % (len(_gezeigt), _dok_gezeigt, weitere))
+        else:
+            zeilen.append("… und **%d weitere**. Grenze die Frage ein — etwa mit einer Art („Welche Normen …“) oder einem zweiten Stichwort." % weitere)
+    _gruende = {}
+    for _n, _a, _g in _gezeigt:
+        _k = (_g or "").split(":")[0]
+        _gruende[_k] = _gruende.get(_k, 0) + 1
+    _warum = ", ".join("%s (%d)" % kv for kv in sorted(_gruende.items(),
+                                                       key=lambda x: -x[1]))
+    _gesamt = (sum(je_titel.get(n, 0) for n in namen)
+               if je_titel else len(namen))
+    fuss = ("\n\n*Gefunden über %s.*" % (_warum or "den Katalog")
+            + (_fussnote(_gesamt) if (_gesamt > _dok and not gattung) else "")
+            + _volltext_zusatz(stichwort, namen, ausser=_namen))
     return kopf + "\n\n" + "\n".join(zeilen) + fuss
 
 

@@ -8405,6 +8405,11 @@ class Griff(BaseHTTPRequestHandler):
         # Allgemeinwissen ist im Absatz selbst gekennzeichnet ("Aus Allgemeinwissen
         # (nicht aus den Dokumenten):") - eine zweite Warnung in der Fusszeile war
         # doppelt (Rueckmeldung 01.09.: "zu viele Hinweise").
+        # ⛔ 08.10.: An der Laengengrenze (KI4KI_ANTWORT_TOKEN) riss die
+        #   Antwort mitten im Verweis ab, und die Oberflaeche zeigte die
+        #   halbe Adresse als nackten Text. Vor der Fusszeile heilen,
+        #   damit der Hinweis im Text steht und nicht dahinter.
+        text = assistent.abgerissenes_ende_heilen(text)
         if fuss:
             text += "\n\n*" + " · ".join(fuss) + "*"
         # ---- Merken und senden -------------------------------------------

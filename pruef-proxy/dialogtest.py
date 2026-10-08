@@ -2623,8 +2623,14 @@ def szenario_52_bestandszahl_zaehlt_dokumente():
            "Fraesen.md", "Drehen.md", "Bohren.md"]
     text_k = assistent.bestandsauskunft(
         "Was haben wir zu Kleben?", t_k, bereich="kap") or ""
-    pruefe("liegen 4 Dokumente vor" in text_k,
+    # ⚠ 08.10.: Zwei Wege koennen hier antworten - der Katalogweg
+    #   ("**4 Arbeiten zu …**") und der Namens-Rueckfall ("liegen 4
+    #   Dokumente vor"). Beide muessen VIER sagen, nicht zwei; die
+    #   Formulierung ist egal, die Zahl nicht.
+    pruefe("**4 Arbeiten zu" in text_k or "liegen 4 Dokumente vor" in text_k,
            "Stichworttreffer zaehlt Dokumente (4), nicht Titel (2)")
+    pruefe(text_k.count("\n| [") == 2,
+           "gezeigt werden die zwei Titel, unter denen die vier liegen")
     pruefe("von insgesamt 7 Dokumenten" in text_k,
            "der Nenner bleibt die Gesamtzahl der Dokumente")
     pruefe("2 verschiedenen Titeln" in text_k,
@@ -2655,7 +2661,11 @@ def szenario_53_stichwort_aus_mehreren_woertern():
     # ⚠ Diese beiden sind auf einer Negativantwort ebenfalls gruen
     #   (Pruefer 07.10.). Deshalb davor eine Pruefung, die nur bei einer
     #   ECHTEN Trefferliste haelt - sonst tragen sie sich nicht selbst.
-    pruefe("liegen 3 Dokumente vor" in text,
+    # ⚠ 08.10.: Seit der Dateiname mitgesucht wird, antwortet hier der
+    #   Katalogweg ("**3 Arbeiten zu …**") statt des Namens-Rueckfalls
+    #   ("liegen 3 Dokumente vor"). Die Pruefung zaehlt deshalb die
+    #   TABELLENZEILEN - die sind von der Formulierung unabhaengig.
+    pruefe(text.count("\n| [") == 3,
            "die Antwort nennt genau die drei Treffer zu 276596")
     pruefe("276684" not in text,
            "der Nachbarauftrag 276684 wird nicht mitgeschleppt")
@@ -3055,6 +3065,48 @@ def szenario_62_keine_harte_fehlanzeige_und_kein_wust():
     pruefe(assistent._gruppe_trifft([["pa"]], [["pa"]], "PA-6-Datenblatt.md"),
            "am Wortanfang trifft er sehr wohl")
 
+    # ⛔ Pruefer 08.10.: Begriffe ab vier Zeichen wurden als TEILKETTE
+    #   gesucht. "Form" traf damit "Information" und "Reformierung",
+    #   "2024" traf "…-120248". Seit der Dateiname mitgesucht wird,
+    #   landen solche Fehltreffer mitten in einer sonst richtigen
+    #   Antwort ("3 Arbeiten zu Form" statt einer).
+    namen = ["DS-24-007-duroplastische-Formmassen.md",
+             "Information-Transferstelle-Rundschreiben.md",
+             "Reformierung-der-Pruefordnung-2021.md",
+             "Reparaturbericht-Spritzgiessmaschine-120248.md"]
+
+    def _trifft(wort, name):
+        g = assistent._stichwort_gruppen(wort)
+        st = [[assistent._wortstamm(x) or x for x in gr] for gr in g]
+        return assistent._gruppe_trifft(g, st, name)
+
+    # ⛔ Pruefer 08.10., zweite Runde: Die Wortanfang-Regel fuer JEDEN
+    #   Begriff war zu grob. Deutsche Zusammensetzungen tragen das
+    #   Suchwort hinten - "Werkstoffpruefung", "Metallkleben",
+    #   "Nachtragsangebot". Gemessen neun Verluste, darunter
+    #   "Pruefung" von 1 Treffer auf 0. Das ist wieder ein falsches
+    #   "nichts" auf ein vorhandenes Dokument.
+    #   Die Fehltreffer kamen ausnahmslos von VIERBUCHSTABIGEN
+    #   Begriffen ("Form" in "Information", "2024" in "120248").
+    #   Deshalb: bis vier Zeichen nur am Wortanfang, ab fuenf als
+    #   Teilkette.
+    for wort, name in (("Kleben", "Metallkleben-Grundlagen.md"),
+                       ("Kleben", "Verkleben-von-Kunststoffen.md"),
+                       ("Pruefung", "Werkstoffpruefung-2019.md"),
+                       ("Angebot", "Nachtragsangebot-275269.md"),
+                       ("53504", "DIN53504.md"),
+                       ("Werkzeug", "Spritzgiesswerkzeug.md"),
+                       ("Blattfeder", "Kunststoffblattfedern-Ermuedung.md")):
+        pruefe(_trifft(wort, name),
+               "%r findet %r auch hinten im Wort" % (wort, name[:30]))
+    pruefe(_trifft("Form", namen[0]), "'Form' trifft 'Formmassen'")
+    pruefe(not _trifft("Form", namen[1]), "'Form' trifft NICHT 'Information'")
+    pruefe(not _trifft("Form", namen[2]), "'Form' trifft NICHT 'Reformierung'")
+    pruefe(not _trifft("2024", namen[3]), "'2024' trifft NICHT '120248'")
+    # und der Wortstamm muss weiter durch die Zusammensetzung kommen
+    pruefe(_trifft("Spritzgiessen", namen[3]),
+           "'Spritzgiessen' trifft weiter 'Spritzgiessmaschine'")
+
 
 def szenario_63_zwei_hinweise_und_der_rest_der_tabelle():
     print("\n[63] Beide Hinweise bleiben, und der Tabellenrest zaehlt Dokumente")
@@ -3098,6 +3150,311 @@ def szenario_63_zwei_hinweise_und_der_rest_der_tabelle():
     pruefe("**75 Arbeiten zu" in lang, "der Kopf nennt 75 Dokumente")
     pruefe("**15 weitere**" in lang,
            "60 gezeigte + 15 weitere = 75, nicht 70")
+
+    # ⛔ Pruefer 08.10.: Liegen die mehrfach belegten Titel in den ersten
+    #   60 Zeilen, geht die Rechnung fuer den Leser nicht auf: 60 Zeilen
+    #   + 10 weitere = 70, der Kopf sagt 75. In Dokumenten gerechnet
+    #   stimmt es (60 Zeilen stehen fuer 65 Dokumente) - nur steht das
+    #   nirgends. Die Faltungszeile ist bei gekuerzter Tabelle
+    #   unterdrueckt, also muss es die Kuerzungszeile sagen.
+    vorn = []
+    for i in range(70):
+        n = "Aaa-Bericht-%03d.md" % i
+        bestand.eintragen(n, {"titel": n[:-3], "themen": ["Aaa"]},
+                          quelle="aufnahme")
+        vorn.append(n)
+    vorn += ["Aaa-Bericht-%03d.md" % i for i in range(5)]   # vorne doppelt
+    v = assistent.bestandsauskunft(
+        "Was haben wir zum Thema Aaa?", vorn, bereich="kap") or ""
+    pruefe("**75 Arbeiten zu" in v, "der Kopf nennt 75 Dokumente")
+    pruefe("**60 Zeilen**" in v and "**65 Dokumente**" in v,
+           "die Tabelle sagt, fuer wie viele Dokumente ihre Zeilen stehen")
+    pruefe("**10 weitere**" in v, "und wie viele nicht aufgefuehrt sind")
+
+
+def szenario_64_was_haben_wir_von_x():
+    print("\n[64] „Was haben wir von X?“ ist eine Bestandsfrage - aber nur blank")
+    # ⛔ 08.10. (Chat-Test): "Was haben wir von Februar?" ging an das
+    #   Sprachmodell; der Browser schloss nach 13 s, der Proxy starb mit
+    #   BrokenPipeError. _bestand_vorab entscheidet nach
+    #   ist_bestandsfrage_unscharf, und dort zaehlte nur ein Stichwort
+    #   aus "zum Thema X" - der Eigenname aus "von/mit/bei X" nicht.
+    # ⚠ KORREKTUR 08.10. (Pruefer): Meine erste Begruendung war falsch.
+    #   Ich hatte einordnen() IM CONTAINER gemessen, wo das Auffangnetz
+    #   an ist; dort kam "bestand" heraus. Ohne Netz liefert es
+    #   "normal". Es gab also keinen Widerspruch zwischen den Weichen -
+    #   die Weiche war schlicht zu eng.
+    # ⚠ Und die erste Reparatur war zu weit: sie machte aus fuenf
+    #   INHALTSFRAGEN Bestandsauskuenfte. Deshalb zaehlt der Eigenname
+    #   nur noch, wenn er den Satz BEENDET.
+    for f in ("Was haben wir von Februar?",
+              "Was haben wir von Becker?",
+              "Was gibt es von Kiekert?",
+              "Welche Unterlagen haben wir von Lanxess?"):
+        pruefe(assistent.ist_bestandsfrage_unscharf(f),
+               "Bestandsfrage: %r" % f[:40])
+    # ⛔ Die fuenf, die der Pruefer gefunden hat: ein Verb hinter dem
+    #   Namen macht daraus eine Frage nach dem INHALT.
+    for f in ("Was haben wir von Becker gelernt?",
+              "Was haben wir mit Becker besprochen?",
+              "Was haben wir von Koebel übernommen?",
+              "Was haben wir von Prof. Dahlmann gehört?",
+              "Was haben wir bei Vossloh falsch gemacht?"):
+        pruefe(not assistent.ist_bestandsfrage_unscharf(f),
+               "bleibt eine Inhaltsfrage: %r" % f[:42])
+    # Gegenprobe: mit einem Bestandswort im Satz bleibt es eine Liste
+    pruefe(assistent.ist_bestandsfrage_unscharf(
+        "Welche Projekte haben wir mit Siemens gemacht"),
+        "mit einem Bestandswort im Satz zaehlt auch das Verb dahinter")
+    # Die alten Gegenproben bleiben
+    for f in ("Was steht in der Norm zu Kleben?",
+              "Welches Verfahren nutzt Köbel in seiner Dissertation zur Ermüdung?",
+              "Was wurde bei Auftrag 276596 untersucht und mit welchem Ergebnis?",
+              "Fasse den Bericht von Becker zusammen"):
+        pruefe(not assistent.ist_bestandsfrage_unscharf(f),
+               "bleibt eine Inhaltsfrage: %r" % f[:40])
+
+
+def szenario_65_vorspann_nur_wenn_eine_liste_folgt():
+    print("\n[65] Der Vorspann kuendigt nur an, was wirklich kommt")
+    # ⛔ 08.10. (Chat-Test, Bildschirmfoto): Die Antwort lautete
+    #   "Zu Becker finde ich nichts — deshalb stehen hier alle
+    #    Dissertationen.
+    #    Ich finde in diesem Arbeitsbereich keine Dissertationen. Im
+    #    Katalog stehen 12 davon."
+    #   Satz 1 kuendigt eine Liste an, Satz 2 sagt, dass es sie nicht
+    #   gibt. Beides einzeln richtig, zusammen Unsinn.
+    import bestand
+    # (a) Es gibt die Art hier NICHT -> kein "deshalb stehen hier alle"
+    fremd = ["Vossloh-275269-Angebot-Anschreiben.md",
+             "Johnson-276596-Confidential-Agreement.md"]
+    for n in fremd:
+        bestand.eintragen(n, {"titel": n[:-3], "kategorie": "Angebot",
+                              "kategorie_quelle": "aufnahme"},
+                          quelle="aufnahme")
+    leer = assistent.bestandsauskunft(
+        "Welche Dissertationen haben wir von Becker?", fremd,
+        bereich="kap") or ""
+    pruefe("deshalb stehen hier alle" not in leer,
+           "keine Liste angekuendigt, die nicht kommt")
+    pruefe("Becker" in leer, "der gesuchte Name wird trotzdem genannt")
+    pruefe("Dissertation" in leer, "und die Fehlanzeige zur Art steht da")
+
+    # (b) Es gibt die Art hier SCHON -> dann darf der Vorspann sie ankuendigen
+    diss = ["DS-24-005", "DS-24-006", "DS-23-004"]
+    for k, v in (("DS-24-005", {"titel": "Ermuedung an Blattfedern",
+                                "verfasser": "Fabian Becker", "jahr": "2024"}),
+                 ("DS-24-006", {"titel": "Mitteneinspannung",
+                                "verfasser": "Jan Koebel", "jahr": "2024"}),
+                 ("DS-23-004", {"titel": "Mischteile Extrusion",
+                                "verfasser": "Malte Schoen", "jahr": "2023"})):
+        bestand.eintragen(k, v, quelle="aufnahme")
+    voll = assistent.bestandsauskunft(
+        "Welche Dissertationen haben wir von Schmidt?", diss,
+        bereich="kap") or ""
+    pruefe("deshalb stehen hier alle" in voll,
+           "wenn die Liste kommt, wird sie auch angekuendigt")
+    pruefe("| [" in voll, "und sie ist wirklich da")
+
+
+def szenario_66_der_dateiname_wird_mitgesucht():
+    print("\n[66] Der Kundenname steht im Dateinamen, nicht im Titel")
+    # ⛔ 08.10. am echten Bestand gemessen: 294 Dateien tragen "Kiekert"
+    #   im Namen, der Katalogweg fand 66. 31 tragen "Lanxess", gefunden
+    #   wurden 3. Ursache: _katalog_treffer durchsucht Titel, Themen,
+    #   Methoden, Gebiet und Kurzfassung - aber NICHT den Dokumentnamen.
+    #   Der Kunde steht nur dort ("Kiekert-AG-273009-Zwischenergebnis"),
+    #   der lesbare Titel heisst "Zwischenergebnis 3 des Projektes
+    #   273009c". Weil der Katalog ein paar Treffer lieferte, kehrte die
+    #   Auskunft sofort zurueck und erreichte die Namenssuche nie.
+    import bestand
+    namen = ["Kiekert-AG-273009-Zwischenergebnis-1.md",
+             "Kiekert-AG-273009-Zwischenergebnis-2.md",
+             "Kiekert-AG-273182-Vorarbeit.md",
+             "Kiekert-AG-277128-Verwaltung.md",
+             "Vossloh-275269-Angebot.md"]
+    angaben = {
+        "Kiekert-AG-273009-Zwischenergebnis-1": {"titel": "Zwischenergebnis 3 des Projektes 273009c"},
+        "Kiekert-AG-273009-Zwischenergebnis-2": {"titel": "Zwischenergebnis 4 des Projektes 273009c"},
+        "Kiekert-AG-273182-Vorarbeit":          {"titel": "Kiekert AG — Vorarbeit zum Folgeprojekt"},
+        "Kiekert-AG-277128-Verwaltung":         {"titel": "Besuch in Heiligenhaus"},
+        "Vossloh-275269-Angebot":               {"titel": "Angebot Nr. 275269b"},
+    }
+    for k, v in angaben.items():
+        bestand.eintragen(k, v, quelle="aufnahme")
+    text = assistent.bestandsauskunft(
+        "Welche Dokumente haben wir von Kiekert", namen, bereich="kap") or ""
+    pruefe("**4 Arbeiten zu" in text,
+           "alle vier Kiekert-Dokumente, nicht nur das eine mit Kiekert im Titel")
+    pruefe("Vossloh" not in text,
+           "der fremde Kunde bleibt trotzdem draussen")
+    # ⚠ Pruefer 08.10.: "Dateiname" in text war zahnlos - das Wort
+    #   steht seit der Aenderung immer irgendwo. Auf die GEZAEHLTE
+    #   Begruendung zielen; ohne Namenstreffer stuende dort "Titel (1)".
+    pruefe("Gefunden über Dateiname (3), Titel (1)." in text,
+           "drei Treffer kommen aus dem Namen, einer aus dem Titel")
+    # ⛔ Pruefer 08.10.: Der zweite Teil der Reparatur - Eintraege OHNE
+    #   Katalogtitel nicht mehr ueberspringen - war von keiner Pruefung
+    #   gedeckt. Ein frisch aufgenommenes Dokument hat noch keinen
+    #   gelesenen Titel; es darf trotzdem gefunden werden.
+    ohne_eintrag = namen + ["Kiekert-AG-999111-Ganz-Frisch.md"]
+    frisch = assistent.bestandsauskunft(
+        "Welche Dokumente haben wir von Kiekert", ohne_eintrag,
+        bereich="kap") or ""
+    pruefe("999111" in frisch,
+           "auch ein Dokument ohne Katalogeintrag wird gefunden")
+    pruefe("**5 Arbeiten zu" in frisch,
+           "und es wird mitgezaehlt")
+
+    # Gegenprobe: ein Treffer, den nur der Titel hergibt, bleibt erhalten
+    nurtitel = assistent.bestandsauskunft(
+        "Was haben wir zum Thema Heiligenhaus?", namen, bereich="kap") or ""
+    pruefe("277128" in nurtitel,
+           "ein reiner Titeltreffer geht nicht verloren")
+
+
+def szenario_67_abgerissener_verweis():
+    print("\n[67] Ein mitten im Verweis abgerissener Text wird sauber beendet")
+    # ⛔ 08.10. (Bildschirmfoto): Die Vergleichsantwort riss an der
+    #   Laengengrenze (KI4KI_ANTWORT_TOKEN=2048) mitten in der Adresse
+    #   ab: "[… , S. 1](/stelle?dok=kap-Johnson-Electric-276684-Angebot-"
+    #   Die Oberflaeche stellt das als nackten Text dar - der Nutzer
+    #   sieht eine Zeichenwueste statt eines Links und weiss nicht,
+    #   dass die Antwort unvollstaendig ist.
+    ab = ("Vergleich der Angebote:\n\n| A | B |\n|---|---|\n| x | "
+          "Zuerst Dichtheitstest [Johnson-276684-Angebot, S. 1]"
+          "(/stelle?dok=kap-Johnson-276684-Angebot-")
+    g = assistent.abgerissenes_ende_heilen(ab)
+    pruefe("](/stelle?dok=kap-Johnson-276684-Angebot-" not in g,
+           "die halbe Adresse steht nicht mehr da")
+    pruefe("abgeschnitten" in g,
+           "stattdessen steht da, dass die Antwort abgeschnitten wurde")
+
+    # Gegenproben: heile Texte bleiben unberuehrt
+    heil = ("Das steht so in [Johnson-276684-Angebot, S. 1]"
+            "(/stelle?dok=kap-Johnson-276684-Angebot&seite=1).")
+    pruefe(assistent.abgerissenes_ende_heilen(heil) == heil,
+           "ein vollstaendiger Verweis bleibt unangetastet")
+    klammer = "Siehe den [Anhang] am Ende."
+    pruefe(assistent.abgerissenes_ende_heilen(klammer) == klammer,
+           "eine eckige Klammer im Fliesstext ist kein Verweis")
+    ohne = "Eine ganz normale Antwort ohne Verweise."
+    pruefe(assistent.abgerissenes_ende_heilen(ohne) == ohne,
+           "Text ohne Klammern bleibt gleich")
+    pruefe(assistent.abgerissenes_ende_heilen("") == ""
+           and assistent.abgerissenes_ende_heilen(None) in ("", None),
+           "leer und None stuerzen nicht ab")
+    # auch die Form, die vor dem schliessenden ] abreisst
+    halb = "Zuerst Dichtheitstest [Johnson-276684-Angebot, S. 1"
+    pruefe("abgeschnitten" in assistent.abgerissenes_ende_heilen(halb),
+           "auch der Abriss vor der schliessenden Klammer wird geheilt")
+
+    # ⛔ 08.10. (Pruefer): Die erste Fassung schnitt HEILE Antworten ab,
+    #   sobald hinter dem letzten Verweis noch Text mit einer runden
+    #   Klammer stand - "(netto)", "(vgl. …)", "(siehe oben)". Deutsche
+    #   Fliesstexte machen das staendig. Der Nutzer verlor den
+    #   Schlusssatz und bekam eine Abschneide-Meldung, die nicht stimmt.
+    # ⛔ Pruefer 08.10.: Die Heilung war im Proxy verdrahtet, aber keine
+    #   Pruefung sah das - sie haette eine nie laufende Funktion
+    #   geprueft. Der Quelltext des Proxys wird deshalb mitgelesen; so
+    #   macht es szenario_32 fuer _mehrfachauftrag auch.
+    _pp = os.path.join(HIER, "pruef_proxy.py")
+    _quelle = open(_pp, encoding="utf-8").read()
+    pruefe("assistent.abgerissenes_ende_heilen(text)" in _quelle,
+           "die Heilung ist im Proxy wirklich verdrahtet")
+    _a = _quelle.find("abgerissenes_ende_heilen")
+    _b = _quelle.find('text += "\\n\\n*" + " · ".join(fuss)')
+    pruefe(0 <= _a < _b, "und zwar VOR der Fusszeile")
+
+    for x in ('Das steht in [Angebot 276596, S. 1](/stelle?dok=x&seite=1)'
+              ' (vgl. Tabelle 2).',
+              'Zuerst der Dichtheitstest [Johnson, S. 1](/pdf/J), danach'
+              ' die Messung (siehe oben).',
+              'Beide nennen den Test [A](/pdf/A). Der Preis liegt bei'
+              ' 12 000 EUR (netto).',
+              '| [A](/pdf/A) | Kleben (Teil 2) |',
+              'Laut [A](/pdf/A) bestanden, am 3. Mai (nach Rueckfrage)'
+              ' bestaetigt.',
+              'Siehe Fussnote [1] und die Tabelle (oben).',
+              'Verschachtelt: [A](/pdf/A?x=(1)) und danach Text (Ende).'):
+        pruefe(assistent.abgerissenes_ende_heilen(x) == x,
+               "heiler Text bleibt unangetastet: %r" % x[-34:])
+
+
+def szenario_68_katalogweg_behaelt_die_spalten():
+    print("\n[68] Der Katalogweg zeigt dieselbe Spaltenansicht wie der Index")
+    # ⛔ 08.10. (Pruefer): Seit der Dateiname mitgesucht wird, antwortet
+    #   der Katalogweg viel oefter - und seine Tabelle hat nur fuenf
+    #   Spalten (Kennung, Titel, Verfasser, Jahr, gefunden ueber). Es
+    #   fehlen Kategorie, Themen und Datei samt der Legende zu ° und *.
+    #   Die Zusage vom 26.08. lautet: "diese Spaltenansicht soll er
+    #   immer machen, in jedem Workspace, quasi ein Index".
+    import bestand
+    namen = ["Kiekert-AG-273009-Zwischenergebnis-1.md",
+             "Kiekert-AG-273182-Vorarbeit.md",
+             "Vossloh-275269-Angebot.md"]
+    for n, v in (("Kiekert-AG-273009-Zwischenergebnis-1",
+                  {"titel": "Zwischenergebnis 3", "verfasser": "R. Roth",
+                   "jahr": "2023", "kategorie": "Protokoll/Bericht",
+                   "themen": ["Schliesssysteme", "POM"]}),
+                 ("Kiekert-AG-273182-Vorarbeit",
+                  {"titel": "Vorarbeit zum Folgeprojekt", "jahr": "2021",
+                   "kategorie": "Angebot", "themen": ["TGA-DSC"]}),
+                 ("Vossloh-275269-Angebot",
+                  {"titel": "Angebot Nr. 275269b", "jahr": "2021",
+                   "kategorie": "Angebot"})):
+        bestand.eintragen(n, v, quelle="aufnahme")
+    text = assistent.bestandsauskunft(
+        "Welche Dokumente haben wir von Kiekert", namen, bereich="kap",
+        zusatz={"Kiekert-AG-273009-Zwischenergebnis-1": "Bericht · PDF · 12 S."}) or ""
+    for spalte in ("Kategorie", "Themen", "Datei"):
+        pruefe("| %s |" % spalte in text,
+               "die Spalte %s steht in der Tabelle" % spalte)
+    pruefe("Bericht · PDF · 12 S." in text,
+           "die Angabe des Proxys steht in der Datei-Spalte")
+    pruefe("Schliesssysteme" in text, "die Themen stehen da")
+    pruefe("Gefunden über" in text,
+           "und es steht weiter da, WARUM etwas getroffen wurde")
+    pruefe("Vossloh" not in text, "der fremde Kunde bleibt draussen")
+
+
+def szenario_69_ohne_titel_und_ohne_falschen_nenner():
+    print("\n[69] Katalogeintrag ohne Titel, und kein Nenner der falschen Menge")
+    import bestand
+    # ⛔ Pruefer 08.10.: Der Zweig "Eintraege ohne Katalogtitel nicht
+    #   mehr ueberspringen" war ungedeckt - die vorhandene Pruefung lief
+    #   am Dateinamen-Zweig vorbei und erreichte ihn nie. Hier traegt
+    #   der NAME das Stichwort NICHT, nur das Katalogfeld "themen", und
+    #   ein Titel fehlt (frisch aufgenommen, Deckblatt noch nicht
+    #   gelesen).
+    bestand.eintragen("AB-01", {"themen": ["Kleben"]}, quelle="aufnahme")
+    bestand.eintragen("AB-02", {"themen": ["Fraesen"]}, quelle="aufnahme")
+    tr = assistent._katalog_treffer("Kleben", ["AB-01", "AB-02"])
+    pruefe([n for n, _a, _g in tr] == ["AB-01"],
+           "ein Eintrag ohne Titel wird ueber seine Themen gefunden")
+
+    # ⛔ Pruefer 08.10.: Im Kombi-Weg (Art + Stichwort) nannte die
+    #   Fussnote den Nenner der ART statt des Bereichs - "von insgesamt
+    #   5 Dokumenten" bei 9 Dokumenten im Bereich. Die Bedingung
+    #   "not gattung" war von keiner Pruefung gedeckt.
+    diss = []
+    for i in range(5):
+        k = "DS-24-%03d" % i
+        diss.append(k)
+        bestand.eintragen(k, {"titel": ("Kleben von PA6" if i < 2
+                                        else "Extrusion von PP %d" % i),
+                              "verfasser": "A. Autor", "jahr": "2024"},
+                          quelle="aufnahme")
+    rest = ["Vossloh-275269-Angebot.md", "Kiekert-273009-Bericht.md",
+            "Johnson-276596-Angebot.md", "WILO-274001-Rechnung.md"]
+    for n in rest:
+        bestand.eintragen(n, {"titel": n[:-3]}, quelle="aufnahme")
+    text = assistent.bestandsauskunft(
+        "Welche Dissertationen haben wir zum Thema Kleben?",
+        diss + rest, bereich="kap") or ""
+    pruefe("von insgesamt" not in text,
+           "im Kombi-Weg steht kein Nenner der falschen Menge")
+    pruefe("Kleben" in text, "das Thema steht trotzdem in der Ueberschrift")
 
 
 def deckblatt_am_modell(runden=3):
@@ -3185,7 +3542,13 @@ if __name__ == "__main__":
               szenario_60_katalogtreffer_zahlen_stimmen,
               szenario_61_kategorie_auch_ueber_den_titel,
               szenario_62_keine_harte_fehlanzeige_und_kein_wust,
-              szenario_63_zwei_hinweise_und_der_rest_der_tabelle):
+              szenario_63_zwei_hinweise_und_der_rest_der_tabelle,
+              szenario_64_was_haben_wir_von_x,
+              szenario_65_vorspann_nur_wenn_eine_liste_folgt,
+              szenario_66_der_dateiname_wird_mitgesucht,
+              szenario_67_abgerissener_verweis,
+              szenario_68_katalogweg_behaelt_die_spalten,
+              szenario_69_ohne_titel_und_ohne_falschen_nenner):
         try:
             s()
         except Exception as e:
