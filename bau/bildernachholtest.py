@@ -370,6 +370,56 @@ def fall_11_abbildungen_in_dokumenten_eine_schwelle_eine_bedingung():
            "und die Bedingung lautet genau: return bilder === 'aus';")
 
 
+
+def fall_12_neue_dateien_gehoeren_nicht_root():
+    print("\n[12] Neue Dateien gehoeren dem Bereich, nicht root")
+    # ⛔ 08.10. gemessen: ki4ki-pruef-proxy laeuft OHNE user: in der
+    #   Compose, also als root. dokumente/ gehoert auf dem Host
+    #   emanager:emrach (2775). Ohne Angleichung gehoerten die 3.671
+    #   neuen Dateien root - und der Mensch, der sie spaeter verschiebt
+    #   oder aufraeumt, ist es nicht. Das faellt erst um zwei Uhr
+    #   nachts auf, mitten im Lauf.
+    with tempfile.TemporaryDirectory() as w:
+        b = _bereich(w)
+        ziel = os.path.join(b, "neu.md")
+        open(ziel, "w").write("x")
+        gerufen = []
+
+        erg = bn.besitz_angleichen(ziel, b,
+                                   chown=lambda p, u, g: gerufen.append((p, u, g)))
+        s = os.stat(b)
+        pruefe(erg is True, "die Angleichung meldet Erfolg")
+        pruefe(gerufen == [(ziel, s.st_uid, s.st_gid)],
+               "sie nimmt Benutzer und Gruppe des BEREICHSORDNERS\n"
+               "           (ist: %r, erwartet %r)"
+               % (gerufen, [(ziel, s.st_uid, s.st_gid)]))
+
+        def _weigert(p, u, g):
+            raise PermissionError("nicht erlaubt")
+        pruefe(bn.besitz_angleichen(ziel, b, chown=_weigert) is False,
+               "darf sie nicht, bricht sie NICHT den Lauf ab")
+        pruefe(bn.besitz_angleichen(ziel, os.path.join(w, "gibtsnicht"),
+                                    chown=lambda *a: None) is False,
+               "fehlt das Vorbild, ebenfalls kein Abbruch")
+
+    # Und sie wird im Lauf auch wirklich benutzt.
+    with tempfile.TemporaryDirectory() as w:
+        b = _bereich(w)
+        _bild(os.path.join(b, "parkplatz", "A.jpg"))
+        gesehen = []
+        echt = bn.besitz_angleichen
+        bn.besitz_angleichen = lambda pfad, vorbild, **k: (
+            gesehen.append(os.path.basename(pfad)) or True)
+        try:
+            bn.nachholen(w, "kap", senden=lambda a: BESCHREIBUNG)
+        finally:
+            bn.besitz_angleichen = echt
+        pruefe("A.md" in gesehen,
+               "die Markdown-Datei wird angeglichen (ist: %r)" % gesehen)
+        pruefe("metadaten.json" in gesehen,
+               "die metadaten.json auch - sonst sperrt sie sich selbst aus")
+
+
 if __name__ == "__main__":
     for f in (fall_1_nur_bilder_und_nur_aus_den_quellen,
               fall_2_grosse_bilder_werden_verkleinert_nicht_uebersprungen,
@@ -381,7 +431,8 @@ if __name__ == "__main__":
               fall_8_ein_fehler_hinterlaesst_keine_halbe_datei,
               fall_9_leere_antwort_gilt_nicht_als_beschreibung,
               fall_10_probe_mischt_die_groessen,
-              fall_11_abbildungen_in_dokumenten_eine_schwelle_eine_bedingung):
+              fall_11_abbildungen_in_dokumenten_eine_schwelle_eine_bedingung,
+              fall_12_neue_dateien_gehoeren_nicht_root):
         try:
             f()
         except Exception as e:

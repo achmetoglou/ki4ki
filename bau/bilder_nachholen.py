@@ -181,6 +181,29 @@ def metadaten_ergaenzen(datei, kennung, modell):
     os.replace(vorlaeufig, datei)
 
 
+def besitz_angleichen(pfad, vorbild, chown=os.chown):
+    """Neue Dateien bekommen Benutzer und Gruppe des Bereichsordners.
+
+    ⛔ 08.10. gemessen: ki4ki-pruef-proxy hat kein `user:` in der Compose,
+      laeuft also als root. Der Ordner dokumente/ gehoert auf dem Host
+      emanager:emrach (2775). Ohne diese Zeile gehoerten die 3.671 neuen
+      Dateien root - und wer sie spaeter verschiebt oder aufraeumt, ist
+      nicht root. Das faellt erst mitten im Lauf auf.
+
+    ⚠ Scheitert sie, ist das kein Grund abzubrechen: eine Datei mit dem
+      falschen Besitzer ist besser als keine Beschreibung.
+    """
+    try:
+        s = os.stat(vorbild)
+    except OSError:
+        return False
+    try:
+        chown(pfad, s.st_uid, s.st_gid)
+        return True
+    except Exception:
+        return False
+
+
 def probe_waehlen(bilder, wieviele):
     """Eine Auswahl, die die GROESSENSPANNE abdeckt.
 
@@ -262,7 +285,10 @@ def nachholen(wurzel, bereich, senden, quellen=QUELLEN, ziel=ZIELORDNER,
             with open(md + ".neu", "w", encoding="utf-8") as f:
                 f.write(text)
             os.replace(md + ".neu", md)
+            besitz_angleichen(md, bereichsordner)
+            besitz_angleichen(zielordner, bereichsordner)
             metadaten_ergaenzen(metadatei, kennung, modell)
+            besitz_angleichen(metadatei, bereichsordner)
             bericht["fertig"] += 1
             bericht["bytes"] += len(jpeg)
         except Exception as e:
