@@ -3724,3 +3724,141 @@ kann nichts erfinden. *"Agent complete"* = Sprachmodell, Minuten, kann erfinden.
    gesetzt ist (`_treffer_im_katalog`).
 9. Parkplatz: rund 950 aufnehmbare Dokumente, drei weitere Portionen. Der
    Eingang ist leer; es laeuft nichts.
+
+---
+
+## §12 · Stand 08.10. (nachmittags) — die abgeschnittenen Tabellen
+
+Commit `6605288`. Emrach hatte das **mehrfach** gemeldet, zuletzt mit vier
+Bildschirmfotos; woertlich steht es schon weiter oben in dieser Datei
+(„ausserdem schneidet die Tabelle rechts ab"). Es war nie repariert.
+
+### Die Ursache lag nicht bei uns
+
+Ich habe zuerst im Python nach Zeilen-Deckeln gesucht — falsche Spur. Die
+Tabellen sind nicht nach UNTEN gekuerzt, sondern nach RECHTS abgeschnitten.
+Gemessen an der `index.css` der laufenden Anlage
+(`curl http://127.0.0.1:3001/index.css`, Stelle 180237):
+
+```css
+.markdown table{width:100%;border-collapse:collapse;color:#bdbdbe;
+                font-size:13px;margin:30px 0;border-radius:10px;
+                overflow:hidden;font-weight:400}
+```
+
+Oberste Ebene, kein `@media`, Spezifitaet (0,1,1). Das `overflow:hidden`
+macht die Tabelle zu einem Kasten, der alles wegschneidet, was nicht
+hineinpasst — und eine Tabelle schrumpft nie unter ihre Mindestbreite.
+Bei acht Spalten fielen „Themen" (halb) und „Datei" (ganz) heraus.
+
+⚠ **Nicht geraten, aber auch nicht geklaert: WARUM das dort steht.** Die
+naheliegende Erklaerung „wegen `border-radius`" traegt nicht — der Pruefer
+hat gemessen, dass `.markdown table` weder Hintergrund noch Aussenrahmen
+hat, die runden Ecken waren nie zu sehen. Das aendert nichts an der
+Wirkung, nur an der Begruendung.
+
+⭐ **Der Vorfahre ist unschuldig.** Aus dem Buendel rekonstruiert:
+`#chat-history.markdown` → `div.max-w-[750px]` → … → `span.flex.flex-col`
+→ `<table>`. **Kein `overflow:hidden` in dieser Kette.** `#chat-history`
+traegt `overflow-y-scroll` **plus** `no-scroll` (Rollbalken unsichtbar) —
+das erklaert zusaetzlich, warum Emrach „ohne Rollbalken" meldet.
+Die Klasse `markdown` wird im ganzen Buendel an genau zwei Stellen
+gesetzt: `#chat-history` und zwei `div`s in `RunDetailPage`. **Keine
+Einstellungsseite traegt sie** — die Regel kann dort nichts treffen.
+
+### Die Reparatur
+
+Die Oberflaeche gehoert uns nicht, der Weg dorthin schon: Der Proxy haengt
+vor `</body>` seinen `EINHAENGER` ein. Dort steht jetzt eine Gegenregel.
+
+```css
+.markdown table { display:block !important; max-width:100% !important;
+                  overflow:auto !important; }
+```
+
+Warum alle drei: Aus den Bildschirmfotos ist **nicht entscheidbar**, ob die
+Tabelle selbst abschneidet oder ein Kasten darueber — beides sieht gleich
+aus. `display:block` sorgt dafuer, dass die Tabelle nicht mehr herausragt
+(eine `<table>` mit `width:100%` darf das, ein Block nicht), `overflow:auto`
+macht den Rest rollbar. Damit sind beide Faelle gedeckt.
+
+⚠ **Nebenwirkung, bewusst:** Eine schmale Tabelle dehnt sich nicht mehr auf
+die volle Spaltenbreite, sondern ist nur so breit wie ihr Inhalt.
+
+Zweitens: `abgerissenes_ende_heilen` wurde an **genau einer** Stelle
+aufgerufen (Gespraechsweg, `pruef_proxy.py:8412`). `_modell_fragen` ging
+daran vorbei — und darueber laufen Vergleich, Zusammenfassung, Kennwerte
+und E2B. Dort endete eine abgerissene Tabelle **voellig stumm**.
+`_modell_fragen` heilt jetzt selbst.
+
+Drittens: Der HTML-Zweig aus `_weiterleiten` ist als `seite_ergaenzen()`
+herausgezogen, damit das ERGEBNIS pruefbar ist statt der Schreibweise.
+
+### Was der Pruefer gefunden hat — vier echte Loecher, drei in MEINEN Pruefungen
+
+| # | Angriff | Ergebnis vorher | behoben durch |
+|---|---|---|---|
+| 1 | Heilung berechnen und **wegwerfen** (`_egal = …; return _text`) | 775 gruen | Attrappe fuer `ollamaruf.fragen`, Pruefung am **Rueckgabewert** |
+| 2 | Einhaengen zu totem Code (`if False and …`) | 775 gruen | `seite_ergaenzen()` als Funktion, Pruefung am Ergebnis |
+| 3 | Regel in `@media (max-width: 0px)` verstecken | 775 gruen | Kommentare entfernen, **kein `@` im Block erlaubt** |
+| 4 | **E2B-Fail-safe abgeschaltet** (echter Schaden, nicht nur Pruefung) | — | `heilen=False` an sechs Stellen |
+
+⛔ **Nr. 4 ist der wichtigste und war mein Fehler, nicht der der Pruefung.**
+Die Heilung haengt einen Satz an und macht den Text **laenger**. Der E2B-Weg
+hat ein Laengentor als Fail-safe: `len(roh) < 25 → zurueck ans grosse
+Modell`. Gemessen: aus den 13 Zeichen `"Laut [Johnson"` werden geheilt 75 —
+das Tor laesst sie durch, und der Nutzer bekaeme eine **fertige Antwort,
+die aus nichts als der Abschneide-Meldung besteht.**
+
+⭐ **Regel daraus, im Code vermerkt:** `heilen=False`, wenn das Ergebnis
+geprueft, zerlegt, gespeichert oder weiterverarbeitet wird; `heilen=True`
+(Vorgabe) nur, wenn es dem Menschen gezeigt wird. Gesetzt bei:
+`nachtraege` (2x), `_rolle_festlegen` (wird GESPEICHERT), `_bild_beschreiben`
+(Tor 20…1200), `_e2b_antwort` (Tor <25), `_anhang_antwort`-Teilauftrag.
+
+⭐ **Das Muster der drei Pruefungs-Loecher:** Alle drei liessen sich nicht
+durch **Weglassen** austricksen (da wurden sie rot), sondern durch
+**Verlegen** — die Sache war noch da, nur an einer wirkungslosen Stelle.
+Eine Mutationsprobe, die nur loescht, findet das nicht.
+
+**785 Pruefungen, 0 Fehler** (vorher 763). Alle vier Angriffe nachgespielt,
+alle werden jetzt rot. Der Fehlalarm `auto!important` ohne Leerzeichen
+(gueltiges CSS) bleibt gruen.
+
+### ⛔ Was NICHT gemessen ist
+
+**Die Wirkung im echten Browser.** Weder hier noch beim Pruefer laeuft ein
+Browser: Playwright-Chromium liegt vor, startet aber nicht
+(`libatk-1.0.so.0: cannot open shared object file`). Damit ist **nicht
+gemessen**, ob die achte Spalte wirklich zurueckkommt und wie der
+Rollbalken aussieht. Der naechste Beleg ist Emrachs Bildschirmfoto.
+
+Wer es nachholen will, braucht einmal:
+`sudo apt install libatk1.0-0 libatk-bridge2.0-0 libatspi2.0-0 libxcomposite1 libxdamage1 libxfixes3 libxrandr2 libgbm1`
+
+### Offen — vom Sucher gefunden, heute NICHT angefasst
+
+1. ⭐ **Das Modell sieht nur 40 Dokumente und glaubt, das seien alle.**
+   `pruef_proxy.py:8053` und `gespraech.py:271` schneiden die Liste auf 40,
+   die Kopfzeile sagt `DOKUMENTE IM BEREICH (40)` — bei 845 Titeln eine
+   **falsche Gesamtzahl**. Baut das Modell daraus eine Liste, endet sie nach
+   40 Zeilen **ohne jeden Hinweis**. Wahrscheinlichster Weg fuer „die
+   Tabelle hoert einfach auf".
+2. **Das Werkzeugergebnis wird bei 20.000 Zeichen hart geschnitten**
+   (`gespraech.py:568/644/674`) — mitten in der Tabellenzeile, ohne Hinweis
+   fuer Modell oder Leser.
+3. **Die Spalte „Datei" ist ab dem 121. Namen leer**
+   (`pruef_proxy.py:8473`, `hoechstens=120`), und weil `_bestand_zusatz`
+   die **unsortierte** Bereichsliste bekommt, trifft es beliebige Zeilen.
+4. **`KI4KI_ANTWORT_TOKEN=2048` — Emrachs Entscheidung, nicht meine.**
+   In der Compose steht seine eigene Messung vom 23.09.: mit 4096 dauert
+   ein Zug bis zu 380 s, „keiner wartet so lange auf eine Antwort".
+   Deshalb bricht die Vergleichstabelle ab. Die saubere Loesung ist ein
+   Budget ueber den GANZEN Zug statt je Aufruf — steht so schon als
+   Kommentar in der Compose.
+5. `abschnitt_vermerken` fehlt in drei Pfaden (`gespraech.py:586/679/698`):
+   Zeitbudget erschoepft, Rundenlimit, Zweitversuch. Dort wird
+   `_abgeschnitten` nie gelesen.
+6. **Der Waechter fuer den Modellweg fehlt weiterhin** (§11 Punkt 1) —
+   keiner der drei Pruefer in `gespraech.waechter` schaut, ob die ENTITAET
+   aus der Frage im Werkzeugergebnis vorkommt.
