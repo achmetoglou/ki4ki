@@ -3862,3 +3862,150 @@ Wer es nachholen will, braucht einmal:
 6. **Der Waechter fuer den Modellweg fehlt weiterhin** (§11 Punkt 1) —
    keiner der drei Pruefer in `gespraech.waechter` schaut, ob die ENTITAET
    aus der Frage im Werkzeugergebnis vorkommt.
+
+---
+
+## §13 · Stand 08.10. (abends) — die Bilder, und der Zeitplan fuers Wochenende
+
+Commits `1199590` (Antwortlaenge) und `0b74f46` (Bilder).
+
+### ⛔ Der wichtigste Satz zuerst
+
+**Das Update muss HEUTE laufen, Donnerstag 08.10., bevor die KAP-Leute
+Zugang bekommen.** `./aktualisiere.sh` startet n8n und den Proxy neu. Am
+Freitag testen die Leute — ein Neustart mittendrin wirft laufende Fragen
+weg. Siehe die Hausregel „kein Neustart waehrend eines Tests".
+
+Zeitplan, von Emrach am 08.10. festgelegt:
+
+| Tag | Was |
+|---|---|
+| Do 08.10. | `aktualisiere.sh`, dann Zugang verteilen |
+| Fr 09.10. | **Testtag. Nichts anfassen.** Kein Neustart, kein Lauf auf der Karte. |
+| Sa 10.10. | Probelauf 50 Bilder, dann Volllauf |
+| So 11.10. | Einspielen, Schalter fuer Abbildungen IN Dokumenten |
+
+### Die Bilderfrage: zwei Vorhaben unter einem Wort
+
+**A · Freistehende Bilddateien** — das, was Emrach meint.
+
+Gemessen am 08.10. im Bereich kap:
+
+```
+3.671 Bilddateien   jpg 2.847 · tif 690 · jpeg 118 · tiff 9 · png 7
+11,3 GB             Mittel 3,15 MB, groesste 372,8 MB
+beschrieben         0
+aussortiert         257 mit Grund "Format nicht vorgesehen"
+Verteilung          parkplatz 3.438 · aussortiert 233 · archiv 0
+```
+
+⚠ Die Notiz in §8 nannte **3.496** — ueberholt, es sind 3.671.
+
+Sie sterben **zweimal**, beide Male vor Docling:
+1. `1_KI4KI-Masse-Ingest.json`, Knoten „Nur ein Bereich je Durchgang",
+   jsCode-Zeile 177: die Positivliste `VORGESEHEN` kennt keine Bildendung
+   → `NICHT_VORGESEHEN()` → die Datei wandert nach `aussortiert/`.
+2. Knoten „Dateien klassifizieren", jsCode-Zeile 251: `fileType =
+   'unsupported'` → `hochladen = false`.
+
+Und selbst wenn sie durchkaemen: Docling erkennt in einer `.jpg`
+**null** Bildmarken (BUGS_UND_FIXES.md §9b).
+
+**B · Abbildungen IN Dokumenten** — und hier liegt der unbemerkte Fehler.
+
+⛔ **`KI4KI_BILDBESCHREIBUNG` steht auf `aus`.** `docker-compose.yml:348`
+setzt `${KI4KI_BILDBESCHREIBUNG:-aus}`, und `~/ki4ki/.env` setzt sie
+nicht (selbst nachgelesen, 8 Zeilen, nicht dabei). Damit war **Commit
+`53edd7c` wirkungslos** — die Schwellensenkung 0,08 → 0,01, die 4.353
+zusaetzliche Abbildungen einfangen sollte, laeuft hinter einem Schalter,
+der aus ist. Es wurde keine einzige beschrieben.
+
+⚠ Direktbeweis fehlt: `docker inspect` auf den laufenden Container ist
+von der Sandbox gesperrt. Die Kette ist aber dicht (Compose-Vorgabe,
+`.env`, kein Override in `docker-compose.gpu.yml`, nichts in `.bashrc`).
+
+### Was gebaut ist
+
+`bau/bilder_nachholen.py` (+ `bau/bildernachholtest.py`, 48 Pruefungen).
+Laeuft **im Container ki4ki-pruef-proxy** — nur der hat Schreibrecht auf
+`/daten/eingang`, Pillow im Abbild und einen Weg zum Modell. Die Adresse
+kommt aus `KI4KI_MODELL`, sie wird nicht eingetragen.
+
+```
+docker cp bau/bilder_nachholen.py ki4ki-pruef-proxy:/tmp/
+docker exec ki4ki-pruef-proxy python3 /tmp/bilder_nachholen.py \
+        --bereich kap --probe 50          # Samstag frueh: messen
+docker exec ki4ki-pruef-proxy python3 /tmp/bilder_nachholen.py \
+        --bereich kap                     # Samstag abend: alles
+```
+
+Es startet **keine Aufnahme**. Die Markdown landen in
+`<bereich>/bilder-md/`, und am Ende nennt es den `mv`-Befehl.
+
+### Die Kennzeichnung (Emrachs Entscheidung, 08.10.)
+
+An **zwei** Stellen, weil eine nicht reicht:
+- Im Text ein Warnblock **vor** der Beschreibung — zitiert das Modell
+  spaeter eine Stelle aus der Mitte, steht der Satz darueber.
+- `"herkunft": "bildbeschreibung"` in der `metadaten.json`. Daraus baut
+  `metadaten.warnung()` eine Fusszeile, die bei **jeder** Antwort
+  erscheint, die so ein Dokument benutzt.
+
+### Laufzeit — die 2,0 s waren zu optimistisch
+
+| Quelle | je Bild | 3.671 Bilder |
+|---|---|---|
+| `BUGS_UND_FIXES.md:224` (Sonde, 160 Zeichen Antwort) | 2,0 s | 2,0 h |
+| `BUGS_UND_FIXES.md:246` (echter Docling-Weg) | 3,3 s | 3,4 h |
+| `nothink-proxy/proxy.py:35` (ohne Denken) | 16,7 s | 17,0 h |
+
+Belastbare Spanne **3,5–17 h**. Das Verkleinern auf 1280 px duerfte sie
+ans untere Ende druecken — gemessen ist das nicht, die echte Zahl steht
+nach dem Probelauf am Samstag.
+
+### Die Karte (08.10., 14:35)
+
+```
+43.920 / 46.068 MiB belegt, Last 0 %
+gemma4:12b   10,2 GB  dauerhaft   <- das Bildmodell, liegt schon da
+qwen3.8      14,3 GB  bis 09.10.  <- der CHAT, bleibt unbeeintraechtigt
+gemma4:e2b    2,4 GB  dauerhaft
+Docling      10,0 GB
+```
+
+⭐ Ein Nachhollauf **laedt nichts nach** — `gemma4:12b` ist das Bildmodell
+und liegt bereits im Speicher. Nur 2,1 GB frei: **kein zweites Modell
+dazuziehen**, genau das hat am 07.10. 75 Minuten Stillstand gemacht.
+⚠ Ollama serialisiert je Modell: waehrend ein Bild laeuft, warten
+Dokumentzusammenfassungen (`KI4KI_MODELL_NAME=gemma4:12b`). Der Chat auf
+`qwen3.8` ist davon nicht betroffen. Deshalb Wochenende.
+
+### Mit erledigt
+
+- Die drei Schwellenwerte standen auf drei Werten (wirksam 0.01,
+  `extract.sh`/`extract_gross.sh`/`bildmodell.json` auf 0.03). Jetzt
+  ueberall 0.01.
+- `bilder-nachholen.txt` haengt nicht mehr an `KI4KI_FORMELN`. Weil die
+  ebenfalls aus ist, landete **jedes** Dokument darauf — die Liste wuchs
+  von 97 auf **906 Zeilen** (667 eindeutig) und bedeutete nichts mehr.
+  ⚠ Sie hat weiterhin **keinen Verbraucher**: vier Stellen fassen sie an
+  (`pruef_proxy.py:559` loescht Zeilen, `:1030` ueberspringt sie,
+  `laufstand.py:22` schliesst sie aus, der Ablaufplan ebenso) — keine
+  arbeitet sie ab. Dazu **7 verirrte Kopien** in Unterordnern mit
+  52 Eintraegen, die der Aufraeumer nicht sieht.
+
+### Offen
+
+1. **Die Positivliste** (`jsCode:177`) um `jpg/jpeg/tif/tiff/png`
+   ergaenzen — **erst nach** dem Nachhollauf. Vorher ginge das Bild an
+   Docling, kaeme mit 11 Zeichen zurueck, fiele durch `MINDESTZEICHEN`
+   und landete wieder in `aussortiert/`. Dann auch
+   `bau/ablauf_pruefen.py:581` mitziehen (prueft heute ausdruecklich
+   `erg["Foto.jpg"]["nicht_vorgesehen"] is True`).
+2. `KI4KI_BILDBESCHREIBUNG=an` in `~/ki4ki/.env` — **nur Emrach**, ich
+   schreibe nicht auf dem Server. Wirkt nur fuer Neuaufnahmen; die 667
+   alten Dokumente braeuchten 12,7 h Neu-Einlesen.
+3. Ein **Verbraucher** fuer `bilder-nachholen.txt`, plus die 7 verirrten
+   Kopien einsammeln.
+4. Alles aus §12 bleibt offen — besonders die 40er-Liste, die dem Modell
+   vorgaukelt, der Bereich habe 40 Dokumente.
