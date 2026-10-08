@@ -3568,3 +3568,159 @@ Besser, aber fuer einen Test immer noch zu langsam. Zeitlimit: **240 s**
 - Eine Wache, die nur EIN Protokoll beobachtet, meldet Stillstand als
   Normalbetrieb. Meine Hintergrundwache sah nur n8n; der Ausfall stand im
   pruef-proxy. 55 Minuten lang "alles ruhig".
+
+---
+
+## 11 · Stand 08.10.: Bestandsfragen verlassen den Katalog nicht mehr
+
+Zwei Commits: **`8b3fd73`** (drei Chatfehler) und **`33d22f1`** (vier weitere,
+nach einem zweiten Chat-Test). Beide auf `pfad-identitaet`, beide gepusht.
+
+### Die Zahlen des Bereichs `kap`, am 08.10. nachgemessen
+
+| | |
+|---|---|
+| Dateien | **916** |
+| verschiedene Titel | **845** |
+| Titel mit mehreren Dateien | **51** (31× doppelt, 20× dreifach) |
+| fehlende Listenzeilen | **71** |
+| Katalogeintraege gesamt | 1034 (umfasst mehr als `kap`) |
+
+Kunden nach Titel: Kiekert 294 · Bosch 275 · WILO 103 · Johnson 89 ·
+Vossloh 67 · Veritas 54 · Lanxess 31 · **Siemens 0** · **Daimler 0**.
+Auftrag 276596: 19 Dateien. Geheimhaltung/NDA/Confidential: 11 Dateien,
+aber nur **3** als Kategorie `Geheimhaltungsvereinbarung` gefuehrt — die
+uebrigen als `Vertrag/Vereinbarung`. Titel mit echten Umlauten: **0**.
+
+### Was repariert wurde
+
+**Aus dem ersten Test (`8b3fd73`):**
+1. `_stichwort_aus` lieferte `"Auftrag 276596 bei Johnson Electric"` als EIN
+   Stichwort (Zeichenklasse enthaelt `\s`, Anker auf `$`), danach woertliche
+   Suche → "finde keinen Titel und kein Thema" fuer 19 vorhandene Dokumente.
+2. `"fuer <Kunde>"` wurde nicht erkannt, `_liste_nach_art` filterte nur nach
+   Kategorie → "Angebote fuer Vossloh" lieferte alle 156.
+3. ⭐ **Ein fuehrendes Anfuehrungszeichen** liess `ist_bestandsfrage_unscharf`
+   auf False kippen. Die Frage kam laut Protokoll als
+   `'„Zeig mir alle Geheimhaltungsvereinbarungen."\n\n'` an, ging deshalb an
+   das Sprachmodell, brauchte 192 s und enthielt **zwei erfundene Zeilen** —
+   mit einem echten Kuerzel vom Johnson-NDA darauf.
+4. `_BESTAND_OBJEKT` kannte das Wort "Projekte" nicht → "Welche Projekte haben
+   wir mit Siemens gemacht" kam als Kiekert-Tabelle zurueck.
+
+**Aus dem zweiten Test (`33d22f1`):**
+5. `"Was haben wir von Februar?"` ging ans Modell; der Browser schloss nach
+   13 s, der Proxy starb mit `BrokenPipeError` in `_stand_weg`. Der Nutzer sah
+   "Could not respond to message".
+6. Der Vorspann kuendigte "deshalb stehen hier alle Dissertationen" an, und
+   darunter stand "Ich finde keine Dissertationen".
+7. ⭐ **`_katalog_treffer` durchsuchte den Dokumentnamen nicht** — nur Titel,
+   Themen, Methoden, Gebiet, Kurzfassung. Der Kunde steht aber nur im Namen:
+   die Datei heisst `Kiekert-AG-273009-Zwischenergebnis`, der lesbare Titel
+   `Zwischenergebnis 3 des Projektes 273009c`. Gemessen: Kiekert 294 → gefunden
+   66; Lanxess 31 → 3; Auftrag 276596 bei Johnson 19 → 2. Weil der Katalog ein
+   paar Treffer lieferte, kehrte die Auskunft sofort zurueck und erreichte die
+   Namenssuche nie.
+8. An der Laengengrenze (`KI4KI_ANTWORT_TOKEN=2048`) riss die Antwort mitten im
+   Verweis ab; die Oberflaeche zeigte die halbe Adresse als nackten Text.
+
+### Die Grundregel, aus fuenf Pruefrunden entstanden
+
+> **Eine Eingrenzung grenzt ein — oder sie tritt beiseite und sagt das.
+> Nie ein "nichts" auf vorhandene Dokumente.**
+
+Ein Stichwort aus "zum Thema X" ist gemeint, ein Name aus "von/mit/bei X" ist
+GERATEN. Trifft ein geratener nichts, erscheint der Bestand mit Vorspann statt
+einer Fehlanzeige — sonst antwortet "Was haben wir von Februar?" mit "nichts",
+obwohl 916 Dokumente dastehen.
+
+### ⚠ Elf Rueckschritte, alle selbst eingebaut, alle von Pruefern gefunden
+
+Die wichtigsten, als Warnung fuer die naechste Sitzung:
+- **Die Heilung amputierte VOLLSTAENDIGE Antworten**, sobald hinter dem letzten
+  Verweis Text mit runder Klammer stand — "(netto)", "(vgl. Tabelle 2)",
+  "(siehe oben)". Fuenf von fuenfzehn geprueften heilen Saetzen. Haette jede
+  Fachantwort beschnitten.
+- **Wortanfang fuer JEDEN Begriff** (gegen Teilketten-Fehltreffer) kostete neun
+  Treffer, weil deutsche Zusammensetzungen das Suchwort HINTEN tragen:
+  "Werkstoffpruefung" fiel von 1 auf 0 Treffer. Grenze liegt jetzt bei vier
+  Zeichen — bis vier nur am Wortanfang, ab fuenf als Teilkette.
+- **Die Weiche war zu weit** und machte aus fuenf Inhaltsfragen Bestandslisten
+  ("von Becker gelernt", "mit Becker besprochen"). Der Eigenname zaehlt dort
+  jetzt nur, wenn er den Satz beendet.
+- **Zwei Reparaturen waren ungedeckt**: die Verdrahtung der Heilung im Proxy und
+  der Zweig "Eintrag ohne Katalogtitel" liessen sich ersatzlos entfernen, ohne
+  dass eine Pruefung rot wurde.
+
+### ⛔ Die Messfalle, die dreimal in zwei Tagen zugeschlagen hat
+
+**Richtig gemessen, falsches Artefakt.** Drei Faelle:
+1. `docker logs -t` druckt UTC, `--since` nimmt Lokalzeit (07.10.).
+2. `bestandsauskunft` direkt aufgerufen und damit die WEICHE uebersprungen, die
+   versagte — der Trockenlauf war fuer genau den gemeldeten Fehler wertlos.
+3. `einordnen()` IM CONTAINER gemessen (Auffangnetz AN → "bestand") und daraus
+   auf die Lage ohne Netz ("normal") geschlossen. Die falsche Begruendung stand
+   schon als Kommentar im Code.
+
+Ausserdem: `bestand.angaben()` liefert **nichts**, solange `bereiche_setzen()`
+nicht gelaufen ist. Eine Messung in einem frischen Prozess meldete deshalb
+"915 von 916 ohne Katalogeintrag" — richtig sind **0**.
+
+### Pruefstand
+
+```
+617 Pruefungen (07.10. frueh)  →  763 (08.10.), 0 Fehler
+kategorietest, anhangtest, fusszeilentest, gespraechtest, rollentest,
+schluesselwege_test, ollamaruftest  je 0 Fehler
+schluesseltest.py und absichttest.py brauchen Bestand bzw. Netz — schon am
+HEAD rot, nicht zu werten.
+```
+
+Neue Faelle: `szenario_52` bis `szenario_69` in `pruef-proxy/dialogtest.py`.
+
+### Testfragen fuer den naechsten Chat-Test (Erwartung gemessen)
+
+Erkennungsmerkmal: 📇 *"Direkt aus dem Katalog zusammengestellt"* = Sekunden,
+kann nichts erfinden. *"Agent complete"* = Sprachmodell, Minuten, kann erfinden.
+
+| Frage | Erwartung |
+|---|---|
+| `Welche Dokumente haben wir` | 916 / 845 / 51 / 71 |
+| `Welche Unterlagen gibt es zum Auftrag 276596 bei Johnson Electric?` | 19 |
+| `Wie viele Angebote haben wir für Vossloh` | 21, nur Vossloh |
+| `„Zeig mir alle Geheimhaltungsvereinbarungen."` ⚠ mit Zitatzeichen | 8, davon 5 ueber den Titel |
+| `Welche Projekte haben wir mit Siemens gemacht` | erst "zu Siemens nichts", dann der Bestand |
+| `Welche Dokumente haben wir von Kiekert` | **294** |
+| `Welche Unterlagen gibt es zu Lanxess` | **31** |
+| `Welche Rechnungen haben wir von Bosch` | 23 |
+| `Was haben wir von Februar?` | "nichts" + der Bestand, kein Absturz |
+| `Welche Normen gibt es für Prüfungen` / `für Pruefungen` | identisch |
+| `Wie viele Angebote haben wir für Daimler` | "nichts zu Daimler" + Gesamtzahl |
+
+### Was offen bleibt
+
+1. ⭐ **Der Waechter fuer den Modellweg fehlt.** `gespraech.waechter`
+   (`gespraech.py:541`) hat drei Pruefer — Bilder, Belege, "ohne Suche". Keiner
+   prueft, ob die ENTITAET aus der Frage im Werkzeugergebnis vorkommt. Das ist
+   der Mechanismus hinter den erfundenen Vossloh-Zeilen. **Naechster Schritt.**
+2. `Zitate 0/0` bei den meisten Modellantworten: die Belegpruefung schlaegt nur
+   WOERTLICHE Zitate nach. Umschriebener Text mit Seitenangabe wird nicht
+   geprueft — "steht in Dokument X, S. 1" heisst also nicht "geprueft".
+3. `KI4KI_ANTWORT_TOKEN=2048` — lange Antworten brechen weiter ab, jetzt mit
+   Hinweis statt als Zeichenwueste. Hochsetzen auf 4096 ist eine Entscheidung
+   des Betreibers (kostet Antwortzeit).
+4. `KI4KI_GESPRAECH_MODELL=gemma4:12b` — der Chat antwortet mit 12b, nicht mit
+   qwen3.8. `ollama show` sagt: qwen3.8 beherrscht Werkzeuge. Die Qualitaet im
+   Gespraechsmodus ist nie gemessen worden; `gespraechtest.py` waere der Weg.
+   Umstellen wuerde rund 11,4 GB Grafikspeicher freigeben.
+5. Docling haelt weiter 10 GB, entgegen dem eigenen Kommentar in
+   `docker-compose.gpu.yml`.
+6. Der Hintergrundjob "Belegpruefung vorwaermen" liest jede Minute drei
+   Dokumente und lief am 08.10. mit **2167 offen** — rund acht Stunden
+   Dauerlast parallel zu jedem Chat.
+7. Die Kategorienliste `/daten/eingang/kap/kategorien.txt` kennt weder "Angebot"
+   noch "Geheimhaltungsvereinbarung", obwohl Dokumente so einsortiert sind.
+8. Vorbestehend: `**1 Dissertationen**` — die Einzahl fehlt, wenn `gattung`
+   gesetzt ist (`_treffer_im_katalog`).
+9. Parkplatz: rund 950 aufnehmbare Dokumente, drei weitere Portionen. Der
+   Eingang ist leer; es laeuft nichts.
