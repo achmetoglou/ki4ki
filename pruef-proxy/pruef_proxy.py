@@ -3282,6 +3282,61 @@ STELLE = """<!doctype html>
 # beim Durchreichen um dieses Skript ergaenzt: Es erkennt Eintraege der
 # Form "NAME.pdf . Seite 13" und macht sie anklickbar.
 EINHAENGER = """
+<style>
+/* ⛔ 08.10. (Emrach, mehrfach gemeldet, zuletzt mit drei Bildschirm-
+   fotos; woertlich schon am 30.09.: "ausserdem schneidet die Tabelle
+   rechts ab"): Die Index-Tabelle hat acht Spalten. Im Chat waren sechs
+   zu sehen - "Themen" halb, "Datei" gar nicht. Kein Rollbalken, kein
+   Hinweis: der Inhalt war WEG.
+
+   Ursache, gemessen an der ausgelieferten index.css der laufenden
+   Anlage (curl http://127.0.0.1:3001/index.css):
+
+       .markdown table { width:100%; border-collapse:collapse;
+                         border-radius:10px; overflow:hidden; ... }
+
+   Das "overflow:hidden" steht dort NUR, damit die runden Ecken sauber
+   beschnitten werden. Es macht die Tabelle damit zugleich zu einem
+   Kasten, der alles wegschneidet, was nicht hineinpasst - und eine
+   Tabelle schrumpft nicht unter ihre Mindestbreite.
+
+   "auto" statt "hidden" macht aus dem Abschnitt einen Rollbereich:
+   nichts geht verloren, die runden Ecken bleiben. Es ist dieselbe
+   Eigenschaft, die heute schon abschneidet - der Kasten rollt also
+   sicher, sonst koennte er auch nicht beschneiden.
+
+   !important, weil die Regel der Anlage dieselbe Staerke hat
+   (.markdown table). Heute gaebe die Reihenfolge den Ausschlag - wir
+   haengen hinter dem Stylesheet ein. Das kann sich mit dem naechsten
+   Abbild aendern, und dann waere der Fehler still zurueck.
+
+   ⛔ Aus den Bildschirmfotos ist NICHT entscheidbar, ob die Tabelle
+   selbst abschneidet oder ein Kasten darueber - beides sieht gleich aus.
+   Eine Regel, die nur einen der beiden Faelle trifft, waere ein zweiter
+   Fehlschlag beim Nutzer. Diese deckt beide:
+
+     display:block    Eine <table> mit width:100% DARF breiter werden als
+                      ihr Kasten - unter ihre Mindestbreite schrumpft sie
+                      nie. Ein Block darf das nicht.
+     max-width:100%   Damit die Begrenzung ueberhaupt greift.
+     overflow:auto    Was dann noch nicht hineinpasst, wird rollbar
+                      statt weggeschnitten.
+
+   Zusammen: die Tabelle ragt nicht mehr heraus (also kann auch kein
+   Kasten darueber sie beschneiden) UND sie rollt selbst.
+
+   ⚠ Nebenwirkung, bewusst in Kauf genommen: Eine SCHMALE Tabelle
+   dehnt sich nicht mehr auf die volle Spaltenbreite, sondern ist nur so
+   breit wie ihr Inhalt. Der Preis dafuer, dass nichts mehr verschwindet.
+
+   ⛔ Die Oberflaeche gehoert uns nicht. Der Weg dorthin schon: Diese
+   Regel reist mit dem Proxy mit und ueberlebt jedes AnythingLLM-Update. */
+.markdown table {
+  display: block !important;
+  max-width: 100% !important;
+  overflow: auto !important;
+}
+</style>
 <script>
 (function () {
 // ⚠ Die alte Zeichenklasse kannte KEIN Leerzeichen.
@@ -5583,6 +5638,21 @@ def quellen_veredeln(quellen):
     return quellen
 
 
+def seite_ergaenzen(seite):
+    """Den EINHAENGER in eine ausgelieferte HTML-Seite setzen.
+
+    ⛔ 08.10. (Pruefer): Vorher stand das mitten in _weiterleiten, und
+      die Pruefung konnte nur im Quelltext nachsehen, ob der Ausdruck
+      'EINHAENGER + "</body>"' dort vorkommt. Ein `if False and ...`
+      davor - also ein Proxy, der auf KEINE Seite mehr etwas einhaengt -
+      liess alle 775 Pruefungen gruen. Als eigene Funktion laesst sich
+      das ERGEBNIS pruefen statt der Schreibweise.
+    """
+    if "</body>" in seite:
+        return seite.replace("</body>", EINHAENGER + "</body>", 1)
+    return seite + EINHAENGER
+
+
 class Griff(BaseHTTPRequestHandler):
     protocol_version = "HTTP/1.1"
 
@@ -5642,12 +5712,7 @@ class Griff(BaseHTTPRequestHandler):
                 if "text/html" in art:
                     daten = r.read()
                     try:
-                        seite = daten.decode("utf-8")
-                        if "</body>" in seite:
-                            seite = seite.replace("</body>",
-                                                  EINHAENGER + "</body>", 1)
-                        else:
-                            seite += EINHAENGER
+                        seite = seite_ergaenzen(daten.decode("utf-8"))
                         daten = seite.encode("utf-8")
                     except UnicodeDecodeError:
                         pass
@@ -6561,7 +6626,7 @@ class Griff(BaseHTTPRequestHandler):
         try:
             for _n in nachtraege(
                     art, frage, roh, quellen,
-                    modell=lambda a: self._modell_fragen(a, 120),
+                    modell=lambda a: self._modell_fragen(a, 120, heilen=False),
                     pruefungen=pruefungen, geprueft=geprueft):
                 geprueft += "\n\n" + _n
         except Exception:
@@ -7253,7 +7318,7 @@ class Griff(BaseHTTPRequestHandler):
             # unbemerkt bleibt.
             zusatz.extend(nachtraege(
                 art, frage_roh, roh, antwort.get("sources") or [],
-                modell=lambda a: self._modell_fragen(a, 120),
+                modell=lambda a: self._modell_fragen(a, 120, heilen=False),
                 pruefungen=pruefungen,
                 geprueft=antwort.get("textResponse") or ""))
             if zusatz:
@@ -7353,7 +7418,8 @@ class Griff(BaseHTTPRequestHandler):
         except Exception:
             return MODELL_NAME
 
-    def _modell_fragen(self, auftrag, zeitgrenze=900, modell=None, denken=False):
+    def _modell_fragen(self, auftrag, zeitgrenze=900, modell=None,
+                       denken=False, heilen=True):
         """Das Sprachmodell direkt fragen - ohne Suche, ohne AnythingLLM.
 
         Nur fuer Faelle, in denen der Text schon feststeht und gar nicht
@@ -7385,7 +7451,29 @@ class Griff(BaseHTTPRequestHandler):
         # ⛔ Siehe ollamaruf.py: ohne echtes Schliessen rechnet
         #   Ollama nach einer Zeitueberschreitung weiter.
         antwort = ollamaruf.fragen(MODELL_ZIEL, daten, zeitgrenze)
-        return ((antwort.get("message") or {}).get("content") or "").strip()
+        _text = ((antwort.get("message") or {}).get("content") or "").strip()
+        # ⛔ 08.10.: Die Heilung abgerissener Enden hing an einer
+        #   EINZIGEN Aufrufstelle - dem Gespraechsweg. Ueber _modell_fragen
+        #   laufen aber Vergleich, Zusammenfassung, Kennwerte und E2B.
+        #   Riss dort eine Tabelle mitten im Verweis ab, endete sie
+        #   voellig stumm, und der Leser hielt die halbe Antwort fuer die
+        #   ganze - bei einer Wissensdatenbank der teuerste Fehler.
+        #   Die Heilung gehoert deshalb an die Quelle, nicht an die
+        #   Aufrufstellen: eine davon wird sonst immer vergessen.
+        #
+        # ⛔ ABER NICHT UEBERALL (Pruefer, 08.10.): Die Heilung haengt
+        #   einen Satz an und macht den Text damit LAENGER. Wo das
+        #   Ergebnis AUSGEWERTET statt angezeigt wird, zerstoert das die
+        #   Auswertung. Gemessen am E2B-Weg: sein Fail-safe ist
+        #   "len(roh) < 25 -> zurueck ans grosse Modell". Aus den 13
+        #   Zeichen "Laut [Johnson" werden geheilt 75 - das Tor laesst sie
+        #   durch, und der Nutzer bekommt eine fertige Antwort, die aus
+        #   nichts als der Abschneide-Meldung besteht.
+        #
+        # ⭐ REGEL fuer neue Aufrufer: heilen=False, wenn das Ergebnis
+        #   geprueft, zerlegt, gespeichert oder weiterverarbeitet wird -
+        #   heilen bleibt an, wenn es dem Menschen gezeigt wird.
+        return assistent.abgerissenes_ende_heilen(_text) if heilen else _text
 
     def _zusammenfassung(self, frage, erzwinge=None):
         """Ein ganzes Dokument zusammenfassen.
@@ -8784,7 +8872,8 @@ class Griff(BaseHTTPRequestHandler):
         geglaettet = False
         if glaetten and ROLLE_GLAETTEN:
             try:
-                antwort = self._modell_fragen(rolle.glaett_auftrag(fach, nutzer, besonderes), zeitgrenze=120)
+                antwort = self._modell_fragen(rolle.glaett_auftrag(fach, nutzer, besonderes), zeitgrenze=120,
+                                              heilen=False)
                 if rolle.geglaettet_brauchbar(antwort, fach, nutzer):
                     text = rolle.vorlage_mit_glaettung(fach, nutzer, besonderes, antwort, slug=name)
                     _rolle_schreiben(slug, text)
@@ -9599,7 +9688,10 @@ class Griff(BaseHTTPRequestHandler):
             "aus dem Text, nichts erfinden, keine Einleitung, keine "
             "Quellenangaben.\n\n%s" % ((unterschrift or "")[:200], seitentext[:3000]))
         try:
-            roh = self._modell_fragen(auftrag, zeitgrenze=120)
+            # heilen=False: das Tor unten verwirft ab 1200 Zeichen -
+            #   ein angehaengter Satz kippt eine knappe Beschreibung
+            #   ueber die Grenze und sie verschwindet still.
+            roh = self._modell_fragen(auftrag, zeitgrenze=120, heilen=False)
         except Exception:
             return ""
         roh = (roh or "").strip()
@@ -9631,8 +9723,13 @@ class Griff(BaseHTTPRequestHandler):
             "Klammern.\n\nFrage: %s\n\n%s" % (frage, zusatz))
         seit = time.time()
         try:
+            # heilen=False: der Fail-safe unten ist "len(roh) < 25 ->
+            #   zurueck ans grosse Modell". Geheilt waere ein
+            #   abgerissener Stummel 75 Zeichen lang, kaeme durch das
+            #   Tor und landete als fertige Antwort beim Nutzer.
             roh = self._modell_fragen(auftrag, zeitgrenze=120,
-                                      modell=assistent.NETZ_MODELL)
+                                      modell=assistent.NETZ_MODELL,
+                                      heilen=False)
         except Exception:
             return False
         roh = (roh or "").strip()
@@ -10849,8 +10946,12 @@ class Griff(BaseHTTPRequestHandler):
             else:
                 _teile = []
                 for _i, _s in enumerate(st, 1):
+                    # heilen=False: dieser Teil wird nicht gezeigt,
+                    #   sondern in den Zusammenfuehrungs-Auftrag
+                    #   gesteckt - dort waere die Meldung nur Rauschen.
                     _t = self._modell_fragen(
-                        mehrstufig.teil_auftrag(_s, name, _i, len(st)))
+                        mehrstufig.teil_auftrag(_s, name, _i, len(st)),
+                        heilen=False)
                     _teile.append((_t or "").strip() or "[Teil nicht lesbar]")
                 _zus = "\n\n".join("--- Teil %d ---\n%s" % (_i, _t)
                                     for _i, _t in enumerate(_teile, 1))

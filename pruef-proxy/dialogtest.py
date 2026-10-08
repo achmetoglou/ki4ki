@@ -3494,6 +3494,190 @@ def deckblatt_am_modell(runden=3):
         print("  - " + f)
     return 1 if FEHLER else 0
 
+def szenario_70_tabellen_werden_nicht_rechts_abgeschnitten():
+    print("\n[70] Breite Tabellen werden nicht rechts abgeschnitten")
+    # ⛔ 08.10. (Emrach, MEHRFACH gemeldet, zuletzt mit vier Bildschirm-
+    #   fotos; woertlich schon am 30.09.: "ausserdem schneidet die Tabelle
+    #   rechts ab"): Die Index-Tabelle hat acht Spalten. Im Chat waren
+    #   sechs zu sehen - "Themen" halb, "Datei" gar nicht. Kein
+    #   Rollbalken, kein Hinweis: der Inhalt war WEG.
+    #
+    # ⭐ URSACHE, gemessen an der index.css der LAUFENDEN Anlage
+    #   (curl http://127.0.0.1:3001/index.css, Stelle 180237):
+    #       .markdown table{width:100%;border-collapse:collapse;...;
+    #                       border-radius:10px;overflow:hidden;...}
+    #   Oberste Ebene, kein @media. Spezifitaet (0,1,1).
+    #   Das "overflow:hidden" macht die Tabelle zu einem Kasten, der alles
+    #   wegschneidet, was nicht hineinpasst - und eine Tabelle schrumpft
+    #   nie unter ihre Mindestbreite.
+    #   (WARUM es dort steht, weiss ich nicht. Die naheliegende Erklaerung
+    #   "wegen border-radius" traegt nicht: der Pruefer hat gemessen, dass
+    #   .markdown table weder Hintergrund noch Aussenrahmen hat - die
+    #   runden Ecken waren nie zu sehen. Das aendert nichts an der
+    #   Wirkung, nur an der Begruendung. Nicht raten.)
+    #
+    # ⛔ Die Oberflaeche gehoert uns nicht. Der Weg dorthin schon: Der
+    #   Proxy haengt vor </body> seinen EINHAENGER ein.
+    import re as _re
+    import pruef_proxy as _pp
+
+    # ⛔ PRUEFERBEFUND 08.10.: Vorher suchte diese Pruefung die Zeichen-
+    #   kette 'EINHAENGER + "</body>"' im Quelltext. Ein `if False and ...`
+    #   davor - ein Proxy also, der auf KEINE Seite mehr etwas einhaengt -
+    #   liess alle Pruefungen gruen. Jetzt am ERGEBNIS pruefen.
+    roh = "<html><head></head><body><p>Hallo</p></body></html>"
+    seite = _pp.seite_ergaenzen(roh)
+    pruefe("<p>Hallo</p>" in seite, "die Seite selbst bleibt unangetastet")
+    pruefe(seite != roh, "und sie wird ergaenzt")
+    pruefe("<style" in seite and seite.index("<style") < seite.index("</body>"),
+           "der Stil steht im Dokument, vor </body>")
+    pruefe("<style" in _pp.seite_ergaenzen("<html><p>x</p></html>"),
+           "auch eine Seite ohne </body> bekommt ihn")
+
+    stile = _re.findall(r"<style[^>]*>(.*?)</style>", seite, _re.S | _re.I)
+    pruefe(len(stile) == 1, "genau ein <style>-Block (ist: %d)" % len(stile))
+
+    # ⛔ PRUEFERBEFUND 08.10.: Der Zerleger unten kennt keine Verschach-
+    #   telung. Der Pruefer hat die echte Regel in @media (max-width:0px)
+    #   gelegt - Zeichen fuer Zeichen gleich, in keinem Browser wirksam -
+    #   und alle 775 Pruefungen blieben gruen. Wir brauchen hier keine
+    #   @-Regel, also ist das Einfachste auch das Sicherste: keine zulassen.
+    css = _re.sub(r"/\*.*?\*/", "", "\n".join(stile), flags=_re.S)
+    pruefe("@" not in css,
+           "keine @-Regel im Block - in @media (max-width:0px) waere die\n"
+           "           Regel wirkungslos und die Pruefung trotzdem gruen")
+    # ⛔ Und: ohne das Entfernen der Kommentare zaehlte der Zerleger das
+    #   ZITAT der Anlagen-Regel oben als echte Regel mit. Gemessen: zwei
+    #   Treffer bei einer Regel, darunter das overflow:hidden aus dem
+    #   Kommentar. Nur die Reihenfolge rettete das Ergebnis.
+    pruefe("overflow:hidden" not in css.replace(" ", ""),
+           "nach dem Entfernen der Kommentare steht kein overflow:hidden\n"
+           "           mehr im Block - das Zitat zaehlt nicht als Regel")
+
+    regeln = []
+    for m in _re.finditer(r"([^{}]+)\{([^{}]*)\}", css):
+        wahl = [w.strip() for w in m.group(1).split(",") if w.strip()]
+        decl = {}
+        for d in m.group(2).split(";"):
+            if ":" in d:
+                a, b = d.split(":", 1)
+                decl[a.strip().lower()] = b.strip().lower()
+        regeln.append((wahl, decl))
+
+    treffer = [d for w, d in regeln
+               if any(_re.search(r"\.markdown\b[^,]*\btable\b", x) for x in w)]
+    pruefe(len(treffer) == 1,
+           "genau EINE Regel spricht .markdown table an - denselben\n"
+           "           Selektor, den die Anlage benutzt (ist: %d)" % len(treffer))
+    zusammen = treffer[0] if treffer else {}
+
+    def _ohne_wichtig(v):
+        # ⛔ PRUEFERBEFUND: "auto!important" ohne Leerzeichen ist gueltiges
+        #   CSS und das, was jeder Minifizierer erzeugt. Die alte Pruefung
+        #   (v.split()[0]) wurde davon rot.
+        return v.replace("!important", "").strip()
+
+    erwartet = (("overflow", ("auto", "scroll"),
+                 "aus Abschneiden wird Rollen"),
+                ("display", ("block",),
+                 "sonst darf die Tabelle breiter werden als ihr Kasten"),
+                ("max-width", ("100%",),
+                 "Sicherung, falls die Anlage ihr width:100% einmal aufgibt"))
+    for name, gueltig, warum in erwartet:
+        wert = zusammen.get(name, "")
+        pruefe(_ohne_wichtig(wert) in gueltig,
+               "%s ist %s - %s (ist: %r)"
+               % (name, " oder ".join(gueltig), warum,
+                  wert or "gar nicht gesetzt"))
+        pruefe("!important" in wert,
+               "und %s traegt !important - die Regel der Anlage hat\n"
+               "           dieselbe Staerke, sonst entschiede die Reihenfolge"
+               % name)
+
+
+def szenario_71_heilung_wirkt_und_nur_wo_sie_hingehoert():
+    print("\n[71] Die Heilung wirkt - und nur, wo sie hingehoert")
+    # ⛔ 08.10.: abgerissenes_ende_heilen wurde an GENAU EINER Stelle
+    #   aufgerufen (Gespraechsweg). _modell_fragen ging daran vorbei -
+    #   und darueber laufen Vergleich, Zusammenfassung, Kennwerte, E2B.
+    #   Riss dort eine Tabelle ab, endete sie stumm.
+    #
+    # ⛔ PRUEFERBEFUND 08.10.: Die erste Fassung dieser Pruefung suchte nur
+    #   den Namen "abgerissenes_ende_heilen" im Rumpf. Der Pruefer hat das
+    #   Ergebnis berechnet und WEGGEWORFEN
+    #       _egal = assistent.abgerissenes_ende_heilen(_text); return _text
+    #   - 775 Pruefungen gruen, Fehler unveraendert da. Jetzt wird der
+    #   RUECKGABEWERT geprueft, mit einer Attrappe statt des Modells.
+    import ast as _ast
+    import pruef_proxy as _pp
+
+    ABGERISSEN = ("Zuerst der Dichtheitstest "
+                  "[Johnson, S. 1](/stelle?dok=kap-Johnson-Electric-276684-")
+    GESUND = ("Zuerst der Dichtheitstest "
+              "[Johnson, S. 1](/stelle?dok=kap-Johnson) und dann der Schnitt.")
+
+    class _Anfrage:
+        path = "/api/v1/workspace/kap/chat"
+
+    def _antwortet(text, **zusatz):
+        alt = _pp.ollamaruf.fragen
+        _pp.ollamaruf.fragen = lambda *a, **k: {"message": {"content": text}}
+        try:
+            return _pp.Griff._modell_fragen(_Anfrage(), "egal",
+                                            modell="attrappe", **zusatz)
+        finally:
+            _pp.ollamaruf.fragen = alt
+
+    erg = _antwortet(ABGERISSEN)
+    pruefe("wurde abgeschnitten" in erg,
+           "_modell_fragen heilt - am RUECKGABEWERT geprueft, nicht am\n"
+           "           Quelltext")
+    pruefe("kap-Johnson-Electric-276684-" not in erg,
+           "die halbe Adresse steht nicht mehr da")
+    pruefe(_antwortet(GESUND) == GESUND,
+           "Gegenprobe: eine gesunde Antwort bleibt Zeichen fuer Zeichen gleich")
+    pruefe(_antwortet(ABGERISSEN, heilen=False) == ABGERISSEN,
+           "heilen=False schaltet sie ab")
+
+    # ⛔ PRUEFERBEFUND 08.10. (hart): Die Heilung macht den Text LAENGER.
+    #   Wege, die das Ergebnis an einem Laengentor pruefen, kippen dadurch.
+    #   Gemessen am E2B-Weg: Fail-safe "len(roh) < 25 -> zurueck ans grosse
+    #   Modell". Aus 13 Zeichen "Laut [Johnson" werden geheilt 75 - das Tor
+    #   laesst sie durch, und der Nutzer bekommt eine fertige Antwort, die
+    #   aus nichts als der Abschneide-Meldung besteht.
+    quelle = open(os.path.join(HIER, "pruef_proxy.py"), encoding="utf-8").read()
+    baum = _ast.parse(quelle)
+
+    def _heilt_in(fname):
+        werte = []
+        for k in _ast.walk(baum):
+            if isinstance(k, _ast.FunctionDef) and k.name == fname:
+                for c in _ast.walk(k):
+                    if (isinstance(c, _ast.Call)
+                            and isinstance(c.func, _ast.Attribute)
+                            and c.func.attr == "_modell_fragen"):
+                        h = [w.value for w in c.keywords if w.arg == "heilen"]
+                        werte.append(h[0].value
+                                     if h and isinstance(h[0], _ast.Constant)
+                                     else True)
+        return werte
+
+    for fname, warum in (
+            ("_e2b_antwort", "sein Fail-safe ist len(roh) < 25"),
+            ("_bild_beschreiben", "sein Tor verwirft ab 1200 Zeichen"),
+            ("_rolle_festlegen", "die Rolle wird gespeichert, nicht gezeigt")):
+        w = _heilt_in(fname)
+        pruefe(bool(w) and all(x is False for x in w),
+               "%s fragt mit heilen=False - %s (ist: %r)"
+               % (fname, warum, w))
+
+    # Gegenprobe: der Weg, der die Tabelle ANZEIGT, heilt sehr wohl.
+    pruefe(_heilt_in("_vergleich_antwort") == [True],
+           "_vergleich_antwort heilt dagegen - genau der Weg aus dem\n"
+           "           Bildschirmfoto vom 08.10. (ist: %r)"
+           % _heilt_in("_vergleich_antwort"))
+
+
 if __name__ == "__main__":
     if "--deckblatt" in sys.argv:          # Schicht 2, braucht das Modell
         sys.exit(deckblatt_am_modell())
@@ -3548,7 +3732,9 @@ if __name__ == "__main__":
               szenario_66_der_dateiname_wird_mitgesucht,
               szenario_67_abgerissener_verweis,
               szenario_68_katalogweg_behaelt_die_spalten,
-              szenario_69_ohne_titel_und_ohne_falschen_nenner):
+              szenario_69_ohne_titel_und_ohne_falschen_nenner,
+              szenario_70_tabellen_werden_nicht_rechts_abgeschnitten,
+              szenario_71_heilung_wirkt_und_nur_wo_sie_hingehoert):
         try:
             s()
         except Exception as e:
